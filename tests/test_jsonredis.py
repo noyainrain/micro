@@ -4,6 +4,7 @@
 # released into the public domain
 
 import json
+from collections import OrderedDict
 from itertools import count
 from unittest import TestCase
 from redis import StrictRedis
@@ -77,19 +78,23 @@ class JSONRedisMappingTest(TestCase):
         self.r = JSONRedis(StrictRedis(db=15), encode=Cat.encode, decode=Cat.decode)
         self.r.flushdb()
 
-        self.objects = {
-            'cat:0': Cat('cat:0', 'Happy'),
-            'cat:1': Cat('cat:1', 'Grumpy')
-        }
+        self.objects = OrderedDict([
+            ('cat:0', Cat('cat:0', 'Happy')),
+            ('cat:1', Cat('cat:1', 'Grumpy')),
+            ('cat:2', Cat('cat:2', 'Long')),
+            ('cat:3', Cat('cat:3', 'Monorail')),
+            ('cat:4', Cat('cat:4', 'Ceiling'))
+        ])
         self.r.omset(self.objects)
         self.r.rpush('cats', *self.objects.keys())
         self.cats = JSONRedisMapping(self.r, 'cats')
 
-    def test_keys(self):
-        self.assertEqual(self.cats.keys(), self.objects.keys())
-
     def test_getitem(self):
         self.assertEqual(self.cats['cat:0'], self.objects['cat:0'])
+
+    def test_iter(self):
+        # Use list to also compare order
+        self.assertEqual(list(iter(self.cats)), list(iter(self.objects)))
 
     def test_len(self):
         self.assertEqual(len(self.cats), len(self.objects))
