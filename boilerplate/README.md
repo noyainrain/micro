@@ -1,27 +1,25 @@
-{name}
-======
+# {name}
 
-{short_description}
+{short-description}
 
 {description}
 
-## Dependencies
+## Requirements
 
-The following requirements must be set up on your system:
+The following software is required and must be set up on your system:
 
 * Python >= 3.4
-* Tornado >= 3.2
 * Redis >= 2.8
-* redis-py >= 2.10
 * Bower >= 1.5
 
 {name} should work on any [POSIX](https://en.wikipedia.org/wiki/POSIX) system.
 
-## Building {name}
+## Installing dependencies
 
-To build {name}, type:
+To install the dependencies for {name}, type:
 
 ```sh
+pip install --user -U -r requirements.txt
 bower update
 ```
 
@@ -30,16 +28,16 @@ bower update
 To run {name}, type:
 
 ```sh
-python3 -m {package}
+python -m {package}
 ```
 
-## Browser Support
+## Browser support
 
 {name} supports the latest version of popular browsers (i.e. Chrome, Edge, Firefox and Safari; see
 http://caniuse.com/ ).
 
 ## Contributors
 
-* {contributor_name} &lt;{contributor_email}>
+* {contributor-name} &lt;{contributor-email}>
 
 Copyright (C) {year} {name} contributors
