@@ -1,19 +1,19 @@
-Contributing to {name}
-======================
+# Contributing to {name}
 
-## Development Dependencies
+## Installing development dependencies
 
-For development, the following additional requirements must be set up on your system:
+To install the development dependencies for {name}, type:
 
-* Pylint >= 1.4
-* Sphinx >= 1.2
+```sh
+pip install --user -U -r requirements-dev.txt
+```
 
 ## Running the Tests
 
 To run all unit tests, type:
 
 ```sh
-python3 -m unittest discover -v
+python -m unittest discover -v
 ```
 
 ## Generating the Documentation
