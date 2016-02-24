@@ -19,8 +19,7 @@ The following software is required and must be set up on your system:
 To install the dependencies for {name}, type:
 
 ```sh
-pip install --user -U -r requirements.txt
-bower update
+make deps
 ```
 
 ## Running {name}
@@ -28,7 +27,7 @@ bower update
 To run {name}, type:
 
 ```sh
-python -m {package}
+python3 -m {package}
 ```
 
 ## Browser support
