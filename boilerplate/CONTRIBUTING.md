@@ -5,21 +5,22 @@
 To install the development dependencies for {name}, type:
 
 ```sh
-pip install --user -U -r requirements-dev.txt
+make deps-dev
 ```
 
-## Running the Tests
+## Running the unit tests
 
 To run all unit tests, type:
 
 ```sh
-python -m unittest discover -v
+make
 ```
 
-## Generating the Documentation
+## Development utilities
 
-To build the {name} documentation, type:
+The Makefile that comes with {name} provides additional utilities for different development tasks.
+To get an overview, type:
 
 ```sh
-sphinx-build doc doc/build
+make help
 ```
