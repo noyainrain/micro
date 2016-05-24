@@ -9,8 +9,8 @@
 The following software is required and must be set up on your system:
 
 * Python >= 3.4
+* Node.js >= 0.10
 * Redis >= 2.8
-* Bower >= 1.5
 
 {name} should work on any [POSIX](https://en.wikipedia.org/wiki/POSIX) system.
 

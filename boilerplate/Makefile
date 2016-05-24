@@ -1,6 +1,6 @@
 PYTHON = python3
 PIP = pip3
-BOWER = bower
+NPM = npm
 
 .PHONY: test
 test:
@@ -16,7 +16,8 @@ check: test lint
 .PHONY: deps
 deps:
 	$(PIP) install --user -U -r requirements.txt
-	$(BOWER) update
+	$(NPM) update
+	node_modules/.bin/bower update
 
 .PHONY: deps-dev
 deps-dev:
