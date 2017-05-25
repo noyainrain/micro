@@ -1,13 +1,18 @@
-{name} Documentation
-====================
+{name}
+======
 
-Table of contents:
+{short-description}
+
+{description}
+
+Documentation
+-------------
 
 .. toctree::
    :maxdepth: 2
    :numbered:
 
-   introduction
+   Introduction <README>
    webapi
    pythonapi
-   contributing
+   Contributing <CONTRIBUTING>
