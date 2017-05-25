@@ -1,4 +1,2 @@
 __pycache__
-/node_modules
-{client_lib_path}
 /doc/build
