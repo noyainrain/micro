@@ -8,8 +8,8 @@
 
 The following software is required and must be set up on your system:
 
-* Python >= 3.4
-* Node.js >= 0.10
+* Python >= 3.5
+* Node.js >= 5.0
 * Redis >= 2.8
 
 {name} should work on any [POSIX](https://en.wikipedia.org/wiki/POSIX) system.
@@ -34,6 +34,10 @@ python3 -m {package}
 
 {name} supports the latest version of popular browsers (i.e. Chrome, Edge, Firefox and Safari; see
 http://caniuse.com/ ).
+
+## Deprecation policy
+
+Features marked as deprecated are removed after a period of six months.
 
 ## Contributors
 
