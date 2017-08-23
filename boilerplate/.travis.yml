@@ -1,9 +1,29 @@
+dist: trusty
 language: python
 python:
-    - "3.5"
-    - "3.6"
-services: redis-server
+    - 3.5
+    - 3.6
+services:
+    - redis-server
+before_install:
+    - nvm install 8
 install:
     - make deps
     - make deps-dev
-script: make check
+script:
+    - make test
+    - make test-ext
+    - make lint
+jobs:
+    include:
+        - &test-ui
+          stage: test-ui
+          addons:
+              sauce_connect:
+                  username: {sauce-user}
+              jwt:
+                  secure: {sauce-access-key-encrypted}
+          script: make test-ui WEBDRIVER_URL="https://$SAUCE_USERNAME:$SAUCE_ACCESS_KEY@ondemand.saucelabs.com/wd/hub" TUNNEL_ID="$TRAVIS_JOB_NUMBER" SUBJECT="#$TRAVIS_JOB_NUMBER"
+          env: BROWSER=chrome PLATFORM="Windows 10"
+        - <<: *test-ui
+          env: BROWSER=MicrosoftEdge PLATFORM="Windows 10"
