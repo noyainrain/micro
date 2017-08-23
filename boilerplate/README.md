@@ -9,7 +9,7 @@
 The following software is required and must be set up on your system:
 
 * Python >= 3.5
-* Node.js >= 5.0
+* Node.js >= 8.0
 * Redis >= 2.8
 
 {name} should work on any [POSIX](https://en.wikipedia.org/wiki/POSIX) system.
