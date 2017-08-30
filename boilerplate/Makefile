@@ -24,6 +24,7 @@ watch-test:
 .PHONY: lint
 lint:
 	pylint -j 0 {package}
+	$(NPM) $(NPMFLAGS) run lint
 
 .PHONY: check
 check: test test-ext test-ui lint
