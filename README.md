@@ -1,17 +1,52 @@
-# Micro
+# micro
 
 Toolkit for social micro web apps.
 
-The various components are released into the public domain.
+For a quick introduction on how to build an application with micro, have a look at the included
+example in `hello`.
+
+## Requirements
+
+The following software is required and must be set up on your system:
+
+* Python >= 3.5
+* Node.js >= 8.0
+* Redis >= 2.8
+
+micro should work on any [POSIX](https://en.wikipedia.org/wiki/POSIX) system.
+
+## Installing dependencies
+
+To install the dependencies for micro, type:
+
+```sh
+make deps
+```
+
+## Browser support
+
+micro supports the latest version of popular browsers (i.e. Chrome, Edge, Firefox and Safari; see
+http://caniuse.com/ ).
+
+## Deprecation policy
+
+Features marked as deprecated are removed after a period of six months.
 
 ## Boilerplate
 
-Base files for any micro web app repository.
+The `boilerplate` directory contains base files for any micro app repository. They are not required,
+but may come in handy when bootstrapping a new project.
 
-When creating a new micro web app, simply copy all files from `boilerplate` over to the new
-repository and substitute all place holders (with curly braces, like `{name}`). Over time, extend
-the files as needed with app-specific details.
+Simply copy the files from `boilerplate` over to the new repository and substitute all place holders
+(with curly braces, like `{name}`). Over time, extend the files as needed with app-specific details.
+
+## Public domain components
+
+While micro is covered by the [LGPL](https://www.gnu.org/licenses/lgpl.html), the jsonredis module
+is released into the public domain.
 
 ## Contributors
 
 * Sven James &lt;sven.jms AT gmail.com>
+
+Copyright (C) 2017 micro contributors
