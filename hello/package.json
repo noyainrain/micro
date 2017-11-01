@@ -3,7 +3,7 @@
         "link-micro": "mkdir -p node_modules/@noyainrain/micro && cp -l ../client/*.* node_modules/@noyainrain/micro",
         "test-ui": "mocha ui_test.js",
         "lint": "eslint .",
-        "clean": "rm -rf package-lock.json node_modules"
+        "clean": "rm -rf node_modules"
     },
     "dependencies": {
         "whatwg-fetch": "^2.0",
@@ -15,7 +15,7 @@
     "devDependencies": {
         "eslint": "^4.0",
         "eslint-config-eslint": "^4.0",
-        "mocha": "^3.4"
+        "mocha": "^4.0"
     },
     "private": true
 }

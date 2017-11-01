@@ -2,15 +2,15 @@
     "scripts": {
         "test-ui": "mocha '!(node_modules)/**/ui_test*.js'",
         "lint": "eslint .",
-        "clean": "rm -rf package-lock.json node_modules"
+        "clean": "rm -rf node_modules"
     },
     "dependencies": {
-        "@noyainrain/micro": "^0.1",
+        "@noyainrain/micro": "^0.1"
     },
     "devDependencies": {
         "eslint": "^4.0",
         "eslint-config-eslint": "^4.0",
-        "mocha": "^3.4"
+        "mocha": "^4.0"
     },
     "private": true
 }
