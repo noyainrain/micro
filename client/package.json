@@ -1,12 +1,12 @@
 {
     "name": "@noyainrain/micro",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Toolkit for social micro web apps.",
     "repository": "noyainrain/micro",
     "license": "LGPL-3.0",
     "scripts": {
         "lint": "eslint .",
-        "clean": "rm -rf package-lock.json node_modules"
+        "clean": "rm -rf node_modules"
     },
     "dependencies": {
         "whatwg-fetch": "^2.0",

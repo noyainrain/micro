@@ -5,7 +5,7 @@ with open('requirements.txt') as f:
 
 setup(
     name='micro',
-    version='0.1.0',
+    version='0.1.1',
     url='https://github.com/noyainrain/micro',
     maintainer='Sven James',
     maintainer_email='sven.jms AT gmail.com',
