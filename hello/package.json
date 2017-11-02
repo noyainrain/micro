@@ -10,7 +10,7 @@
         "webcomponents.js": "^0.7",
         "font-awesome": "^4.4",
         "typeface-open-sans": "^0.0",
-        "selenium-webdriver": "^3.5"
+        "selenium-webdriver": "/home/noya/projects/selenium/repo/javascript/node/selenium-webdriver/selenium-webdriver-4.0.0-dev.tgz"
     },
     "devDependencies": {
         "eslint": "^4.0",
