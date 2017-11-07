@@ -813,17 +813,19 @@ micro.AboutPage = class extends micro.Page {
                 micro.util.formatFragment(text, args));
         }
 
-        this.querySelector(".micro-logo a").href = this.attributes["project-url"].value;
-        if (this.attributes["project-icon"]) {
-            this.querySelector(".micro-logo img").src = this.attributes["project-icon"].value;
-        }
-        this.querySelector(".micro-logo span").textContent =
-            this.attributes["project-title"].value;
-        let a = this.querySelector(".micro-about-project-text a");
-        a.href = this.attributes["project-url"].value;
-        a.textContent = this.attributes["project-title"].value;
+        this.querySelector(".micro-about-project").style.display =
+            this.getAttribute("project-title") ? "" : "none";
+        this.querySelector(".micro-logo a").href = this.getAttribute("project-url");
+        this.querySelector(".micro-logo img").src = this.getAttribute("project-icon") || "";
+        this.querySelector(".micro-logo span").textContent = this.getAttribute("project-title");
+        let a = this.querySelector(".micro-about-project-link");
+        a.href = this.getAttribute("project-url");
+        a.textContent = this.getAttribute("project-title");
+        a = this.querySelector(".micro-about-license");
+        a.href = this.getAttribute("project-license-url");
+        a.textContent = this.getAttribute("project-license");
         this.querySelector(".micro-about-copyright").textContent =
-            this.attributes["project-copyright"].value;
+            this.getAttribute("project-copyright");
     }
 };
 
