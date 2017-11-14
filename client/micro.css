@@ -1,7 +1,4 @@
-/*
- * micro style.
- *
- * Color palette:
+/* ---- Color scheme ----
  *
  * - text: #333
  * - text subtle: #888
@@ -9,6 +6,12 @@
  * - delimiter: #ddd
  * - border: #bbb
  */
+
+html {
+    --micro-color-primary: #08f;
+    --micro-color-primary-shade: #005aa8;
+    --micro-color-secondary: #f80;
+}
 
 /* ---- General ---- */
 
@@ -117,7 +120,7 @@ pre {
 }
 
 .micro-progress {
-    color: #08f;
+    color: var(--micro-color-primary);
 }
 
 /* ---- Links ---- */
@@ -127,7 +130,7 @@ pre {
     margin: 0;
     padding: 0;
     border: none;
-    color: #f80;
+    color: var(--micro-color-secondary);
     background: none;
     font: inherit;
     text-decoration: none;
@@ -157,10 +160,10 @@ h1 .link:hover {
     margin: 0;
     padding: calc(0.25 * 1.5em);
     border: none;
-    border-bottom: 2px solid #005aa8;
+    border-bottom: 2px solid var(--micro-color-primary-shade);
     border-radius: calc(0.25 * 1.5em);
     color: #fff;
-    background: #08f;
+    background: var(--micro-color-primary);
     font: inherit;
     line-height: 1;
     text-decoration: none;
@@ -171,18 +174,18 @@ h1 .link:hover {
     cursor: default;
 }
 
-.action.action-subtle {
+.action-subtle {
     display: inline;
     padding: 0;
     border: none;
     border-radius: 0;
-    color: #08f;
+    color: var(--micro-color-primary);
     background: none;
     font-size: 0.9em;
     line-height: 1.5;
 }
 
-.action.action-subtle:hover {
+.action-subtle:hover {
     text-decoration: underline;
 }
 
@@ -205,7 +208,7 @@ h1 .link:hover {
 }
 
 .actions > .action:nth-child(n+2) {
-    border-left: 1px solid #005aa8;
+    border-left: 1px solid var(--micro-color-primary-shade);
 }
 
 .actions > .action-subtle:nth-child(n+2) {
@@ -428,7 +431,7 @@ main {
 
 .micro-ui-progress {
     margin: calc(3 * 1.5rem) 0;
-    color: #08f;
+    color: var(--micro-color-primary);
     font-size: 3rem;
     text-align: center;
 }
@@ -461,7 +464,7 @@ main {
 }
 
 .micro-ui-menu .action {
-    color: #08f;
+    color: var(--micro-color-primary);
 }
 
 .micro-ui-menu > .link {
