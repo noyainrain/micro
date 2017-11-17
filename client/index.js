@@ -475,6 +475,67 @@ micro.ErrorNotification = class extends HTMLElement {
     }
 };
 
+// TODO: better name?
+micro.Shift = Base => class extends Base {
+    createdCallback(states, ...args) {
+        if (super.createdCallback) {
+            super.createdCallback(...args);
+        }
+        //this._lock = `micro-lock-${parseInt(Math.random() * 1000)}`;
+        //this.classList.add(this._lock);
+        this._buttons = null;
+        this._states = (states || this.getAttribute("states")).split(" ");
+    }
+
+    attachedCallback() {
+        if (super.attachedCallback) {
+            super.attachedCallback();
+        }
+        this.shift(this._states[0]);
+        // can now select this more intelligent with list of states
+        this._buttons = this.querySelectorAll("[class*=micro-shift]");
+        for (let button of this._buttons) {
+            let match = button.className.match(/.*micro-shift-([a-z]+).*/);
+            if (match) {
+                button.run = this.shift.bind(this, match[1]);
+            }
+        }
+    }
+
+    detachedCallback() {
+        if (super.detachedCallback) {
+            super.detachedCallback();
+        }
+        this._buttons.forEach(b => b.run = null);
+    }
+
+    /** Subclass API. */
+    shift(state) {
+        console.log("Shift to", state);
+        console.log(this._states);
+        if (this._states.length < 2) {
+            return;
+        }
+        let sel = this._states.filter(s => s !== state).map(s => `.micro-state-${s}`).join(", ");
+        let old = Array.from(this.querySelectorAll(sel));
+        //let elems = Array.from(this.querySelectorAll("[class*=micro-state]"));
+        let elems = Array.from(this.querySelectorAll(`.micro-state-${state}`));
+        console.log(elems);
+        //let filter = new Set(this.querySelectorAll(`.${this._lock} [class*=micro-lock] [class*=micro-state]`));
+        //console.log(filter);
+        //elems.filter(e => !filter.has(e)).forEach(
+        old.forEach(e => e.style.display = "none");
+        elems.forEach(e => e.style.display = "");
+        //elems.forEach(
+        //    e => e.style.display = e.classList.contains(`micro-state-${state}`) ? "" : "none");
+    }
+}
+
+micro.ShiftElem = micro.Shift(HTMLElement);
+
+//micro.Shiftable = Base => class extends Base {
+//}
+
 /**
  * Enhanced ordered list.
  *
@@ -1095,6 +1156,7 @@ micro.ActivityPage = class extends micro.Page {
 document.registerElement("micro-ui", {prototype: micro.UI.protoype, extends: "body"});
 document.registerElement("micro-simple-notification", micro.SimpleNotification);
 document.registerElement("micro-error-notification", micro.ErrorNotification);
+document.registerElement("micro-shift", micro.ShiftElem);
 document.registerElement("micro-ol", {prototype: micro.OL.prototype, extends: "ol"});
 document.registerElement("micro-button", {prototype: micro.Button.prototype, extends: "button"});
 document.registerElement("micro-menu", micro.Menu);

@@ -16,6 +16,33 @@
         {% raw micro_templates() %}
 
         <template class="hello-start-page-template">
+            <button is="micro-button" class="micro-state-a micro-shift-b">A to B</button>
+            <button is="micro-button" class="micro-state-b micro-shift-a">B to A</button>
+
+            <micro-shift states="hidden visible">
+                <p class="micro-state-hidden">
+                    There are 2 trashed items.
+                    <button is="micro-button" class="micro-shift-visible link">
+                        <span class="fa fa-search-plus"></span> Show
+                    </button>
+                </p>
+                <section class="micro-state-visible">
+                    <header>
+                        <h1>Trashed items</h1>
+                        <button is="micro-button" class="micro-shift-hidden link">
+                            <span class="fa fa-search-minus"></span> Hide
+                        </button>
+                    </header>
+                    <ol>
+                        <li>A</li>
+                        <li>B</li>
+                    </ol>
+                </section>
+                <nav>
+                    <micro-shift states="lol"><p class="micro-state-lol">HALLO</p></micro-shift>
+                </nav>
+            </micro-shift>
+
             <div class="hello-start-intro">
                 <h1 class="micro-logo"><a class="link"></a></h1>
                 <p>A micro toolkit example</p>

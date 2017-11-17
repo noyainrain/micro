@@ -42,17 +42,18 @@ hello.UI = class extends micro.UI {
 /**
  * Start page.
  */
-hello.StartPage = class extends micro.Page {
+hello.StartPage = class extends micro.Shift(micro.Page) {
     createdCallback() {
-        super.createdCallback();
         this.appendChild(document.importNode(ui.querySelector(".hello-start-page-template").content,
                                              true));
+        super.createdCallback("a b");
         this.querySelector(".hello-start-intro a").textContent = ui.settings.title;
         this.querySelector(".hello-start-create-greeting button").run =
             this._createGreeting.bind(this);
     }
 
     attachedCallback() {
+        super.attachedCallback();
         micro.call("GET", "/api/greetings").then(greetings => {
             greetings.forEach(this._addGreeting, this);
         });
