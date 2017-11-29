@@ -52,6 +52,11 @@ show-deprecated:
 	git grep -in -C1 deprecate $$(git describe --tags $$(git rev-list -1 --first-parent \
 	                                                     --until="6 months ago" master))
 
+.PHONY: release
+release:
+	scripts/release.sh
+	{REPO=repo} {BRANCH=branch} scripts/publish-doc.sh
+
 .PHONY: clean
 clean:
 	rm -rf doc/build
@@ -82,4 +87,7 @@ help:
 	@echo "                           option."
 	@echo "show-deprecated: Show deprecated code ready for removal (deprecated for at"
 	@echo "                 least six months)"
+	@echo "release:         Make a new release"
+	@echo "                 FEATURE: Corresponding feature branch"
+	@echo "                 VERSION: Version number"
 	@echo "clean:           Remove temporary files"
