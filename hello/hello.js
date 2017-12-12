@@ -64,7 +64,7 @@ hello.StartPage = class extends micro.Page {
                 .querySelector("li");
         li.querySelector("micro-user").user = greeting.authors[0];
         li.querySelector("q").textContent = greeting.text;
-        let ul = this.querySelector("ul");
+        let ul = this.querySelector(".hello-start-greetings");
         ul.insertBefore(li, ul.children[1] || null);
     }
 

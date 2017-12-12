@@ -66,8 +66,7 @@ describe("UI", function() {
         await browser.wait(untilElementTextLocated({css: ".hello-greeting q"}, "Meow!"), timeout);
 
         // Edit user
-        let menu = await browser.findElement({css: ".micro-ui-header-user"});
-        await browser.actions().mouseMove(menu).perform();
+        await browser.findElement({css: ".micro-ui-header-user"}).click();
         await browser.findElement({css: ".micro-ui-edit-user"}).click();
         await browser.wait(
             untilElementTextLocated({css: "micro-edit-user-page h1"}, "Edit user settings"),
@@ -84,8 +83,7 @@ describe("UI", function() {
             timeout);
 
         // View about page
-        menu = await browser.findElement({css: ".micro-ui-header-menu"});
-        await browser.actions().mouseMove(menu).perform();
+        await browser.findElement({css: ".micro-ui-header-menu"}).click();
         await browser.findElement({css: ".micro-ui-about"}).click();
         await browser.wait(
             untilElementTextLocated({css: "micro-about-page h1"}, "About Hello"), timeout);
@@ -96,7 +94,7 @@ describe("UI", function() {
         await browser.get(`${URL}/`);
         let menu = await browser.wait(until.elementLocated({css: ".micro-ui-header-menu"}),
                                       timeout);
-        await browser.actions().mouseMove(menu).perform();
+        await menu.click();
         await browser.findElement({css: ".micro-ui-edit-settings"}).click();
         await browser.wait(
             untilElementTextLocated({css: "micro-edit-settings-page h1"}, "Edit site settings"),
@@ -117,7 +115,7 @@ describe("UI", function() {
             timeout);
 
         // View activity page
-        await browser.actions().mouseMove(menu).perform();
+        await menu.click();
         await browser.findElement({css: ".micro-ui-activity"}).click();
         await browser.wait(
             untilElementTextLocated({css: "micro-activity-page .micro-timeline li"},

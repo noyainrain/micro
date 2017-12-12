@@ -10,42 +10,43 @@
 
             <div class="micro-ui-header-fill"></div>
 
-            <div class="micro-ui-header-user micro-ui-menu">
-                <button class="link"><micro-user></micro-user></button>
-                <ul>
-                    <li class="micro-ui-edit-user">
-                        <a class="action" href="/user/edit">
-                            <i class="fa fa-fw fa-wrench"></i> Edit user settings
-                        </a>
-                    </li>
-                </ul>
-            </div>
-
-            <div class="micro-ui-header-menu micro-ui-menu">
-                <button class="link"><i class="fa fa-fw fa-bars"></i></button>
-                <ul>
-                    <li class="micro-ui-feedback">
-                        <a class="link">
-                            <i class="fa fa-fw fa-question-circle"></i> Feedback &amp; help
-                        </a>
-                    </li>
-                    <li class="micro-ui-about">
-                        <a class="link" href="/about">
-                            <i class="fa fa-fw fa-info-circle"></i> About
-                        </a>
-                    </li>
-                    <li class="micro-ui-activity">
-                        <a class="link" href="/activity">
-                            <i class="fa fa-fw fa-history"></i> Activity
-                        </a>
-                    </li>
-                    <li class="micro-ui-edit-settings">
-                        <a class="action" href="/settings/edit">
-                            <i class="fa fa-fw fa-wrench"></i> Edit site settings
-                        </a>
-                    </li>
-                </ul>
-            </div>
+            <ul is="micro-menu" class="micro-ui-menu micro-secondary">
+                <li class="micro-ui-header-user">
+                    <button class="link"><micro-user></micro-user></button>
+                    <ul is="micro-menu">
+                        <li class="micro-ui-edit-user">
+                            <a class="action" href="/user/edit">
+                                <span class="fa fa-fw fa-wrench"></span> Edit user settings
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                <li class="micro-ui-header-menu">
+                    <button class="link"><span class="fa fa-fw fa-bars"></span></button>
+                    <ul is="micro-menu">
+                        <li class="micro-ui-feedback">
+                            <a class="link">
+                                <span class="fa fa-fw fa-question-circle"></span> Feedback &amp; help
+                            </a>
+                        </li>
+                        <li class="micro-ui-about">
+                            <a class="link" href="/about">
+                                <span class="fa fa-fw fa-info-circle"></span> About
+                            </a>
+                        </li>
+                        <li class="micro-ui-activity">
+                            <a class="link" href="/activity">
+                                <span class="fa fa-fw fa-history"></span> Activity
+                            </a>
+                        </li>
+                        <li class="micro-ui-edit-settings">
+                            <a class="action" href="/settings/edit">
+                                <span class="fa fa-fw fa-wrench"></span> Edit site settings
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
         </nav>
 
         <div class="micro-ui-notification-space"></div>
@@ -122,7 +123,7 @@
             <small>Name</small>
             <small>Your name or nick name.</small>
         </label>
-        <p class="actions">
+        <p>
             <button class="action"><i class="fa fa-check-circle"></i> Save</button>
         </p>
     </form>
@@ -130,7 +131,7 @@
     <section class="micro-edit-user-email">
         <header class="group">
             <h1>Email</h1>
-            <div class="micro-edit-user-remove-email actions">
+            <div class="micro-edit-user-remove-email">
                 <button class="action"><i class="fa fa-trash-o"></i> Remove</button>
             </div>
         </header>
@@ -141,7 +142,7 @@
                     <input name="email" type="email" required="required" />
                     <small>Email address</small>
                 </label>
-                <p class="actions">
+                <p>
                     <button class="action">
                         <i class="fa fa-check-circle"></i> Add email address
                     </button>
@@ -155,9 +156,7 @@
                 We've sent a message to your email address. Please open it and follow the
                 instructions.
             </p>
-            <p class="actions">
-                <button class="action">Cancel</button>
-            </p>
+            <p class="micro-edit-user-cancel-set-email"><button class="action">Cancel</button></p>
             <p class="micro-progress"><i class="fa fa-spin fa-spinner"></i></p>
         </section>
 
@@ -203,10 +202,10 @@
             <small>Feedback &amp; help site (optional)</small>
             <small>URL of the feedback site / help desk.</small>
         </label>
-        <p class="actions">
-            <button class="action"><i class="fa fa-check-circle"></i> Done</button>
-            <a class="action action-cancel" href="/">Cancel</a>
-        </p>
+        <ul is="micro-menu">
+            <li><button class="action"><span class="fa fa-check-circle"></span> Done</button></li>
+            <li><a class="link action-cancel" href="/">Cancel</a></li>
+        </ul>
     </form>
 </template>
 

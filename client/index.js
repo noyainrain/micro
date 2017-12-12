@@ -668,36 +668,44 @@ micro.Button = class extends HTMLButtonElement {
 };
 
 /**
- * Simple menu for (typically) actions and/or links.
+ * Menu containing actions and / or links.
  *
- * Secondary items, marked with the ``micro-menu-secondary`` class, are hidden by default and can be
- * revealed by the user with a toggle button.
+ * Menus can be nested, in which case submenus are hidden by default and expanded on focus or hover.
+ *
+ * The following example illustrates the markup for a typical menu::
+ *
+ *    <ul is="micro-menu">
+ *        <li><button class="action">Do this</button></li>
+ *        <li><a class="link" href="/">Something</a></li>
+ *        <li>
+ *            <button class="link">More</button>
+ *            <ul is="micro-menu">
+ *                <li><button class="action">Do that</button></li>
+ *            </ul>
+ *        </li>
+ *    </ul>
  */
-micro.Menu = class extends HTMLElement {
-    createdCallback() {
-        // NOTE: We should watch if the user modifies the content of the element and make sure the
-        // toggle button is present and at the last position.
-        this.appendChild(document.importNode(document.querySelector(".micro-menu-template").content,
-                                             true));
-        this.classList.add("micro-menu");
-        this._toggleButton = this.querySelector(".micro-menu-toggle-secondary");
-        this._toggleButton.addEventListener("click", this);
-        this._update();
-    }
-
-    _update() {
-        let secondary = this.classList.contains("micro-menu-secondary-visible");
-        let i = this._toggleButton.querySelector("i");
-        i.classList.remove("fa-chevron-circle-right", "fa-chevron-circle-left");
-        i.classList.add(`fa-chevron-circle-${secondary ? "left" : "right"}`);
-        this.querySelector(".micro-menu-toggle-secondary").title =
-            `Show ${secondary ? "less" : "more"}`;
+micro.Menu = class extends HTMLUListElement {
+    attachedCallback() {
+        for (let li of Array.from(this.children)) {
+            if (li.lastElementChild instanceof micro.Menu) {
+                li.firstElementChild.tabIndex = -1;
+                li.addEventListener("mouseenter", this);
+                li.addEventListener("mouseleave", this);
+                let items = Array.from(li.lastElementChild.querySelectorAll(".link, .action"));
+                for (let item of items) {
+                    item.addEventListener("focus", this);
+                    item.addEventListener("blur", this);
+                }
+            }
+        }
     }
 
     handleEvent(event) {
-        if (event.currentTarget === this._toggleButton && event.type === "click") {
-            this.classList.toggle("micro-menu-secondary-visible");
-            this._update();
+        if (["mouseenter", "mouseleave", "focus", "blur"].includes(event.type)) {
+            let li = Array.from(this.children).find(elem => elem.contains(event.target));
+            li.classList.toggle("micro-menu-expanded",
+                                ["mouseenter", "focus"].includes(event.type));
         }
     }
 };
@@ -859,7 +867,7 @@ micro.EditUserPage = class extends micro.Page {
         this._setEmail2 = this.querySelector(".micro-edit-user-set-email-2");
         this._emailP = this.querySelector(".micro-edit-user-email-value");
         this._setEmailAction = this.querySelector(".micro-edit-user-set-email-1 form button");
-        this._cancelSetEmailAction = this.querySelector(".micro-edit-user-set-email-2 button");
+        this._cancelSetEmailAction = this.querySelector(".micro-edit-user-cancel-set-email button");
         this._removeEmailAction = this.querySelector(".micro-edit-user-remove-email button");
         this._removeEmailAction.addEventListener("click", this);
         this._setEmailAction.addEventListener("click", this);
@@ -949,7 +957,7 @@ micro.EditUserPage = class extends micro.Page {
     _showSetEmailPanel2(progress) {
         progress = progress || false;
         let progressP = this.querySelector(".micro-edit-user-set-email-2 .micro-progress");
-        let actions = this.querySelector(".micro-edit-user-set-email-2 .actions");
+        let actions = this.querySelector(".micro-edit-user-cancel-set-email");
         this._emailP.style.display = "none";
         this._setEmail1.style.display = "none";
         this._setEmail2.style.display = "block";
@@ -1097,7 +1105,7 @@ document.registerElement("micro-simple-notification", micro.SimpleNotification);
 document.registerElement("micro-error-notification", micro.ErrorNotification);
 document.registerElement("micro-ol", {prototype: micro.OL.prototype, extends: "ol"});
 document.registerElement("micro-button", {prototype: micro.Button.prototype, extends: "button"});
-document.registerElement("micro-menu", micro.Menu);
+document.registerElement("micro-menu", {prototype: micro.Menu.prototype, extends: "ul"});
 document.registerElement("micro-user", micro.UserElement);
 document.registerElement("micro-page", micro.Page);
 document.registerElement("micro-not-found-page", micro.NotFoundPage);

@@ -11,6 +11,7 @@ html {
     --micro-color-primary: #08f;
     --micro-color-primary-shade: #005aa8;
     --micro-color-secondary: #f80;
+    --micro-color-mono-shade: #616161;
 }
 
 /* ---- General ---- */
@@ -29,6 +30,7 @@ body {
     margin: 0;
 }
 
+header,
 h1,
 p,
 ul,
@@ -37,6 +39,19 @@ pre {
     display: block;
     margin: 1.5rem 0;
     font-weight: normal;
+}
+
+header {
+    display: flex;
+    align-items: flex-end;
+}
+
+header > * {
+    margin: 0;
+}
+
+header > h1 {
+    flex: auto;
 }
 
 h1 {
@@ -60,6 +75,10 @@ pre {
     /* Prevent browsers from manipulating the font size if the font family equals "monospace" */
     font: 0.875em / 1.5 monospace, monospace;
     white-space: pre-wrap;
+}
+
+.fa {
+    font-size: 0.875em;
 }
 
 .micro-small, small {
@@ -137,8 +156,10 @@ pre {
     cursor: pointer;
 }
 
+.link:focus,
 .link:hover {
-    text-decoration: underline;
+    outline: none;
+    box-shadow: inset 0 -1px var(--micro-color-secondary);
 }
 
 .link:disabled {
@@ -147,10 +168,6 @@ pre {
 
 h1 .link {
     color: inherit;
-}
-
-h1 .link:hover {
-    text-decoration: none;
 }
 
 /* ---- Actions ---- */
@@ -166,8 +183,16 @@ h1 .link:hover {
     background: var(--micro-color-primary);
     font: inherit;
     line-height: 1;
+    text-align: left;
     text-decoration: none;
+    white-space: nowrap;
     cursor: pointer;
+}
+
+.action:focus,
+.action:hover {
+    outline: none;
+    box-shadow: inset 0 -1px white;
 }
 
 .action:disabled {
@@ -185,35 +210,9 @@ h1 .link:hover {
     line-height: 1.5;
 }
 
+.action-subtle:focus,
 .action-subtle:hover {
-    text-decoration: underline;
-}
-
-.actions {
-    display: flex;
-}
-
-.actions > .action {
-    border-radius: 0;
-}
-
-.actions > .action:first-child {
-    border-top-left-radius: calc(0.25 * 1.5em);
-    border-bottom-left-radius: calc(0.25 * 1.5em);
-}
-
-.actions > .action:last-child {
-    border-top-right-radius: calc(0.25 * 1.5em);
-    border-bottom-right-radius: calc(0.25 * 1.5em);
-}
-
-.actions > .action:nth-child(n+2) {
-    border-left: 1px solid var(--micro-color-primary-shade);
-}
-
-.actions > .action-subtle:nth-child(n+2) {
-    border-left: none;
-    margin-left: calc(0.25 * 1.5rem);
+    box-shadow: inset 0 -1px var(--micro-color-primary);
 }
 
 /* ---- Forms ---- */
@@ -228,6 +227,17 @@ select {
 
 input:invalid {
     box-shadow: none;
+}
+
+input:focus,
+input:hover,
+textarea:focus,
+textarea:hover,
+select:focus,
+select:hover {
+    border-left-color: var(--micro-color-primary);
+    outline: none;
+    box-shadow: inset 1px 0 var(--micro-color-primary);
 }
 
 label {
@@ -275,8 +285,9 @@ form > label {
     color: inherit;
 }
 
+.micro-logo .link:focus,
 .micro-logo .link:hover {
-    text-decoration: none;
+    box-shadow: inset 0 -1px #333;
 }
 
 .micro-logo img {
@@ -332,20 +343,126 @@ form > label {
 
 /* ---- Menu ---- */
 
-.micro-menu {
+[is=micro-menu] {
     display: flex;
+    padding: 0;
+    list-style: none;
 }
 
-.micro-menu > *:nth-child(n+2) {
-    margin-left: calc(0.25 * 1.5rem);
+[is=micro-menu] li {
+    position: relative;
 }
 
-.micro-menu:not(.micro-menu-secondary-visible) > .micro-menu-secondary {
-    display: none;
+[is=micro-menu] li .link,
+[is=micro-menu] li .action {
+    display: block;
+    min-width: calc(1em + 1.5em / 2);
+    /* Computed line height between adjacent items may not match exactly */
+    height: 100%;
+    padding: calc(1.5em / 4);
+    border-radius: 0;
+    line-height: 1;
 }
 
-.micro-menu > :not(.micro-menu-secondary) + .micro-menu-toggle-secondary {
-    display: none;
+[is=micro-menu] li:first-child .link,
+[is=micro-menu] li:first-child .action {
+    border-top-left-radius: calc(1.5em / 4);
+    border-bottom-left-radius: calc(1.5em / 4);
+}
+
+[is=micro-menu] li:last-child .link,
+[is=micro-menu] li:last-child .action {
+    border-top-right-radius: calc(1.5em / 4);
+    border-bottom-right-radius: calc(1.5em / 4);
+}
+
+[is=micro-menu] li.micro-menu-expanded:last-child .link {
+    border-bottom-right-radius: 0;
+}
+
+[is=micro-menu] li .link {
+    border-top: 1px solid #ddd;
+    border-right: 1px solid #ddd;
+    border-bottom: 2px solid var(--micro-color-mono-shade);
+    color: inherit;
+    background: white;
+}
+
+[is=micro-menu] li .link:hover,
+[is=micro-menu] li .link:focus,
+[is=micro-menu] li.micro-menu-expanded .link {
+    box-shadow: none;
+    background: #ddd;
+}
+
+[is=micro-menu] li .link .fa {
+    color: #888;
+}
+
+[is=micro-menu] li .action {
+    border-top: 1px solid var(--micro-color-primary);
+}
+
+[is=micro-menu] li:not(:first-child) .action {
+    border-left: 1px solid var(--micro-color-primary-shade);
+}
+
+[is=micro-menu].micro-secondary > li > .link,
+[is=micro-menu].micro-secondary > li > .action {
+    padding: calc(1.5em / 4) calc(1.5em / 8);
+    border: none;
+    border-radius: 0;
+    line-height: 1.5;
+    background: white;
+}
+
+[is=micro-menu].micro-secondary > li > .link:focus,
+[is=micro-menu].micro-secondary > li > .link:hover,
+[is=micro-menu] > li.micro-menu-expanded > .link,
+[is=micro-menu].micro-secondary > li > .action:focus,
+[is=micro-menu].micro-secondary > li > .action:hover {
+    background: #ddd;
+    box-shadow: none;
+}
+
+[is=micro-menu].micro-secondary > li > .action {
+    color: var(--micro-color-primary);
+}
+
+[is=micro-menu] [is=micro-menu] {
+    flex-flow: column;
+    position: absolute;
+    z-index: 1;
+    right: 0;
+    margin: -2px 0 0 0;
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.33);
+}
+
+[is=micro-menu] li:not(.micro-menu-expanded) [is=micro-menu] {
+    height: 0;
+    overflow: hidden;
+}
+
+[is=micro-menu] [is=micro-menu] li .link,
+[is=micro-menu] [is=micro-menu] li .action {
+    width: 100%;
+    border: none;
+    border-top: 1px solid #ddd;
+    border-radius: 0;
+    line-height: 1.5;
+    background: white;
+}
+
+[is=micro-menu] [is=micro-menu] li .link:focus,
+[is=micro-menu] [is=micro-menu] li .link:hover,
+[is=micro-menu] [is=micro-menu] li .action:focus,
+[is=micro-menu] [is=micro-menu] li .action:hover {
+    background: #ddd;
+    box-shadow: none;
+}
+
+[is=micro-menu] [is=micro-menu] li .action {
+    color: var(--micro-color-primary);
 }
 
 /* ---- UserElement ---- */
@@ -378,10 +495,11 @@ form > label {
 
 .micro-ui-header {
     position: fixed;
+    z-index: 1;
     top: 0;
     left: 0;
     right: 0;
-    z-index: 1;
+    margin: 0;
     box-shadow: 0 2px 2px rgba(0, 0, 0, 0.33);
     background: #fff;
 }
@@ -402,6 +520,12 @@ form > label {
     padding: calc(0.25 * 1.5em) 0;
 }
 
+.micro-ui-logo .link:focus,
+.micro-ui-logo .link:hover {
+    background: #ddd;
+    box-shadow: none;
+}
+
 .micro-ui-logo img {
     vertical-align: middle;
 }
@@ -415,6 +539,23 @@ form > label {
 .micro-ui-header-fill {
     flex: auto;
     min-width: calc(0.25 * 1.5rem);
+}
+
+.micro-ui-menu {
+    margin: 0;
+}
+
+[is=micro-menu].micro-ui-menu > li > .link {
+    padding: calc(1.5em / 4);
+    border-right: 1px solid #ddd;
+}
+
+[is=micro-menu].micro-ui-menu > li:first-child > .link {
+    border-left: 1px solid #ddd;
+}
+
+.micro-ui-menu [is=micro-menu] {
+    margin-top: 0;
 }
 
 body:not(.micro-ui-settings-have-feedback-url) .micro-ui-feedback {
@@ -434,68 +575,6 @@ main {
     color: var(--micro-color-primary);
     font-size: 3rem;
     text-align: center;
-}
-
-/* ---- UIMenu ---- */
-
-.micro-ui-menu {
-    position: relative;
-    border-left: 1px solid #ddd;
-}
-
-.micro-ui-menu:last-child {
-    border-right: 1px solid #ddd;
-}
-
-.micro-ui-menu .link,
-.micro-ui-menu .action {
-    display: block;
-    padding: calc(0.25 * 1.5em);
-    border: none;
-    border-radius: 0;
-    background: none;
-    line-height: 1.5;
-}
-
-.micro-ui-menu .link:hover,
-.micro-ui-menu .action:hover {
-    background: #ddd;
-    text-decoration: none;
-}
-
-.micro-ui-menu .action {
-    color: var(--micro-color-primary);
-}
-
-.micro-ui-menu > .link {
-    color: inherit;
-}
-
-.micro-ui-menu:hover > .link {
-    background: #ddd;
-}
-
-.micro-ui-menu > .link i {
-    color: #888;
-}
-
-.micro-ui-menu ul {
-    display: none;
-    position: absolute;
-    right: 0;
-    padding: 0;
-    margin: 0;
-    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.33);
-    background: #fff;
-    list-style: none;
-}
-
-.micro-ui-menu:hover ul {
-    display: block;
-}
-
-.micro-ui-menu li {
-    border-top: 1px solid #ddd;
 }
 
 /* ---- Notification ---- */
