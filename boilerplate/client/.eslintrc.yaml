@@ -24,6 +24,8 @@ rules:
     newline-after-var: off
     # Some entities, like private methods, do not require documentation
     require-jsdoc: off
+    # Comparison operators in arrow functions allow for concise expressions
+    no-confusing-arrow: off
     # Mixing let and const may be less readable
     prefer-const: off
 
@@ -39,7 +41,7 @@ rules:
           FunctionExpression:
               parameters: first
           ObjectExpression: first
-    # Allow __type__ property
+    # Allow special properties
     no-underscore-dangle:
         - error
         - allow:
