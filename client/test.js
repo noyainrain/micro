@@ -31,9 +31,14 @@ let {Builder, WebElementCondition} = require("selenium-webdriver");
  */
 exports.startBrowser = function(test, subject) {
     let webdriverURL = process.env.WEBDRIVER_URL || null;
+    let browserName = process.env.BROWSER || "firefox";
+    if (browserName.toLowerCase() === "chromium") {
+        browserName = "chrome";
+    }
     let tag = process.env.SUBJECT ? ` [${process.env.SUBJECT}]` : "";
+
     let capabilities = {
-        browserName: process.env.BROWSER || "firefox",
+        browserName,
         platform: process.env.PLATFORM,
         tunnelIdentifier: process.env.TUNNEL_ID,
         name: `[${subject}]${tag} ${test.fullTitle()}`
