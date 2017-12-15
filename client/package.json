@@ -5,6 +5,8 @@
     "repository": "noyainrain/micro",
     "license": "LGPL-3.0",
     "scripts": {
+        "test": "karma start --single-run --browsers=${BROWSER:-FirefoxHeadless}",
+        "watch-test": "karma start --browsers=${BROWSER:-FirefoxHeadless}",
         "lint": "eslint .",
         "clean": "rm -rf node_modules"
     },
@@ -17,6 +19,13 @@
     },
     "devDependencies": {
         "eslint": "^4.0",
-        "eslint-config-eslint": "^4.0"
+        "eslint-config-eslint": "^4.0",
+        "mocha": "^4.0",
+        "chai": "^4.1",
+        "karma": "^1.7",
+        "karma-firefox-launcher": "^1.1",
+        "karma-chrome-launcher": "^2.2",
+        "karma-mocha": "^1.3",
+        "karma-sauce-launcher": "^1.2"
     }
 }

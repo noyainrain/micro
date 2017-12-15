@@ -8,6 +8,10 @@ PIPFLAGS=$$([ -z "$$VIRTUAL_ENV" ] && echo --user) -U
 test:
 	$(PYTHON) -m unittest
 
+.PHONY: test-client
+test-client:
+	$(NPM) -C client test
+
 .PHONY: test-ext
 test-ext:
 	$(PYTHON) -m unittest discover -p "ext_test*.py"
@@ -20,6 +24,10 @@ test-ui:
 watch-test:
 	trap "exit 0" INT; $(PYTHON) -m tornado.autoreload -m unittest
 
+.PHONY: watch-test-client
+watch-test-client:
+	$(NPM) -C client run watch-test
+
 .PHONY: lint
 lint:
 	pylint -j 0 micro hello/hello.py
@@ -27,7 +35,7 @@ lint:
 	$(NPM) -C hello run lint
 
 .PHONY: check
-check: test test-ext test-ui lint
+check: test test-client test-ext test-ui lint
 
 .PHONY: deps
 deps:
@@ -62,6 +70,9 @@ clean:
 .PHONY: help
 help:
 	@echo "test:            Run all unit tests"
+	@echo "test-client:     Run all client unit tests"
+	@echo "                 SAUCE_USERNAME:   Sauce Labs user for remote tests"
+	@echo "                 SAUCE_ACCESS_KEY: Sauce Labs secret for remote tests"
 	@echo "test-ext:        Run all extended/integration tests"
 	@echo "test-ui:         Run all UI tests"
 	@echo "                 BROWSER:       Browser to run the tests with. Defaults to"
@@ -72,6 +83,7 @@ help:
 	@echo "                 PLATFORM:      OS to run the remote tests on"
 	@echo "                 SUBJECT:       Text included in subject of remote tests"
 	@echo "watch-test:      Watch source files and run all unit tests on change"
+	@echo "watch-test-client: Watch client source files and run all unit tests on change"
 	@echo "lint:            Lint and check the style of the code"
 	@echo "check:           Run all code quality checks (test and lint)"
 	@echo "deps:            Update the dependencies"
