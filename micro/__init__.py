@@ -21,7 +21,7 @@ communicating with the Redis server.
 import os
 
 from micro.micro import (
-    Application, Object, Editable, User, Settings, Activity, Event, AuthRequest, ValueError,
-    InputError, AuthenticationError, PermissionError, EmailError)
+    Application, Object, Editable, Trashable, User, Settings, Activity, Event, AuthRequest,
+    ValueError, InputError, AuthenticationError, PermissionError, EmailError)
 
 DOC_PATH = os.path.join(os.path.dirname(__file__), 'doc')

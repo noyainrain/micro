@@ -15,6 +15,7 @@
 """Core parts of micro."""
 
 import builtins
+from collections.abc import Mapping
 from datetime import datetime
 from email.message import EmailMessage
 import re
@@ -22,6 +23,7 @@ from smtplib import SMTP
 from urllib.parse import urlparse
 
 from redis import StrictRedis
+from redis.exceptions import ResponseError
 
 from micro.jsonredis import JSONRedis, JSONRedisSequence, JSONRedisMapping
 from micro.util import check_email, randstr, parse_isotime, str_or_none
@@ -107,7 +109,7 @@ class Application:
         if not version:
             settings = self.create_settings()
             self.r.oset(settings.id, settings)
-            self.r.set('micro_version', 3)
+            self.r.set('micro_version', 4)
             self.do_update()
             return
 
@@ -123,6 +125,14 @@ class Application:
             settings['provider_description'] = {}
             r.oset(settings['id'], settings)
             r.set('micro_version', 3)
+
+        # Deprecated since 0.6.0
+        if version < 4:
+            for obj in self._scan_objects(r):
+                if not issubclass(self.types[obj['__type__']], Trashable):
+                    del obj['trashed']
+                    r.oset(obj['id'], obj)
+            r.set('micro_version', 4)
 
         self.do_update()
 
@@ -168,7 +178,7 @@ class Application:
 
         else:
             id = 'User:' + randstr()
-            user = User(id=id, trashed=False, app=self, authors=[id], name='Guest', email=None,
+            user = User(id=id, app=self, authors=[id], name='Guest', email=None,
                         auth_secret=randstr())
             self.r.oset(user.id, user)
             self.r.rpush('users', user.id)
@@ -217,6 +227,17 @@ class Application:
         type = self.types[type]
         return type(app=self, **json)
 
+    @staticmethod
+    def _scan_objects(r):
+        for key in r.keys('*'):
+            try:
+                obj = r.oget(key)
+            except ResponseError:
+                pass
+            else:
+                if isinstance(obj, Mapping) and '__type__' in obj:
+                    yield obj
+
 class Object:
     """Object in the application universe.
 
@@ -225,9 +246,8 @@ class Object:
        Context :class:`Application`.
     """
 
-    def __init__(self, id, trashed, app):
+    def __init__(self, id, app):
         self.id = id
-        self.trashed = trashed
         self.app = app
 
     def json(self, restricted=False, include=False):
@@ -243,8 +263,10 @@ class Object:
         Subclass API: May be overridden by subclass. The default implementation returns the
         attributes of :class:`Object`. *restricted* and *include* are ignored.
         """
-        # pylint: disable=unused-argument; restricted is part of the subclass API
-        return {'__type__': type(self).__name__, 'id': self.id, 'trashed': self.trashed}
+        # pylint: disable=unused-argument; part of subclass API
+        # Compatibility for trashed (deprecated since 0.6.0)
+        return {'__type__': type(self).__name__, 'id': self.id,
+                **({'trashed': False} if restricted else {})}
 
     def __repr__(self):
         return '<{}>'.format(self.id)
@@ -266,7 +288,7 @@ class Editable:
         """See :http:post:`/api/(object-url)`."""
         if not self.app.user:
             raise PermissionError()
-        if self.trashed:
+        if isinstance(self, Trashable) and self.trashed:
             raise ValueError('object_trashed')
 
         self.do_edit(**attrs)
@@ -294,11 +316,48 @@ class Editable:
             json['authors'] = [a.json(restricted=restricted) for a in self.authors]
         return json
 
+class Trashable:
+    """Mixin for :class:`Object` which can be trashed and restored."""
+    # pylint: disable=no-member; mixin
+
+    def __init__(self, trashed, activity=None):
+        self.trashed = trashed
+        self.__activity = activity
+
+    def trash(self):
+        """See :http:post:`/api/(object-url)/trash`."""
+        if not self.app.user:
+            raise PermissionError()
+        if self.trashed:
+            return
+
+        self.trashed = True
+        self.app.r.oset(self.id, self)
+        if self.__activity is not None:
+            self.__activity.publish(Event.create('trashable-trash', self, app=self.app))
+
+    def restore(self):
+        """See :http:post:`/api/(object-url)/restore`."""
+        if not self.app.user:
+            raise PermissionError()
+        if not self.trashed:
+            return
+
+        self.trashed = False
+        self.app.r.oset(self.id, self)
+        if self.__activity is not None:
+            self.__activity.publish(Event.create('trashable-restore', self, app=self.app))
+
+    def json(self, restricted=False, include=False):
+        """Subclass API: Return a JSON representation of the trashable part of the object."""
+        # pylint: disable=unused-argument; part of subclass API
+        return {'trashed': self.trashed}
+
 class User(Object, Editable):
     """See :ref:`User`."""
 
-    def __init__(self, id, trashed, app, authors, name, email, auth_secret):
-        super().__init__(id=id, trashed=trashed, app=app)
+    def __init__(self, id, app, authors, name, email, auth_secret):
+        super().__init__(id, app)
         Editable.__init__(self, authors=authors)
         self.name = name
         self.email = email
@@ -328,8 +387,8 @@ class User(Object, Editable):
         check_email(email)
 
         code = randstr()
-        auth_request = AuthRequest(id='AuthRequest:' + randstr(), trashed=False, app=self.app,
-                                   email=email, code=code)
+        auth_request = AuthRequest(id='AuthRequest:' + randstr(), app=self.app, email=email,
+                                   code=code)
         self.app.r.oset(auth_request.id, auth_request)
         self.app.r.expire(auth_request.id, 10 * 60)
         if self.app.render_email_auth_message:
@@ -417,9 +476,9 @@ class Settings(Object, Editable):
     """See :ref:`Settings`."""
 
     def __init__(
-            self, id, trashed, app, authors, title, icon, favicon, provider_name, provider_url,
+            self, id, app, authors, title, icon, favicon, provider_name, provider_url,
             provider_description, feedback_url, staff):
-        super().__init__(id=id, trashed=trashed, app=app)
+        super().__init__(id, app)
         Editable.__init__(self, authors=authors, activity=app.activity)
         self.title = title
         self.icon = icon
@@ -517,11 +576,11 @@ class Event(Object):
                 value = value.id
             transformed[key] = value
         return Event(
-            id='Event:' + randstr(), trashed=False, type=type, object=object.id if object else None,
+            id='Event:' + randstr(), type=type, object=object.id if object else None,
             user=app.user.id, time=datetime.utcnow().isoformat() + 'Z', detail=transformed, app=app)
 
-    def __init__(self, id, trashed, type, object, user, time, detail, app):
-        super().__init__(id=id, trashed=trashed, app=app)
+    def __init__(self, id, type, object, user, time, detail, app):
+        super().__init__(id, app)
         self.type = type
         self.time = parse_isotime(time) if time else None
         self._object_id = object
@@ -573,8 +632,8 @@ class Event(Object):
 class AuthRequest(Object):
     """See :ref:`AuthRequest`."""
 
-    def __init__(self, id, trashed, app, email, code):
-        super().__init__(id=id, trashed=trashed, app=app)
+    def __init__(self, id, app, email, code):
+        super().__init__(id, app)
         self._email = email
         self._code = code
 

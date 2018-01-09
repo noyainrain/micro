@@ -256,6 +256,19 @@ def make_list_endpoints(url, get_list):
     """
     return [(url + r'(?:/(\d*:\d*))?$', _ListEndpoint, {'get_list': get_list})]
 
+def make_trashable_endpoints(url, get_object):
+    """Make API endpoints for a :class:`Trashable` object.
+
+    *url* is the URL of the object.
+
+    *get_object* is a function of the form *get_object(*args)*, responsible for retrieving the
+    object. *args* are the URL arguments.
+    """
+    return [
+        (url + r'/trash$', _TrashableTrashEndpoint, {'get_object': get_object}),
+        (url + r'/restore$', _TrashableRestoreEndpoint, {'get_object': get_object})
+    ]
+
 class _UI(RequestHandler):
     def initialize(self):
         self._server = self.application.settings['server']
@@ -317,6 +330,27 @@ class _ListEndpoint(Endpoint):
         slice = parse_slice(args[-1] or ':', limit=LIST_LIMIT)
         self.write(json.dumps([i.json(restricted=True, include=True) if isinstance(i, Object) else i
                                for i in seq[slice]]))
+
+class _TrashableTrashEndpoint(Endpoint):
+    def initialize(self, get_object):
+        super().initialize()
+        self.get_object = get_object
+
+    def post(self, *args):
+        obj = self.get_object(*args)
+        obj.trash()
+        self.write(obj.json(restricted=True, include=True))
+
+class _TrashableRestoreEndpoint(Endpoint):
+    def initialize(self, get_object):
+        super().initialize()
+        self.get_object = get_object
+
+    def post(self, *args):
+        obj = self.get_object(*args)
+        obj.restore()
+        self.write(obj.json(restricted=True, include=True))
+
 class _LoginEndpoint(Endpoint):
     def post(self):
         args = self.check_args({'code': (str, 'opt')})

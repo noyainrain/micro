@@ -30,6 +30,11 @@ app = CatApp(redis_url='15')
 app.r.flushdb()
 app.update()
 app.sample()
+
+# Compatibility for sample data without a cat (deprecated since 0.6.0)
+if not hasattr(app, 'cats'):
+    from micro.test import Cat
+    app.r.oset('Cat', Cat(id='Cat', trashed=False, app=app, authors=[], name=None))
 """
 
 class MicroTestCase(AsyncTestCase):
@@ -89,12 +94,12 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertEqual(app.settings.title, 'CatApp')
 
     def test_update_db_version_previous(self):
-        # NOTE: Tag tmp can be removed on next database update
-        self.setup_db('tmp')
+        self.setup_db('0.5.0')
         app = CatApp(redis_url='15')
         app.update()
 
-        self.assertFalse(app.settings.provider_description)
+        self.assertFalse(hasattr(app.settings, 'trashed'))
+        self.assertFalse(app.r.oget('Cat').trashed)
 
     def test_update_db_version_first(self):
         # NOTE: Tag tmp can be removed on next database update
@@ -104,6 +109,9 @@ class ApplicationUpdateTest(AsyncTestCase):
 
         # Update to version 3
         self.assertFalse(app.settings.provider_description)
+        # Update to version 4
+        self.assertFalse(hasattr(app.settings, 'trashed'))
+        self.assertFalse(app.r.oget('Cat').trashed)
 
 class EditableTest(MicroTestCase):
     def setUp(self):
@@ -118,7 +126,7 @@ class EditableTest(MicroTestCase):
         self.assertEqual(self.cat.authors, [self.user, user2])
 
     def test_edit_cat_trashed(self):
-        self.cat.trashed = True
+        self.cat.trash()
         with self.assertRaisesRegex(micro.ValueError, 'object_trashed'):
             self.cat.edit(name='Happy')
 
@@ -126,6 +134,27 @@ class EditableTest(MicroTestCase):
         self.app.user = None
         with self.assertRaises(micro.PermissionError):
             self.cat.edit(name='Happy')
+
+class TrashableTest(MicroTestCase):
+    def test_trash(self):
+        cat = self.app.cats.create()
+        cat.trash()
+        self.assertTrue(cat.trashed)
+        self.assertEqual(cat.activity[0].type, 'trashable-trash')
+
+    def test_trash_trashed(self):
+        cat = self.app.cats.create()
+        cat.trash()
+        cat.trash()
+        self.assertTrue(cat.trashed)
+        self.assertEqual(len(cat.activity), 1)
+
+    def test_restore(self):
+        cat = self.app.cats.create()
+        cat.trash()
+        cat.restore()
+        self.assertFalse(cat.trashed)
+        self.assertEqual(cat.activity[0].type, 'trashable-restore')
 
 class UserTest(MicroTestCase):
     def test_edit(self):
