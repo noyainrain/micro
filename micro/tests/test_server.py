@@ -20,19 +20,22 @@ import json
 from tornado.httpclient import HTTPError
 from tornado.testing import gen_test
 
-from micro.server import Server
+from micro.server import Server, make_trashable_endpoints
 from micro.test import ServerTestCase, CatApp
 
 class ServerTest(ServerTestCase):
     def setUp(self):
         super().setUp()
-        app = CatApp(redis_url='15')
-        app.r.flushdb()
-        self.server = Server(app, [], client_path='hello', client_modules_path='node_modules',
-                             port=16160)
+        self.app = CatApp(redis_url='15')
+        self.app.r.flushdb()
+        handlers = [
+            *make_trashable_endpoints(r'/api/cats/([^/]+)', lambda i: self.app.cats[i])
+        ]
+        self.server = Server(self.app, handlers, client_path='hello',
+                             client_modules_path='node_modules', port=16160)
         self.server.start()
-        self.staff_member = app.login()
-        self.user = app.login()
+        self.staff_member = self.app.login()
+        self.user = self.app.login()
         self.client_user = self.user
 
     @gen_test
@@ -48,6 +51,11 @@ class ServerTest(ServerTestCase):
         yield self.request('/api/users/' + self.user.id)
         yield self.request('/api/users/' + self.user.id, method='POST', body='{"name": "Happy"}')
         yield self.request('/api/settings')
+
+        # API (generic)
+        cat = self.app.cats.create()
+        yield self.request('/api/cats/{}/trash'.format(cat.id), method='POST', body='')
+        yield self.request('/api/cats/{}/restore'.format(cat.id), method='POST', body='')
 
         # API (as staff member)
         self.client_user = self.staff_member

@@ -39,16 +39,15 @@ class Hello(Application):
 
     def create_settings(self):
         return Settings(
-            id='Settings', trashed=False, app=self, authors=[], title='Hello', icon=None,
-            favicon=None, provider_name=None, provider_url=None, provider_description={},
-            feedback_url=None, staff=[])
+            id='Settings', app=self, authors=[], title='Hello', icon=None, favicon=None,
+            provider_name=None, provider_url=None, provider_description={}, feedback_url=None,
+            staff=[])
 
     def create_greeting(self, text):
         """Create a :class:`Greeting` and return it."""
         if str_or_none(text) is None:
             raise micro.ValueError('text_empty')
-        greeting = Greeting(id=randstr(), trashed=False, app=self, authors=[self.user.id],
-                            text=text)
+        greeting = Greeting(id=randstr(), app=self, authors=[self.user.id], text=text)
         self.r.oset(greeting.id, greeting)
         self.r.rpush('greetings', greeting.id)
         return greeting
@@ -61,8 +60,8 @@ class Greeting(Object, Editable):
        Text content.
     """
 
-    def __init__(self, id, trashed, app, authors, text):
-        super().__init__(id, trashed, app)
+    def __init__(self, id, app, authors, text):
+        super().__init__(id, app)
         Editable.__init__(self, authors)
         self.text = text
 
