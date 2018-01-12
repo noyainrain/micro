@@ -20,7 +20,7 @@ import json
 from tornado.httpclient import HTTPError
 from tornado.testing import gen_test
 
-from micro.server import Server, make_trashable_endpoints
+from micro.server import Server, make_orderable_endpoints, make_trashable_endpoints
 from micro.test import ServerTestCase, CatApp
 
 class ServerTest(ServerTestCase):
@@ -29,6 +29,7 @@ class ServerTest(ServerTestCase):
         self.app = CatApp(redis_url='15')
         self.app.r.flushdb()
         handlers = [
+            *make_orderable_endpoints(r'/api/cats', lambda: self.app.cats),
             *make_trashable_endpoints(r'/api/cats/([^/]+)', lambda i: self.app.cats[i])
         ]
         self.server = Server(self.app, handlers, client_path='hello',
@@ -54,6 +55,8 @@ class ServerTest(ServerTestCase):
 
         # API (generic)
         cat = self.app.cats.create()
+        yield self.request('/api/cats/move', method='POST',
+                           body='{{"item_id": "{}", "to_id": null}}'.format(cat.id))
         yield self.request('/api/cats/{}/trash'.format(cat.id), method='POST', body='')
         yield self.request('/api/cats/{}/restore'.format(cat.id), method='POST', body='')
 
