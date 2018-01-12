@@ -19,8 +19,8 @@ from urllib.parse import urljoin
 from tornado.httpclient import AsyncHTTPClient
 from tornado.testing import AsyncTestCase
 
-from .jsonredis import JSONRedisMapping
-from .micro import Activity, Application, Editable, Object, Settings, Trashable
+from .micro import (Activity, Application, Collection, Editable, Object, Orderable, Settings,
+                    Trashable)
 from .util import randstr
 
 class ServerTestCase(AsyncTestCase):
@@ -59,12 +59,8 @@ class CatApp(Application):
        Map of all :class:`CatApp.Cats`.
     """
 
-    class Cats(JSONRedisMapping):
+    class Cats(Collection, Orderable):
         """Map of all cats."""
-
-        def __init__(self, app):
-            super().__init__(app.r, 'cats')
-            self.app = app
 
         def create(self, name=None):
             """Create a :class:`Cat`."""
@@ -77,7 +73,7 @@ class CatApp(Application):
     def __init__(self, redis_url=''):
         super().__init__(redis_url=redis_url)
         self.types.update({'Cat': Cat})
-        self.cats = self.Cats(self)
+        self.cats = self.Cats((self, 'cats'))
 
     def create_settings(self):
         return Settings(

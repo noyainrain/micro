@@ -269,6 +269,13 @@ def make_trashable_endpoints(url, get_object):
         (url + r'/restore$', _TrashableRestoreEndpoint, {'get_object': get_object})
     ]
 
+def make_orderable_endpoints(url, get_collection):
+    """Make API endpoints for a :class:`Orderable` collection.
+
+    *url* and *get_collection* are equivalent to the arguments of :func:`make_list_endpoints`.
+    """
+    return [(url + r'/move$', _OrderableMoveEndpoint, {'get_collection': get_collection})]
+
 class _UI(RequestHandler):
     def initialize(self):
         self._server = self.application.settings['server']
@@ -350,6 +357,28 @@ class _TrashableRestoreEndpoint(Endpoint):
         obj = self.get_object(*args)
         obj.restore()
         self.write(obj.json(restricted=True, include=True))
+
+class _OrderableMoveEndpoint(Endpoint):
+    def initialize(self, get_collection):
+        super().initialize()
+        self.get_collection = get_collection
+
+    def post(self, *args):
+        collection = self.get_collection(*args)
+        args = self.check_args({'item_id': str, 'to_id': (str, None)})
+        try:
+            args['item'] = collection[args.pop('item_id')]
+        except KeyError:
+            raise micro.ValueError('item_not_found')
+        args['to'] = args.pop('to_id')
+        if args['to'] is not None:
+            try:
+                args['to'] = collection[args['to']]
+            except KeyError:
+                raise micro.ValueError('to_not_found')
+
+        collection.move(**args)
+        self.write(json.dumps(None))
 
 class _LoginEndpoint(Endpoint):
     def post(self):

@@ -353,6 +353,46 @@ class Trashable:
         # pylint: disable=unused-argument; part of subclass API
         return {'trashed': self.trashed}
 
+class Collection(JSONRedisMapping):
+    """Collection of :class:`Object` s.
+
+    .. attribute:: host
+
+       Tuple ``(object, attr)`` that specifies the attribute name *attr* on the host *object*
+       (:class:`Object` or :class:`Application`) the collection is attached to.
+
+    .. attribute:: app
+
+       Context :class:`Application`.
+    """
+
+    def __init__(self, host):
+        self.host = host
+        self.app = host[0] if isinstance(host[0], Application) else host[0].app
+        super().__init__(
+            self.app.r,
+            ('' if isinstance(host[0], Application) else host[0].id + '.') + self.host[1])
+
+class Orderable:
+    """Mixin for :class:`Collection` whose items can be ordered."""
+    # pylint: disable=no-member; mixin
+    # pylint: disable=unsupported-membership-test; mixin
+
+    def move(self, item, to):
+        """See :http:post:`/api/(collection-path)/move`."""
+        if to:
+            if to.id not in self:
+                raise ValueError('to_not_found')
+            if to == item:
+                # No op
+                return
+        if not self.r.lrem(self.map_key, 1, item.id):
+            raise ValueError('item_not_found')
+        if to:
+            self.r.linsert(self.map_key, 'after', to.id, item.id)
+        else:
+            self.r.lpush(self.map_key, item.id)
+
 class User(Object, Editable):
     """See :ref:`User`."""
 

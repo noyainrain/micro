@@ -156,6 +156,40 @@ class TrashableTest(MicroTestCase):
         self.assertFalse(cat.trashed)
         self.assertEqual(cat.activity[0].type, 'trashable-restore')
 
+class OrderableTest(MicroTestCase):
+    def make_cats(self):
+        return [self.app.cats.create(), self.app.cats.create(), self.app.cats.create()]
+
+    def make_external_cat(self):
+        return Cat(id='Cat', app=self.app, authors=[], trashed=False, name=None)
+
+    def test_move(self):
+        cats = self.make_cats()
+        self.app.cats.move(cats[1], cats[2])
+        self.assertEqual(list(self.app.cats.values()), [cats[0], cats[2], cats[1]])
+
+    def test_move_to_none(self):
+        cats = self.make_cats()
+        self.app.cats.move(cats[1], None)
+        self.assertEqual(list(self.app.cats.values()), [cats[1], cats[0], cats[2]])
+
+    def test_move_to_item(self):
+        cats = self.make_cats()
+        self.app.cats.move(cats[1], cats[1])
+        self.assertEqual(list(self.app.cats.values()), cats)
+
+    def test_move_item_external(self):
+        cats = self.make_cats()
+        external = self.make_external_cat()
+        with self.assertRaisesRegex(micro.ValueError, 'item_not_found'):
+            self.app.cats.move(external, cats[0])
+
+    def test_move_to_external(self):
+        cats = self.make_cats()
+        external = self.make_external_cat()
+        with self.assertRaisesRegex(micro.ValueError, 'to_not_found'):
+            self.app.cats.move(cats[0], external)
+
 class UserTest(MicroTestCase):
     def test_edit(self):
         self.user.edit(name='Happy')
