@@ -45,37 +45,26 @@ hello.UI = class extends micro.UI {
 hello.StartPage = class extends micro.Page {
     createdCallback() {
         super.createdCallback();
-        this.appendChild(document.importNode(ui.querySelector(".hello-start-page-template").content,
-                                             true));
-        this.querySelector(".hello-start-intro a").textContent = ui.settings.title;
-        this.querySelector(".hello-start-create-greeting button").run =
-            this._createGreeting.bind(this);
-    }
 
-    attachedCallback() {
-        micro.call("GET", "/api/greetings").then(greetings => {
-            greetings.forEach(this._addGreeting, this);
+        this._data = new micro.bind.Watchable({
+            settings: ui.settings,
+            greetings: null,
+
+            createGreeting: async() => {
+                let form = this.querySelector("form");
+                let greeting = await micro.call("POST", "/api/greetings",
+                                                {text: form.elements.text.value});
+                form.reset();
+                this._data.greetings.unshift(greeting);
+            }
         });
+
+        micro.bind.bind(this, this._data, ".hello-start-page-template");
     }
 
-    _addGreeting(greeting) {
-        let li =
-            document.importNode(ui.querySelector(".hello-greeting-template").content, true)
-                .querySelector("li");
-        li.querySelector("micro-user").user = greeting.authors[0];
-        li.querySelector("q").textContent = greeting.text;
-        let ul = this.querySelector(".hello-start-greetings");
-        ul.insertBefore(li, ul.children[1] || null);
-    }
-
-    _createGreeting() {
-        let form = this.querySelector(".hello-start-create-greeting form");
-        return micro.call("POST", "/api/greetings", {
-            text: form.elements.text.value
-        }).then(greeting => {
-            form.reset();
-            this._addGreeting(greeting);
-        });
+    async attachedCallback() {
+        let greetings = await micro.call("GET", "/api/greetings");
+        this._data.greetings = new micro.bind.Watchable(greetings);
     }
 };
 

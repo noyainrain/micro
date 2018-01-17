@@ -17,23 +17,28 @@
 
         <template class="hello-start-page-template">
             <div class="hello-start-intro">
-                <h1 class="micro-logo"><a class="link"></a></h1>
+                <h1 class="micro-logo"><a class="link" data-content="settings.title"></a></h1>
                 <p>A micro toolkit example</p>
             </div>
-            <ul class="hello-start-greetings">
-                <li class="hello-start-create-greeting">
-                    <p>Leave a greeting for everyone to read:</p>
-                    <form>
-                        <label>
-                            <textarea name="text"></textarea>
-                        </label>
-                        <button is="micro-button" class="action">
+            <div>
+                <p>Leave a greeting for everyone to read:</p>
+                <form>
+                    <label><textarea name="text"></textarea></label>
+                    <p>
+                        <button is="micro-button" class="action" data-run="createGreeting">
                             <i class="fa fa-comment"></i> Publish
                         </button>
-                    </form>
-                </li>
+                    </p>
+                </form>
+            </div>
+            <ul data-content="list greetings 'greeting'">
+                <template>
+                    <li>
+                        <span><micro-user data-user="greeting.authors.0"></micro-user>:</span>
+                        <q data-content="greeting.text"></q>
+                    </li>
+                </template>
             </ul>
-
         </template>
         <style>
             .hello-start-intro {
@@ -49,25 +54,22 @@
                 font-size: 3em;
             }
 
-            .hello-start-create-greeting textarea {
+            hello-start-page textarea {
                 height: calc(2 * 1.5em + 2 * 1.5em / 4);
             }
 
-            .hello-start-greetings {
+            hello-start-page ul {
                 padding: 0;
                 list-style: none;
             }
 
-            .hello-start-greetings li {
+            hello-start-page li {
                 padding: calc(1.5em / 2) 0;
-            }
-
-            .hello-start-greetings li:not(:first-child) {
                 border-top: 1px solid #ddd;
             }
 
-            .hello-start-create-greeting p {
-                margin-top: 0;
+            hello-start-page li span {
+                color: #888;
             }
 
             hello-start-page q {
@@ -76,17 +78,6 @@
 
             hello-start-page q::before,
             hello-start-page q::after {
-                color: #888;
-            }
-        </style>
-
-        <template class="hello-greeting-template">
-            <li class="hello-greeting">
-                <span><micro-user></micro-user>:</span> <q></q>
-            </li>
-        </template>
-        <style>
-            .hello-greeting span {
                 color: #888;
             }
         </style>
