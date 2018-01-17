@@ -92,42 +92,112 @@ describe("filter()", function() {
 
 describe("bind()", function() {
     function setupDOMWithList() {
-        let arr = new micro.bind.Watchable(["a", "b", "c"]);
         document.body.innerHTML = `
-            <ul>
-                <template><li></li></template>
+            <ul data-content="list items 'item'">
+                <template><li data-content="item"></li></template>
             </ul>
         `;
-        let elem = document.body.firstElementChild;
-        elem.appendChild(micro.bind.list(elem, arr, "item"));
-        return [arr, elem];
+        let ul = document.body.firstElementChild;
+        let arr = new micro.bind.Watchable(["a", "b", "c"]);
+        micro.bind.bind(ul, {items: arr});
+        return [arr, ul];
     }
 
+    it("should update DOM", function() {
+        document.body.innerHTML = '<span data-title="value"></span>';
+        let span = document.body.firstElementChild;
+        micro.bind.bind(span, {value: "Purr"});
+        expect(span.title).to.equal("Purr");
+    });
+
+    it("should update DOM with transform", function() {
+        document.body.innerHTML = '<span data-title="not value"></span>';
+        let span = document.body.firstElementChild;
+        micro.bind.bind(span, {value: true});
+        expect(span.title).to.equal("false");
+    });
+
+    it("should update DOM with content", function() {
+        document.body.innerHTML = '<span data-content="value"></span>';
+        let span = document.body.firstElementChild;
+        micro.bind.bind(span, {value: "Purr"});
+        expect(span.textContent).to.equal("Purr");
+    });
+
+    it("should update DOM with class", function() {
+        document.body.innerHTML = '<span data-class-cat="value"></span>';
+        let span = document.body.firstElementChild;
+        micro.bind.bind(span, {value: true});
+        expect(span.className).to.equal("cat");
+    });
+
+    it("should update DOM with join", function() {
+        document.body.innerHTML = `
+            <p data-content="join items 'item'">
+                <template><span data-content="item"></span></template>
+            </p>
+        `;
+        let p = document.body.firstElementChild;
+        micro.bind.bind(p, {items: ["a", "b", "c"]});
+        let nodes = Array.from(p.childNodes, n => n.textContent);
+        expect(nodes).to.deep.equal(["a", ", ", "b", ", ", "c"]);
+    });
+
+    it("should update DOM with nested binding", function() {
+        document.body.innerHTML = '<p data-title="outer"><span data-title="inner"></span></p>';
+        let p = document.body.firstElementChild;
+        let span = document.querySelector("span");
+        micro.bind.bind(span, {inner: "Inner"});
+        micro.bind.bind(p, {outer: "Outer"});
+        expect(span.title).to.equal("Inner");
+        expect(p.title).to.equal("Outer");
+    });
+
+    it("should fail if reference is undefined", function() {
+        document.body.innerHTML = '<span data-title="value"></span>';
+        let span = document.body.firstElementChild;
+        expect(() => micro.bind.bind(span, {})).to.throw(ReferenceError);
+    });
+
+    it("should fail if transform is not a function", function() {
+        document.body.innerHTML = '<span data-title="value 42"></span>';
+        let span = document.body.firstElementChild;
+        let data = {value: true};
+        expect(() => micro.bind.bind(span, data)).to.throw(TypeError);
+    });
+
     describe("on data set", function() {
-        it("should update DOM with join", function() {
-            let arr = ["a", "b", "c"];
-            document.body.innerHTML = "<p><template><span></span></template></p>";
-            let elem = document.body.firstElementChild;
-            elem.appendChild(micro.bind.join(elem, arr, "item"));
-            let nodes = Array.from(elem.childNodes,
-                                   n => n.nodeType === Node.ELEMENT_NODE ? n.item : n.nodeValue);
-            expect(nodes).to.deep.equal(["a", ", ", "b", ", ", "c"]);
+        it("should update DOM", function() {
+            document.body.innerHTML = '<span data-title="value"></span>';
+            let span = document.body.firstElementChild;
+            let data = new micro.bind.Watchable({value: null});
+            micro.bind.bind(span, data);
+            data.value = "Purr";
+            expect(span.title).to.equal("Purr");
         });
     });
 
     describe("on data arr set", function() {
         it("should update DOM with list", function() {
-            let [arr, elem] = setupDOMWithList();
+            let [arr, ul] = setupDOMWithList();
             arr[1] = "x";
-            expect(Array.from(elem.children, c => c.item)).to.deep.equal(["a", "x", "c"]);
+            expect(Array.from(ul.children, c => c.textContent)).to.deep.equal(["a", "x", "c"]);
         });
     });
 
     describe("on data arr splice", function() {
         it("should update DOM with list", function() {
-            let [arr, elem] = setupDOMWithList();
+            let [arr, ul] = setupDOMWithList();
             arr.splice(1, 1, "x", "y");
-            expect(Array.from(elem.children, c => c.item)).to.deep.equal(["a", "x", "y", "c"]);
+            expect(Array.from(ul.children, c => c.textContent)).to.deep.equal(["a", "x", "y", "c"]);
         });
+    });
+});
+
+describe("parse()", function() {
+    it("should parse expression", function() {
+        let args = micro.bind.parse("true false null undefined 'word word' 42 x.y");
+        expect(args).to.deep.equal([true, false, null, undefined, "word word", 42,
+                                    {name: "x.y", tokens: ["x", "y"]}]);
     });
 });

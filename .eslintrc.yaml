@@ -10,12 +10,16 @@ globals:
 extends: eslint
 rules:
     # Disable because...
+    # Valid use case if behind toggle
+    no-console: off
     # Valid use case to match control characters
     no-control-regex: off
     # We use Sphinx for documentation
     valid-jsdoc: off
     # API design is best figured out by humans (yet)
     class-methods-use-this: off
+    # Superfluous with let
+    no-loop-func: off
     # Superfluous in ES5+
     radix: off
     # undefined is a valid feature
@@ -46,6 +50,7 @@ rules:
     no-underscore-dangle:
         - error
         - allow:
+              - __bound__
               - __template__
               - __type__
           allowAfterThis: true
@@ -53,6 +58,11 @@ rules:
     object-curly-spacing:
         - error
         - never
+    # Avoid quote escapes
+    quotes:
+        - error
+        - double
+        - avoidEscape: true
 
     # Additional rules
     no-extra-parens: error

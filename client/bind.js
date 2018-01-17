@@ -13,6 +13,9 @@
 window.micro = window.micro || {};
 micro.bind = {};
 
+/** If ``true``, information about data binding updates is logged. */
+micro.bind.trace = false;
+
 /**
  * Wrapper around an object which can be watched for modification.
  *
@@ -63,7 +66,13 @@ micro.bind.Watchable = function(target = {}) {
         },
 
         push(...items) {
-            return ext.splice(target.length, 0, ...items);
+            ext.splice(target.length, 0, ...items);
+            return target.length;
+        },
+
+        unshift(...items) {
+            ext.splice(0, 0, ...items);
+            return target.length;
         }
     };
 
@@ -78,6 +87,190 @@ micro.bind.Watchable = function(target = {}) {
             notify(Symbol.for("*"), prop, value);
             return true;
         }
+    });
+};
+
+/**
+ * Bind the given DOM *elem* to *data*.
+ *
+ * If *data* is :class:`Watchable`, updating *data* will update the DOM accordingly.
+ *
+ * The binding works by simply setting DOM properties to values from *data*. This is denoted by data
+ * attributes ``data-{prop}``, where *prop* specifies the property to set and the value is a bind
+ * expression that is evaluated.
+ *
+ * Besides setting properties, there are also the following special data attributes:
+ *
+ * - ``data-content``: Set the content of the element, or *textContent* if the value is not a
+ *   :class:`Node`.
+ * - ``data-class-{class}``: Apply a *class* to the element if the value is truthy.
+ *
+ * For details on the bind expression see :func:`micro.bind.parse`. Transforms can be applied to
+ * data values: If the expression contains multiple arguments, the first one must be a function of
+ * the form ``transform(ctx, ...args)`` and transform the remaining *args* to a final value.
+ *
+ * Consider this example illustrating various features. Binding the following DOM::
+ *
+ *    <a data-href="url"><h1 data-content="title"></h1></a>
+ *    <p data-title="not highlight">Daily relevant news</p>
+ *    <p data-class-highlight="highlight">Recent articles:</p>
+ *    <ul data-content="list posts 'post'">
+ *        <template>
+ *            <li data-content="post"></li>
+ *        </template>
+ *    </ul>
+ *
+ * To the data::
+ *
+ *    new micro.bind.Watchable({
+ *        title: "The blog",
+ *        url: "http://example.org/",
+ *        highlight: true,
+ *        posts: new micro.bind.Watchable(["More stuff", "First post"])
+ *    })
+ *
+ * Will produce::
+ *
+ *    <a href="http://example.org/"><h1>The blog</h1></a>
+ *    <p title="false">Daily relevant news</p>
+ *    <p class="highlight">Recent articles:</p>
+ *    <ul>
+ *        <li>More stuff</li>
+ *        <li>First post</li>
+ *    </ul>
+ *
+ * And the DOM will be updated automatically if a data property changes or the *posts* array is
+ * modified.
+ **/
+micro.bind.bind = function(elem, data, template = null) {
+    if (template) {
+        if (typeof template === "string") {
+            template = document.querySelector(template);
+        }
+        elem.appendChild(document.importNode(template.content, true));
+    }
+
+    let stack = [].concat(data, micro.bind.transforms);
+    // NOTE: Here would be the place to handle document fragments
+    let elems = [elem];
+    for (elem of elems) {
+        if (elem.__bound__) {
+            throw new Error("already bound");
+        }
+        elem.__bound__ = true;
+    }
+
+    while (elems.length) {
+        // eslint-disable-next-line no-shadow
+        let elem = elems.pop();
+
+        for (let [prop, expr] of Object.entries(elem.dataset)) {
+            let loc = `<${elem.tagName.toLowerCase()} data-${prop}="${expr}">`;
+            let args = micro.bind.parse(expr);
+
+            // eslint-disable-next-line func-style
+            let update = () => {
+                // Resolve references
+                let values = args.map(arg => {
+                    if (arg instanceof Object) {
+                        return arg.tokens.reduce(
+                            (object, token) =>
+                                object === null || object === undefined ? undefined : object[token],
+                            arg.scope);
+                    }
+                    return arg;
+                });
+                let value = values[0];
+
+                // Apply transform
+                if (values.length > 1) {
+                    try {
+                        value = value({elem, data}, ...values.slice(1));
+                    } catch (e) {
+                        e.message = `${e.message} (in ${loc})`;
+                        throw e;
+                    }
+                }
+
+                // Update property
+                if (micro.bind.trace) {
+                    let string = (JSON.stringify(value) || String(value)).replace(/\\n/g, "\\n");
+                    console.log(`Updating ${loc} with ${string.slice(0, 32)}${string.length > 32 ? "…" : ""}`);
+                }
+                if (prop === "content") {
+                    if (value instanceof Node) {
+                        elem.textContent = "";
+                        elem.appendChild(value);
+                    } else {
+                        elem.textContent = value;
+                    }
+                } else if (prop.startsWith("class")) {
+                    elem.classList.toggle(prop.slice(5).replace(/.([A-Z])/g, "-$1").toLowerCase(),
+                                          value);
+                } else {
+                    elem[prop] = value;
+                }
+            };
+
+            // Resolve scope of and bind property to references
+            for (let ref of args.filter(a => a instanceof Object)) {
+                ref.scope = stack.find(scope => ref.tokens[0] in scope);
+                if (!ref.scope) {
+                    throw new ReferenceError(`${ref.name} is not defined (in ${loc})`);
+                }
+                if (ref.scope.watch) {
+                    ref.scope.watch(ref.tokens[0], update);
+                }
+            }
+
+            update();
+        }
+
+        if (!("content" in elem.dataset)) {
+            elems.push(...Array.from(elem.children).filter(e => !e.__bound__));
+        }
+    }
+};
+
+/**
+ * Parse the bind expression *expr* into a list of arguments.
+ *
+ * A bind expression is a string consisting of space-separated arguments. An argument may contain
+ * whitespace characters if they are enclosed in single quotes. An argument can have one of the
+ * following forms:
+ *
+ * - true
+ * - false
+ * - null
+ * - undefined
+ * - A string, enclosed in single quotes
+ * - A number (see :func:`parseFloat`)
+ * - A reference, i.e. a (optionally) dotted name. The parsed result is an :class:`Object`, where
+ *   *name* is the full reference name and *tokens* are the dot-separated components.
+ *
+ * The expression ``x.y 'Purr'`` for example contains two arguments, a reference and a string, and
+ * would be parsed into::
+ *
+ *    [{name: "x.y", tokens: ["x", "y"]}, "Purr"]
+ */
+micro.bind.parse = function(expr) {
+    const KEYWORDS = {
+        true: true,
+        false: false,
+        null: null,
+        undefined
+    };
+
+    // NOTE: For escaped quote characters we could use the pattern ('(\\'|[^'])*'|\S)+
+    return expr.match(/('[^']*'|\S)+/g).map(arg => {
+        if (arg in KEYWORDS) {
+            return KEYWORDS[arg];
+        } else if (arg.startsWith("'")) {
+            return arg.slice(1, -1);
+        } else if (/^[-+]?[0-9]/.test(arg)) {
+            return parseFloat(arg);
+        }
+        return {name: arg, tokens: arg.split(".")};
     });
 };
 
@@ -142,10 +335,104 @@ micro.bind.filter = function(arr, callback, thisArg = null) {
 };
 
 /**
+ * Default transforms available in bind expressions.
+ */
+micro.bind.transforms = {
+    /** Negate *value* (logical not). */
+    not(ctx, value) {
+        return !value;
+    },
+
+    /**
+     * Project the :class:`Watchable` array :class:*arr* into a live DOM fragment.
+     *
+     * Optionally, a live transform can be applied on *arr* with the function
+     * ``transform(arr, ...args)``. *args* are passed through.
+     */
+    list(ctx, arr, itemName, transform, ...args) {
+        let scopes = new Map();
+
+        function create(item) {
+            let child = document.importNode(ctx.elem.__template__.content, true).querySelector("*");
+            let scope = new micro.bind.Watchable({[itemName]: item});
+            scopes.set(child, scope);
+            micro.bind.bind(child, [scope].concat(ctx.data));
+            return child;
+        }
+
+        if (!ctx.elem.__template__) {
+            ctx.elem.__template__ = ctx.elem.firstElementChild;
+            ctx.elem.__template__.remove();
+        }
+
+        let fragment = document.createDocumentFragment();
+
+        if (arr) {
+            if (transform) {
+                arr = transform(arr, ...args);
+            }
+
+            arr.watch(Symbol.for("*"), (prop, value) => {
+                scopes.get(ctx.elem.children[prop])[itemName] = value;
+            });
+            arr.watch(Symbol.for("+"), (prop, value) => {
+                ctx.elem.insertBefore(create(value), ctx.elem.children[prop] || null);
+            });
+            arr.watch(Symbol.for("-"), prop => {
+                let child = ctx.elem.children[prop];
+                scopes.delete(child);
+                child.remove();
+            });
+
+            arr.forEach(item => fragment.appendChild(create(item)));
+        }
+
+        return fragment;
+    },
+
+    /**
+     * Join all items of the array *arr* into a DOM fragment.
+     *
+     * *separator* is inserted between adjacent items. *transform* and *args* are equivalent to the
+     * arguments of :func:`micro.bind.list`.
+     */
+    join(ctx, arr, itemName, separator = ", ", transform, ...args) {
+        if (!ctx.elem.__template__) {
+            ctx.elem.__template__ = ctx.elem.firstElementChild;
+            ctx.elem.__template__.remove();
+        }
+
+        let fragment = document.createDocumentFragment();
+
+        if (arr) {
+            if (transform) {
+                arr = transform(arr, ...args);
+            }
+
+            for (let [i, item] of arr.entries()) {
+                if (i > 0) {
+                    fragment.appendChild(document.createTextNode(separator));
+                }
+                let child = document.importNode(ctx.elem.__template__.content, true).querySelector("*");
+                let scope = {[itemName]: item};
+                micro.bind.bind(child, [scope].concat(ctx.data));
+                fragment.appendChild(child);
+            }
+        }
+
+        return fragment;
+    }
+};
+
+/**
  * Project the :class:`Watchable` array :class:*arr* into a live DOM fragment.
  *
  * Optionally, a live transform can be applied on *arr* with the function
  * ``transform(arr, ...args)``. *args* are passed through.
+ *
+ * .. deprecated:: 0.8.0
+ *
+ *    Use :func:`micro.bind.transforms.list`.
  */
 micro.bind.list = function(elem, arr, itemName, transform, ...args) {
     function create(item) {
@@ -184,6 +471,10 @@ micro.bind.list = function(elem, arr, itemName, transform, ...args) {
  *
  * *separator* is inserted between adjacent items. *transform* and *args* are equivalent to the
  * arguments of :func:`micro.bind.list`.
+ *
+ * .. deprecated:: 0.8.0
+ *
+ *    Use :func:`micro.bind.transforms.join`.
  */
 micro.bind.join = function(elem, arr, itemName, separator = ", ", transform, ...args) {
     if (!elem.__template__) {

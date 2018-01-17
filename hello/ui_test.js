@@ -53,17 +53,21 @@ describe("UI", function() {
     });
 
     it("should work for a user", async function() {
+        let form;
+        let input;
+
         // View start page
         await browser.get(`${URL}/`);
         await browser.wait(
             untilElementTextLocated({css: ".micro-logo"}, "Hello"), timeout);
 
         // Create greeting
-        let form = await browser.findElement({css: ".hello-start-create-greeting form"});
-        let input = await form.findElement({name: "text"});
+        form = await browser.findElement({css: "hello-start-page form"});
+        input = await form.findElement({name: "text"});
         await input.sendKeys("Meow!");
         await form.findElement({css: "button"}).click();
-        await browser.wait(untilElementTextLocated({css: ".hello-greeting q"}, "Meow!"), timeout);
+        await browser.wait(untilElementTextLocated({css: "hello-start-page li q"}, "Meow!"),
+                           timeout);
 
         // Edit user
         await browser.findElement({css: ".micro-ui-header-user"}).click();
