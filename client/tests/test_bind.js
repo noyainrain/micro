@@ -6,7 +6,7 @@
 
 /* eslint-env mocha */
 /* global chai */
-/* eslint-disable prefer-arrow-callback */
+/* eslint-disable no-unused-expressions, prefer-arrow-callback */
 
 "use strict";
 
@@ -91,6 +91,13 @@ describe("filter()", function() {
 });
 
 describe("bind()", function() {
+    function setupDOM(expr, data = {}) {
+        document.body.innerHTML = `<span data-result="${expr}"></span>`;
+        let span = document.body.firstElementChild;
+        micro.bind.bind(span, data);
+        return span;
+    }
+
     function setupDOMWithList() {
         document.body.innerHTML = `
             <ul data-content="list items 'item'">
@@ -110,11 +117,12 @@ describe("bind()", function() {
         expect(span.title).to.equal("Purr");
     });
 
-    it("should update DOM with transform", function() {
-        document.body.innerHTML = '<span data-title="not value"></span>';
-        let span = document.body.firstElementChild;
-        micro.bind.bind(span, {value: true});
-        expect(span.title).to.equal("false");
+    it("should update DOM with multiple elements", function() {
+        document.body.innerHTML = '<span data-title="value"></span><span data-id="value"></span>';
+        let elems = document.body.children;
+        micro.bind.bind(elems, {value: "Purr"});
+        expect(elems[0].title).to.equal("Purr");
+        expect(elems[1].id).to.equal("Purr");
     });
 
     it("should update DOM with content", function() {
@@ -125,10 +133,45 @@ describe("bind()", function() {
     });
 
     it("should update DOM with class", function() {
-        document.body.innerHTML = '<span data-class-cat="value"></span>';
+        document.body.innerHTML = '<span data-class-cat-paw="value"></span>';
         let span = document.body.firstElementChild;
         micro.bind.bind(span, {value: true});
-        expect(span.className).to.equal("cat");
+        expect(span.className).to.equal("cat-paw");
+    });
+
+    it("should update DOM with eq", function() {
+        let span = setupDOM("eq 'same' 'same'");
+        expect(span.result).to.be.true;
+    });
+
+    it("should update DOM with or", function() {
+        let span = setupDOM("or '' 42");
+        expect(span.result).to.equal(42);
+    });
+
+    it("should update DOM with not", function() {
+        let span = setupDOM("not true");
+        expect(span.result).to.be.false;
+    });
+
+    it("should update DOM with bind", function() {
+        let calls = [];
+        function f(...args) {
+            calls.push(args);
+        }
+        let span = setupDOM("bind f 'Purr'", {f});
+        span.result(42);
+        expect(calls).to.deep.equal([["Purr", 42]]);
+    });
+
+    it("should update DOM with format", function() {
+        let span = setupDOM("format 'Cat: {msg}' 'msg' 'Purr'");
+        expect(span.result).to.equal("Cat: Purr");
+    });
+
+    it("should update DOM with formatPlural", function() {
+        let span = setupDOM("formatPlural 'Singular {n}' 'Plural {n}' 'n' 2");
+        expect(span.result).to.equal("Plural 2");
     });
 
     it("should update DOM with join", function() {

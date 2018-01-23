@@ -592,9 +592,12 @@ micro.OL = class extends HTMLOListElement {
             this._li.classList.remove("micro-ol-li-moving");
             ui.classList.remove("micro-ui-dragging");
             if (this._to !== this._from) {
-                this.dispatchEvent(
-                    new CustomEvent("moveitem",
-                                    {detail: {li: this._li, from: this._from, to: this._to}}));
+                event = new CustomEvent("moveitem",
+                                        {detail: {li: this._li, from: this._from, to: this._to}});
+                if (this.onmoveitem) {
+                    this.onmoveitem(event);
+                }
+                this.dispatchEvent(event);
             }
             this._li = null;
         }
