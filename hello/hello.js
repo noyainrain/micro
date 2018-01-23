@@ -45,7 +45,8 @@ hello.UI = class extends micro.UI {
 hello.StartPage = class extends micro.Page {
     createdCallback() {
         super.createdCallback();
-
+        this.appendChild(
+            document.importNode(ui.querySelector(".hello-start-page-template").content, true));
         this._data = new micro.bind.Watchable({
             settings: ui.settings,
             greetings: null,
@@ -58,8 +59,7 @@ hello.StartPage = class extends micro.Page {
                 this._data.greetings.unshift(greeting);
             }
         });
-
-        micro.bind.bind(this, this._data, ".hello-start-page-template");
+        micro.bind.bind(this.children, this._data);
     }
 
     async attachedCallback() {

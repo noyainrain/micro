@@ -141,8 +141,13 @@ micro.bind.Watchable = function(target = {}) {
  *
  * And the DOM will be updated automatically if a data property changes or the *posts* array is
  * modified.
+ *
+ * .. deprecated:: 0.9.0
+ *
+ *    *template* is deprecated.
  **/
 micro.bind.bind = function(elem, data, template = null) {
+    // Compatibility for template (deprecated since 0.9.0)
     if (template) {
         if (typeof template === "string") {
             template = document.querySelector(template);
@@ -151,8 +156,14 @@ micro.bind.bind = function(elem, data, template = null) {
     }
 
     let stack = [].concat(data, micro.bind.transforms);
-    // NOTE: Here would be the place to handle document fragments
-    let elems = [elem];
+    let elems;
+    if (elem.length) {
+        elems = Array.from(elem);
+    } else if (elem instanceof DocumentFragment) {
+        elems = Array.from(elem.children);
+    } else {
+        elems = [elem];
+    }
     for (elem of elems) {
         if (elem.__bound__) {
             throw new Error("already bound");
@@ -160,6 +171,16 @@ micro.bind.bind = function(elem, data, template = null) {
         elem.__bound__ = true;
     }
 
+    function compact(str) {
+        str = str.replace(/\n/g, "\\n");
+        return str.length > 32 ? `${str.slice(0, 31)}…` : str;
+    }
+    if (micro.bind.trace) {
+        let tags = elems.map(e => `<${e.tagName.toLowerCase()}>`).join(", ");
+        console.log(`Binding ${compact(tags)} to ${compact(JSON.stringify(data))}`);
+    }
+
+    elems.reverse();
     while (elems.length) {
         // eslint-disable-next-line no-shadow
         let elem = elems.pop();
@@ -167,6 +188,9 @@ micro.bind.bind = function(elem, data, template = null) {
         for (let [prop, expr] of Object.entries(elem.dataset)) {
             let loc = `<${elem.tagName.toLowerCase()} data-${prop}="${expr}">`;
             let args = micro.bind.parse(expr);
+            if (args.length === 0) {
+                throw new SyntaxError(`Expression is empty (in ${loc})`);
+            }
 
             // eslint-disable-next-line func-style
             let update = () => {
@@ -194,8 +218,8 @@ micro.bind.bind = function(elem, data, template = null) {
 
                 // Update property
                 if (micro.bind.trace) {
-                    let string = (JSON.stringify(value) || String(value)).replace(/\\n/g, "\\n");
-                    console.log(`Updating ${loc} with ${string.slice(0, 32)}${string.length > 32 ? "…" : ""}`);
+                    console.log(
+                        `Updating ${loc} with ${compact(JSON.stringify(value) || String(value))}`);
                 }
                 if (prop === "content") {
                     if (value instanceof Node) {
@@ -204,9 +228,9 @@ micro.bind.bind = function(elem, data, template = null) {
                     } else {
                         elem.textContent = value;
                     }
-                } else if (prop.startsWith("class")) {
-                    elem.classList.toggle(prop.slice(5).replace(/.([A-Z])/g, "-$1").toLowerCase(),
-                                          value);
+                } else if (prop.startsWith("class") && prop !== "className") {
+                    elem.classList.toggle(
+                        prop.slice(5).replace(/(.)([A-Z])/g, "$1-$2").toLowerCase(), value);
                 } else {
                     elem[prop] = value;
                 }
@@ -227,7 +251,7 @@ micro.bind.bind = function(elem, data, template = null) {
         }
 
         if (!("content" in elem.dataset)) {
-            elems.push(...Array.from(elem.children).filter(e => !e.__bound__));
+            elems.push(...Array.from(elem.children).filter(e => !e.__bound__).reverse());
         }
     }
 };
@@ -262,7 +286,7 @@ micro.bind.parse = function(expr) {
     };
 
     // NOTE: For escaped quote characters we could use the pattern ('(\\'|[^'])*'|\S)+
-    return expr.match(/('[^']*'|\S)+/g).map(arg => {
+    return (expr.match(/('[^']*'|\S)+/g) || []).map(arg => {
         if (arg in KEYWORDS) {
             return KEYWORDS[arg];
         } else if (arg.startsWith("'")) {
@@ -338,13 +362,52 @@ micro.bind.filter = function(arr, callback, thisArg = null) {
  * Default transforms available in bind expressions.
  */
 micro.bind.transforms = {
+    /** Test if *a* and *b* are (strictly) equal. */
+    eq(ctx, a, b) {
+        return a === b;
+    },
+
+    /* Apply logical or to *values* successively. */
+    or(ctx, ...values) {
+        return values.reduce((result, value) => result || value);
+    },
+
     /** Negate *value* (logical not). */
     not(ctx, value) {
         return !value;
     },
 
     /**
-     * Project the :class:`Watchable` array :class:*arr* into a live DOM fragment.
+     * Bind *args* to *func*.
+     *
+     * The returned function will call *func* with *args* prepended. ``this`` is set to ``null``.
+     */
+    bind(ctx, func, ...args) {
+        return func.bind(null, ...args);
+    },
+
+    /**
+     * Format a string containing placeholders.
+     *
+     * *str* is a format string with placeholders of the form ``{key}``. *args* is a flat list of
+     * key-value pairs, specifying the value to replace for a key.
+     */
+    format(ctx, str, ...args) {
+        args = new Map(micro.bind.chunk(args, 2));
+        return str.replace(/{([^}\s]+)}/g, (match, key) => args.get(key));
+    },
+
+    /** Format a string with support for pluralization. */
+    formatPlural(ctx, singular, plural, ...args) {
+        let n = new Map(micro.bind.chunk(args, 2)).get("n");
+        return micro.bind.transforms.format(ctx, n === 1 ? singular : plural, ...args);
+    },
+
+    /**
+     * Project *arr* into the DOM.
+     *
+     * If *arr* is :class:`Watchable`, the DOM will be live, i.e. updating *arr* will update the DOM
+     * accordingly.
      *
      * Optionally, a live transform can be applied on *arr* with the function
      * ``transform(arr, ...args)``. *args* are passed through.
@@ -372,17 +435,19 @@ micro.bind.transforms = {
                 arr = transform(arr, ...args);
             }
 
-            arr.watch(Symbol.for("*"), (prop, value) => {
-                scopes.get(ctx.elem.children[prop])[itemName] = value;
-            });
-            arr.watch(Symbol.for("+"), (prop, value) => {
-                ctx.elem.insertBefore(create(value), ctx.elem.children[prop] || null);
-            });
-            arr.watch(Symbol.for("-"), prop => {
-                let child = ctx.elem.children[prop];
-                scopes.delete(child);
-                child.remove();
-            });
+            if (arr.watch) {
+                arr.watch(Symbol.for("*"), (prop, value) => {
+                    scopes.get(ctx.elem.children[prop])[itemName] = value;
+                });
+                arr.watch(Symbol.for("+"), (prop, value) => {
+                    ctx.elem.insertBefore(create(value), ctx.elem.children[prop] || null);
+                });
+                arr.watch(Symbol.for("-"), prop => {
+                    let child = ctx.elem.children[prop];
+                    scopes.delete(child);
+                    child.remove();
+                });
+            }
 
             arr.forEach(item => fragment.appendChild(create(item)));
         }
@@ -421,7 +486,9 @@ micro.bind.transforms = {
         }
 
         return fragment;
-    }
+    },
+
+    filter: micro.bind.filter
 };
 
 /**
@@ -500,4 +567,13 @@ micro.bind.join = function(elem, arr, itemName, separator = ", ", transform, ...
     }
 
     return fragment;
+};
+
+/** Split *arr* into chunks of the given *size*. */
+micro.bind.chunk = function(arr, size) {
+    let chunked = Array(Math.ceil(arr.length / size));
+    for (let i = 0; i < chunked.length; i++) {
+        chunked[i] = arr.slice(i * size, i * size + size);
+    }
+    return chunked;
 };
