@@ -1,17 +1,17 @@
 /* ---- Color scheme ----
  *
- * - text: #333
- * - text subtle: #888
  * - text inverse: #fff
- * - delimiter: #ddd
  * - border: #bbb
  */
 
 html {
+    --micro-color-text: #333;
+    --micro-color-text-subtle: #888;
+    --micro-color-delimiter: #ddd;
     --micro-color-primary: #08f;
     --micro-color-primary-shade: #005aa8;
     --micro-color-secondary: #f80;
-    --micro-color-mono-shade: #616161;
+    --micro-color-mono-shade: #545454;
 }
 
 /* ---- General ---- */
@@ -21,7 +21,7 @@ html {
 }
 
 html {
-    color: #333;
+    color: var(--micro-color-text);
     background: #fff;
     font: medium / 1.5 "Open Sans";
 }
@@ -55,7 +55,7 @@ header > h1 {
 }
 
 h1 {
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--micro-color-delimiter);
     font-size: 2rem;
 }
 
@@ -83,7 +83,7 @@ pre {
 
 .micro-small, small {
     font-size: 0.875em;
-    color: #888;
+    color: var(--micro-color-text-subtle);
 }
 
 .micro-small h1,
@@ -220,12 +220,15 @@ h1 .link {
 input,
 textarea,
 select {
-    padding: calc(0.25 * 1.5em);
+    padding: calc(1.5rem / 4);
     border: 1px solid #bbb;
+    border-radius: 0;
     font: inherit;
 }
 
-input:invalid {
+input:invalid,
+textarea:invalid,
+select:invalid {
     box-shadow: none;
 }
 
@@ -249,6 +252,10 @@ label > textarea,
 label > select {
     display: block;
     width: 100%;
+}
+
+h1 > label {
+    margin-bottom: calc(1.5rem / 4);
 }
 
 label > textarea {
@@ -287,7 +294,7 @@ form > label {
 
 .micro-logo .link:focus,
 .micro-logo .link:hover {
-    box-shadow: inset 0 -1px #333;
+    box-shadow: inset 0 -1px var(--micro-color-text);
 }
 
 .micro-logo img {
@@ -438,6 +445,10 @@ form > label {
     box-shadow: 0 2px 2px rgba(0, 0, 0, 0.33);
 }
 
+[is=micro-menu].micro-secondary [is=micro-menu] {
+    margin: 0;
+}
+
 [is=micro-menu] li:not(.micro-menu-expanded) [is=micro-menu] {
     height: 0;
     overflow: hidden;
@@ -552,10 +563,6 @@ form > label {
 
 [is=micro-menu].micro-ui-menu > li:first-child > .link {
     border-left: 1px solid #ddd;
-}
-
-.micro-ui-menu [is=micro-menu] {
-    margin-top: 0;
 }
 
 body:not(.micro-ui-settings-have-feedback-url) .micro-ui-feedback {

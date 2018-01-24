@@ -618,7 +618,18 @@ micro.OL = class extends HTMLOListElement {
 micro.Button = class extends HTMLButtonElement {
     createdCallback() {
         this.run = null;
-        this.addEventListener("click", this);
+        this.addEventListener("click", event => {
+            if (this.form && this.type === "submit") {
+                if (this.form.checkValidity()) {
+                    // Prevent default form submission
+                    event.preventDefault();
+                } else {
+                    // Do not trigger the action and let the default validation handling kick in
+                    return;
+                }
+            }
+            this.trigger();
+        });
     }
 
     /**
@@ -657,16 +668,6 @@ micro.Button = class extends HTMLButtonElement {
             resume();
             throw e;
         });
-    }
-
-    handleEvent(event) {
-        if (event.currentTarget === this && event.type === "click") {
-            if (this.form && this.type === "submit") {
-                // Prevent default form submission
-                event.preventDefault();
-            }
-            this.trigger();
-        }
     }
 };
 
