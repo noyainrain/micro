@@ -49,4 +49,4 @@ is released into the public domain.
 
 * Sven James &lt;sven.jms AT gmail.com>
 
-Copyright (C) 2017 micro contributors
+Copyright (C) 2018 micro contributors
