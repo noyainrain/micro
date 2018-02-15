@@ -89,20 +89,11 @@ micro.call = function(method, url, args) {
 /**
  * Find the first ancestor of *elem* that satisfies *predicate*.
  *
- * If no ancestor is found, ``undefined`` is returned. The function *predicate(elem)* returns
- * ``true`` if *elem* fullfills the desired criteria, ``false`` otherwise. It is called for any
- * ancestor of *elem*, from its parent up until (excluding) *top* (defaults to
- * ``document.documentElement``).
+ * .. deprecated: 0.11.0
+ *
+ *    Use :func:`micro.keyboard.findAncestor` .
  */
-micro.findAncestor = function(elem, predicate, top) {
-    top = top || document.documentElement;
-    for (let e = elem; e && e !== top; e = e.parentElement) {
-        if (predicate(e)) {
-            return e;
-        }
-    }
-    return undefined;
-};
+micro.findAncestor = micro.keyboard.findAncestor;
 
 /**
  * User interface of a micro app.
@@ -175,9 +166,17 @@ micro.UI = class extends HTMLBodyElement {
             return;
         }
 
+        micro.keyboard.enableActivatedClass();
+        micro.bind.transforms.ShortcutContext = micro.keyboard.ShortcutContext;
+        micro.bind.transforms.Shortcut = micro.keyboard.Shortcut;
+        this.shortcutContext = new micro.keyboard.ShortcutContext(this);
+        this.shortcutContext.add("J", micro.keyboard.quickNavigate.bind(null, "next"));
+        this.shortcutContext.add("K", micro.keyboard.quickNavigate.bind(null, "prev"));
+
         this.insertBefore(
             document.importNode(this.querySelector(".micro-ui-template").content, true),
             this.querySelector("main"));
+        micro.bind.bind(this.children, {});
 
         let version = localStorage.microVersion || null;
         if (!version) {
@@ -691,25 +690,25 @@ micro.Button = class extends HTMLButtonElement {
  */
 micro.Menu = class extends HTMLUListElement {
     attachedCallback() {
-        for (let li of Array.from(this.children)) {
-            if (li.lastElementChild instanceof micro.Menu) {
-                li.firstElementChild.tabIndex = -1;
-                li.addEventListener("mouseenter", this);
-                li.addEventListener("mouseleave", this);
-                let items = Array.from(li.lastElementChild.querySelectorAll(".link, .action"));
-                for (let item of items) {
-                    item.addEventListener("focus", this);
-                    item.addEventListener("blur", this);
-                }
-            }
-        }
-    }
-
-    handleEvent(event) {
-        if (["mouseenter", "mouseleave", "focus", "blur"].includes(event.type)) {
+        let expand = event => {
             let li = Array.from(this.children).find(elem => elem.contains(event.target));
+            if (["focus", "blur"].includes(event.type) && li.contains(event.relatedTarget)) {
+                return;
+            }
             li.classList.toggle("micro-menu-expanded",
                                 ["mouseenter", "focus"].includes(event.type));
+        };
+
+        for (let li of Array.from(this.children)) {
+            if (li.lastElementChild instanceof micro.Menu) {
+                li.addEventListener("mouseenter", expand);
+                li.addEventListener("mouseleave", expand);
+                let items = Array.from(li.querySelectorAll("a, button, [tabindex]"));
+                for (let item of items) {
+                    item.addEventListener("focus", expand);
+                    item.addEventListener("blur", expand);
+                }
+            }
         }
     }
 };

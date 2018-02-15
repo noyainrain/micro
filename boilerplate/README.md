@@ -39,6 +39,10 @@ http://caniuse.com/ ).
 
 Features marked as deprecated are removed after a period of six months.
 
+## Community
+
+Join the chat at [{chat-title}]({chat-url}).
+
 ## Contributors
 
 * {contributor-name} &lt;{contributor-email}>

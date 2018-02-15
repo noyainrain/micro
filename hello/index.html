@@ -22,10 +22,13 @@
             </div>
             <div>
                 <p>Leave a greeting for everyone to read:</p>
-                <form>
+                <form data-shortcut-context="new ShortcutContext">
                     <label><textarea name="text" required="required"></textarea></label>
                     <p>
-                        <button is="micro-button" class="action" data-run="createGreeting">
+                        <button
+                            is="micro-button" class="action"
+                            data-shortcut="new Shortcut 'Control+Enter'" data-run="createGreeting"
+                        >
                             <i class="fa fa-comment"></i> Publish
                         </button>
                     </p>
@@ -33,7 +36,7 @@
             </div>
             <ul data-content="list greetings 'greeting'">
                 <template>
-                    <li>
+                    <li class="micro-quick-nav" tabindex="0">
                         <span><micro-user data-user="greeting.authors.0"></micro-user>:</span>
                         <q data-content="greeting.text"></q>
                     </li>
