@@ -5,12 +5,12 @@
  */
 
 /* eslint-env mocha */
-/* global chai */
+/* global chai, expect */
 /* eslint-disable no-unused-expressions, prefer-arrow-callback */
 
 "use strict";
 
-let {expect} = chai;
+window.expect = window.expect || chai.expect;
 
 describe("Watchable", function() {
     describe("on set", function() {
@@ -137,6 +137,11 @@ describe("bind()", function() {
         let span = document.body.firstElementChild;
         micro.bind.bind(span, {value: true});
         expect(span.className).to.equal("cat-paw");
+    });
+
+    it("should update DOM with new", function() {
+        let span = setupDOM("new Date", {Date});
+        expect(span.result).to.be.instanceof(Date);
     });
 
     it("should update DOM with eq", function() {

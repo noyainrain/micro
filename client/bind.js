@@ -362,6 +362,11 @@ micro.bind.filter = function(arr, callback, thisArg = null) {
  * Default transforms available in bind expressions.
  */
 micro.bind.transforms = {
+    /** Create a new instance of *constructor* with *args*. */
+    new(ctx, constructor, ...args) {
+        return new constructor(ctx.elem, ...args);
+    },
+
     /** Test if *a* and *b* are (strictly) equal. */
     eq(ctx, a, b) {
         return a === b;
