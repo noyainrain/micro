@@ -11,6 +11,7 @@ module.exports = function(config) {
             "node_modules/webcomponents.js/webcomponents-lite.min.js",
             "node_modules/chai/chai.js",
             "bind.js",
+            "keyboard.js",
             "util.js",
             "index.js",
             "!(node_modules)/**/test*.js"
