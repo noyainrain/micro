@@ -2,7 +2,7 @@
     <header class="micro-ui-header" style="display: none;">
         <nav class="micro-ui-inside">
             <h1 class="micro-ui-logo">
-                <a class="link" href="/">
+                <a class="link" href="/" data-shortcut="new Shortcut 'N,S'">
                     <img/> <span class="micro-ui-logo-text"></span>
                     <span class="micro-ui-beta">Beta</span>
                 </a>
@@ -15,7 +15,7 @@
                     <button class="link"><micro-user></micro-user></button>
                     <ul is="micro-menu">
                         <li class="micro-ui-edit-user">
-                            <a class="action" href="/user/edit">
+                            <a class="action" href="/user/edit" data-shortcut="new Shortcut 'N,U'">
                                 <span class="fa fa-fw fa-wrench"></span> Edit user settings
                             </a>
                         </li>
@@ -25,24 +25,37 @@
                     <button class="link"><span class="fa fa-fw fa-bars"></span></button>
                     <ul is="micro-menu">
                         <li class="micro-ui-feedback">
-                            <a class="link">
-                                <span class="fa fa-fw fa-question-circle"></span> Feedback &amp; help
+                            <a class="link" data-shortcut="new Shortcut 'N,F'">
+                                <span class="fa fa-fw fa-question-circle"></span> Feedback &amp;
+                                help
                             </a>
                         </li>
                         <li class="micro-ui-about">
-                            <a class="link" href="/about">
+                            <a class="link" href="/about" data-shortcut="new Shortcut 'N,A'">
                                 <span class="fa fa-fw fa-info-circle"></span> About
                             </a>
                         </li>
                         <li class="micro-ui-activity">
-                            <a class="link" href="/activity">
+                            <a class="link" href="/activity" data-shortcut="new Shortcut 'N,H'">
                                 <span class="fa fa-fw fa-history"></span> Activity
                             </a>
                         </li>
                         <li class="micro-ui-edit-settings">
-                            <a class="action" href="/settings/edit">
+                            <a class="action" href="/settings/edit"
+                               data-shortcut="new Shortcut 'N,C'">
                                 <span class="fa fa-fw fa-wrench"></span> Edit site settings
                             </a>
+                        </li>
+                        <li class="micro-ui-keyboard compact" tabindex="0">
+                            <p><i class="fa fa-fw fa-keyboard-o"></i> Keyboard navigation</p>
+                            <ul>
+                                <li><strong>Tab / Shift + Tab</strong>: Cycle through buttons</li>
+                                <li><strong>J / K</strong>: Navigate lists</li>
+                                <li>
+                                    Select / hover over a button to see the associated keyboard
+                                    shortcut
+                                </li>
+                            </ul>
                         </li>
                     </ul>
                 </li>
@@ -52,6 +65,27 @@
         <div class="micro-ui-notification-space"></div>
     </header>
 </template>
+<style>
+    .micro-ui-keyboard {
+        padding: 0 calc(1.5rem / 4);
+    }
+
+    .micro-ui-keyboard i {
+        color: var(--micro-color-text-subtle);
+    }
+
+    .micro-ui-keyboard ul {
+        display: none;
+        list-style: disc;
+        font-size: 0.875em;
+        white-space: normal;
+    }
+
+    .micro-ui-keyboard:hover ul,
+    .micro-ui-keyboard:focus ul {
+        display: block;
+    }
+</style>
 
 <template class="micro-simple-notification-template">
     <div class="micro-ui-inside compact">
