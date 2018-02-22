@@ -65,11 +65,6 @@ micro.call = function(method, url, args) {
     }
 
     return fetch(url, options).then(response => {
-        if (response.status > 500) {
-            // Consider server errors IO errors
-            throw new TypeError();
-        }
-
         return response.json().then(result => {
             if (!response.ok) {
                 throw new micro.APIError(result, response.status);
@@ -713,6 +708,142 @@ micro.Menu = class extends HTMLUListElement {
     }
 };
 
+/** TODO. */
+micro.util.findURLs = function(text) {
+    let urls = [];
+    let pattern = /(^|\s)(https?:\/\/\S+)/g;
+    let match = null;
+    do {
+        match = pattern.exec(text);
+        if (match) {
+            urls.push({url: match[2], from: match[1] ? match.index + 1 : match.index, to: pattern.lastIndex});
+        }
+    } while (match);
+    return urls;
+};
+
+/** TODO. */
+micro.LinkEntity = class extends HTMLElement {
+    createdCallback() {
+        this.classList.add("micro-entity");
+        this.appendChild(
+            document.importNode(ui.querySelector("#micro-link-entity-template").content, true));
+        this._data = new micro.bind.Watchable({
+            entity: null
+        });
+        micro.bind.bind(this.children, this._data);
+        let updateClass = () => {
+            this.classList.toggle("micro-link-entity-image", this.entity.image_url);
+        };
+        this._data.watch("entity", updateClass);
+    }
+
+    get entity() {
+        return this._data.entity;
+    }
+
+    set entity(value) {
+        this._data.entity = value;
+    }
+};
+
+/** TODO. */
+micro.ImageEntity = class extends HTMLElement {
+    createdCallback() {
+        this.classList.add("micro-entity");
+        this.appendChild(
+            document.importNode(ui.querySelector("#micro-image-entity-template").content, true));
+        this._data = new micro.bind.Watchable({
+            entity: null
+        });
+        micro.bind.bind(this.children, this._data);
+    }
+
+    get entity() {
+        return this._data.entity;
+    }
+
+    set entity(value) {
+        this._data.entity = value;
+    }
+};
+
+/**
+ * TODO.
+ */
+micro.TextEntityInput = class extends HTMLElement {
+    createdCallback() {
+        this.appendChild(
+            document.importNode(ui.querySelector("#micro-text-entity-input-template").content,
+                                true));
+        this._urls = new Set();
+        this._data = new micro.bind.Watchable({
+            entityElem: null,
+
+            remove: () => {
+                console.log("REEEEMOOOVE");
+                this._data.entityElem = null;
+            },
+
+            input: async (event) => {
+                // TODO: works, but just selecting and then deselecting an URL will detect a new URL
+                // good enough, or should be better?
+                //console.log(this._urls);
+                if (this._data.entityElem) {
+                    return;
+                }
+
+                let textarea = event.target;
+                let urls = micro.util.findURLs(textarea.value);
+                if (textarea == document.activeElement) {
+                    urls = urls.filter(u => textarea.selectionStart < u.from || textarea.selectionStart > u.to);
+                }
+                //console.log(urls);
+                let newURL = urls.find(u => !this._urls.has(u.url));
+                this._urls = new Set(urls.map(u => u.url));
+                if (newURL) {
+                    newURL = newURL.url;
+                    console.log(newURL);
+                    this._data.previewing = true;
+                    let entity = null;
+                    try {
+                        entity = await micro.call("GET", `/api/previews/${newURL}`);
+                    } catch (e) {
+                        console.log("ERROR", e.error);
+                        if (!(e instanceof micro.APIError && e.error.__type__ === "WebError")) {
+                            throw e;
+                        }
+                    }
+                    this._data.previewing = false;
+                    console.log("ENTITY", entity);
+
+                    if (entity) {
+                        let tag = {
+                            LinkEntity: "micro-link-entity",
+                            ImageEntity: "micro-image-entity"
+                        }[entity.__type__];
+                        this._data.entityElem = document.createElement(tag);
+                        this._data.entityElem.entity = entity;
+                        console.log(this._data.entityElem);
+                    }
+                }
+                /*let newURL = urls.find(u =>
+                    !this._urls.has(u.url) &&
+                    !(document.activeElement && textarea.selectionStart >= u.from &&
+                      textarea.selectionStart <= u.to));*/
+            }
+        });
+        micro.bind.bind(this.children, this._data);
+
+        let updateClass = () => {
+            this.classList.toggle("micro-text-entity-input-entity", this._data.entityElem);
+            this.classList.toggle("micro-text-entity-input-previewing", this._data.previewing);
+        };
+        this._data.watch("entityElem", updateClass);
+        this._data.watch("previewing", updateClass);
+    }
+};
+
 /**
  * User element.
  *
@@ -1109,6 +1240,9 @@ document.registerElement("micro-error-notification", micro.ErrorNotification);
 document.registerElement("micro-ol", {prototype: micro.OL.prototype, extends: "ol"});
 document.registerElement("micro-button", {prototype: micro.Button.prototype, extends: "button"});
 document.registerElement("micro-menu", {prototype: micro.Menu.prototype, extends: "ul"});
+document.registerElement("micro-link-entity", micro.LinkEntity);
+document.registerElement("micro-image-entity", micro.ImageEntity);
+document.registerElement("micro-text-entity-input", micro.TextEntityInput);
 document.registerElement("micro-user", micro.UserElement);
 document.registerElement("micro-page", micro.Page);
 document.registerElement("micro-not-found-page", micro.NotFoundPage);

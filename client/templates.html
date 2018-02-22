@@ -87,6 +87,128 @@
     }
 </style>
 
+<style>
+    .micro-entity {
+        background: #ddd;
+    }
+
+    .micro-entity a {
+        display: block;
+        background: transparent;
+        background: #ddd; /* XXX why? */
+    }
+
+    .micro-entity img,
+    .micro-entity > * {
+        /*display: block;*/
+        margin: 0 auto;
+        max-width: 100%;
+        max-height: calc(70ch * 9 / 16);
+        /* secondary style */
+        max-height: calc(70ch * 9 / 16 / 2);
+    }
+
+    .micro-entity img {
+        object-fit: contain;
+    }
+</style>
+
+<template id="micro-link-entity-template">
+    <a data-href="entity.url" target="_blank">
+        <div>
+        <img data-src="or entity.image_url ''" />
+        <!-- TODO: title before summary would be awesome -->
+        <!-- TODO: maybe favicon would be cool here -->
+        <p><i class="fa fa-globe"></i> <span data-content="entity.summary"></span></p>
+        </div>
+    </a>
+</template>
+<style>
+    micro-link-entity a {
+        grid-template-columns: 1fr;
+        position: relative;
+    }
+
+    micro-link-entity div {
+        display: grid;
+    }
+
+    micro-link-entity img {
+        grid-column-start: 1;
+        grid-row-start: 1;
+    }
+
+    micro-link-entity p {
+        align-self: end;
+        grid-column-start: 1;
+        grid-row-start: 1;
+        width: 100%;
+        /*float: right;*/
+        display: inline-block;
+        /*position: absolute;*/
+        vertical-align: bottom;
+        /*position: relative;*/
+        bottom: 0;
+        left: 0;
+        right: 0;
+        margin: 0;
+        padding: calc(1.5em / 4);
+        /*margin-top: -1.5rem;*/
+        z-index: 1;
+        /*margin-left: -100%;*/
+        color: #333;
+        background: #ddd;
+        text-decoration: none;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        max-height: calc(2 * 1.5em + 1.5em / 2);
+    }
+
+    micro-link-entity:not(.micro-link-entity-image) i {
+        color: #888;
+    }
+
+    micro-link-entity.micro-link-entity-image p {
+        color: white;
+        background: rgba(0, 0, 0, 0.66);
+    }
+
+    micro-link-entity p::after {
+        content: ' ';
+        clear: both;
+    }
+</style>
+
+<template id="micro-image-entity-template">
+    <a data-href="entity.url" target="_blank"><img data-src="or entity.url ''" /></a>
+</template>
+
+<template id="micro-text-entity-input-template">
+    <div data-content="entityElem"></div>
+    <button is="micro-button" type="button" class="action action-subtle" data-run="remove">
+        <i class="fa fa-minus-circle"></i> Remove
+    </button>
+    <label>
+        <textarea data-oninput="input" data-onclick="input" data-onkeyup="input" data-onblur="input" data-onfocus="input"></textarea>
+    </label>
+    <p>
+        <small>
+            <i class="fa fa-spinner fa-spin"></i> You can add more content (image, video, …) by
+            inserting a link.
+        </small>
+    </p>
+</template>
+<style>
+    micro-text-entity-input > * {
+        margin: calc(1.5rem / 4) 0;
+    }
+
+    micro-text-entity-input:not(.micro-text-entity-input-entity) > button,
+    micro-text-entity-input:not(.micro-text-entity-input-previewing) > p i {
+        display: none;
+    }
+</style>
+
 <template class="micro-simple-notification-template">
     <div class="micro-ui-inside compact">
         <div class="micro-simple-notification-content"></div>

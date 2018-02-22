@@ -6,6 +6,8 @@
         <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
         <title>Hello</title>
 
+        <meta name="description" content="Hallo" />
+
         {% raw micro_dependencies() %}
         <script src="{{ static_url('hello.js') }}" defer="defer"></script>
     </head>
@@ -23,7 +25,8 @@
             <div>
                 <p>Leave a greeting for everyone to read:</p>
                 <form data-shortcut-context="new ShortcutContext">
-                    <label><textarea name="text" required="required"></textarea></label>
+                    <!--<label><textarea name="text" required="required"></textarea></label>-->
+                    <micro-text-entity-input></micro-text-entity-input>
                     <p>
                         <button
                             is="micro-button" class="action"

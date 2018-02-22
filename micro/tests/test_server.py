@@ -52,6 +52,7 @@ class ServerTest(ServerTestCase):
         yield self.request('/api/users/' + self.user.id)
         yield self.request('/api/users/' + self.user.id, method='POST', body='{"name": "Happy"}')
         yield self.request('/api/settings')
+        yield self.request('/api/previews/{}'.format(self.server.url))
 
         # API (generic)
         cat = self.app.cats.create()

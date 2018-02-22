@@ -31,7 +31,7 @@ from tornado.template import DictLoader, Loader, filter_whitespace
 from tornado.web import Application, RequestHandler, HTTPError
 
 from . import micro, templates
-from .micro import AuthRequest, Object, InputError, AuthenticationError, PermissionError
+from .micro import AuthRequest, Object, InputError, AuthenticationError, PermissionError, WebError
 from .util import str_or_none, parse_slice, check_polyglot
 
 LIST_LIMIT = 100
@@ -110,6 +110,7 @@ class Server:
             (r'/api/users/([^/]+)/finish-set-email$', _UserFinishSetEmailEndpoint),
             (r'/api/users/([^/]+)/remove-email$', _UserRemoveEmailEndpoint),
             (r'/api/settings$', _SettingsEndpoint),
+            (r'/api/previews/(.+)$', PreviewEndpoint)
         ]
         self.handlers += make_list_endpoints(r'/api/activity', lambda *a: self.app.activity)
         self.handlers += handlers
@@ -199,6 +200,9 @@ class Endpoint(RequestHandler):
         elif issubclass(exc_info[0], micro.ValueError):
             self.set_status(http.client.BAD_REQUEST)
             self.write({'__type__': exc_info[0].__name__, 'code': exc_info[1].code})
+        elif issubclass(exc_info[0], WebError):
+            self.set_status(http.client.BAD_GATEWAY)
+            self.write({'__type__': exc_info[0].__name__})
         else:
             super().write_error(status_code, exc_info=exc_info)
 
@@ -442,3 +446,12 @@ class _SettingsEndpoint(Endpoint):
         settings = self.app.settings
         settings.edit(**args)
         self.write(settings.json(restricted=True, include=True))
+
+class PreviewEndpoint(Endpoint):
+    async def get(self, url):
+        entity = await self.app.resolve_entity(url)
+        print('entity', entity);
+        if entity:
+            self.write(entity.json())
+        else:
+            raise HTTPError(http.client.NOT_FOUND)

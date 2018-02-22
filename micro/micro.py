@@ -25,6 +25,8 @@ from urllib.parse import urlparse
 from redis import StrictRedis
 from redis.exceptions import ResponseError
 
+from . import resolve
+from .resolve import Resolver
 from micro.jsonredis import JSONRedis, JSONRedisSequence, JSONRedisMapping
 from micro.util import check_email, randstr, parse_isotime, str_or_none
 
@@ -90,6 +92,8 @@ class Application:
         self.email = email
         self.smtp_url = smtp_url
         self.render_email_auth_message = render_email_auth_message
+
+        self._resolver = Resolver()
 
     @property
     def settings(self):
@@ -192,6 +196,20 @@ class Application:
                 self.r.oset(settings.id, settings)
 
         return self.authenticate(user.auth_secret)
+
+    async def resolve_entity(self, url):
+        try:
+            content = await self._resolver.resolve(url)
+        except resolve.WebError as e:
+            raise WebError(str(e))
+        if not content:
+            # TODO: maybe we should always make a weberror if we cannot handle it?
+            raise WebError('cannothandle')
+        print('CONTENT', content, vars(content))
+        if content.content_type == 'text/html':
+            return LinkEntity(content.url, content.image, content.description, self)
+        elif content.content_type in resolve.IMAGE_TYPES:
+            return ImageEntity(content.url, content.content_type, self)
 
     def get_object(self, id, default=KeyError):
         """Get the :class:`Object` given by *id*.
@@ -685,6 +703,26 @@ class AuthRequest(Object):
             del json['code']
         return json
 
+class Entity:
+    pass
+
+class ImageEntity(Entity):
+    def __init__(self, url, content_type, app):
+        self.url = url
+        self.content_type = content_type
+
+    def json(self):
+        return {'__type__': type(self).__name__, 'url': self.url, 'content_type': self.content_type}
+
+class LinkEntity(Entity):
+    def __init__(self, url, image_url, summary, app):
+        self.url = url
+        self.image_url = image_url
+        self.summary = summary
+
+    def json(self):
+        return {'__type__': type(self).__name__, 'url': self.url, 'image_url': self.image_url, 'summary': self.summary}
+
 class ValueError(builtins.ValueError):
     """See :ref:`ValueError`.
 
@@ -731,4 +769,7 @@ class PermissionError(Exception):
 
 class EmailError(Exception):
     """Raised if communication with the SMTP server fails."""
+    pass
+
+class WebError(Exception):
     pass
