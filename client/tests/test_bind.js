@@ -110,6 +110,22 @@ describe("bind()", function() {
         return [arr, ul];
     }
 
+    function setupDOMWithSwitch(state, defaultTemplate = true) {
+        document.body.innerHTML = `
+            <p data-content="switch state 'a' 'b'">
+                <template>1: <span data-content="state"></span></template>
+                <template>2: <span data-content="state"></span></template>
+                <template>Default: <span data-content="state"></span></template>
+            </p>
+        `;
+        let p = document.body.firstElementChild;
+        if (!defaultTemplate) {
+            p.lastElementChild.remove();
+        }
+        micro.bind.bind(p, {state});
+        return p;
+    }
+
     it("should update DOM", function() {
         document.body.innerHTML = '<span data-title="value"></span>';
         let span = document.body.firstElementChild;
@@ -191,6 +207,21 @@ describe("bind()", function() {
         expect(nodes).to.deep.equal(["a", ", ", "b", ", ", "c"]);
     });
 
+    it("should update DOM with switch", function() {
+        let p = setupDOMWithSwitch("b");
+        expect(p.textContent).to.equal("2: b");
+    });
+
+    it("should update DOM with switch for non-matching value and default template", function() {
+        let p = setupDOMWithSwitch("x");
+        expect(p.textContent).to.equal("Default: x");
+    });
+
+    it("should update DOM with switch for non-matching value and no default template", function() {
+        let p = setupDOMWithSwitch("x", false);
+        expect(p.textContent).to.be.empty;
+    });
+
     it("should update DOM with nested binding", function() {
         document.body.innerHTML = '<p data-title="outer"><span data-title="inner"></span></p>';
         let p = document.body.firstElementChild;
@@ -247,5 +278,14 @@ describe("parse()", function() {
         let args = micro.bind.parse("true false null undefined 'word word' 42 x.y");
         expect(args).to.deep.equal([true, false, null, undefined, "word word", 42,
                                     {name: "x.y", tokens: ["x", "y"]}]);
+    });
+});
+
+describe("transforms", function() {
+    describe("includes()", function() {
+        it("should return true for searchElement in arr", function() {
+            let includes = micro.bind.transforms.includes(null, ["a", "b"], "b");
+            expect(includes).to.be.true;
+        });
     });
 });

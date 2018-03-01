@@ -421,16 +421,16 @@ micro.bind.transforms = {
         let scopes = new Map();
 
         function create(item) {
-            let child = document.importNode(ctx.elem.__template__.content, true).querySelector("*");
+            let child =
+                document.importNode(ctx.elem.__templates__[0].content, true).querySelector("*");
             let scope = new micro.bind.Watchable({[itemName]: item});
             scopes.set(child, scope);
             micro.bind.bind(child, [scope].concat(ctx.data));
             return child;
         }
 
-        if (!ctx.elem.__template__) {
-            ctx.elem.__template__ = ctx.elem.firstElementChild;
-            ctx.elem.__template__.remove();
+        if (!ctx.elem.__templates__) {
+            ctx.elem.__templates__ = Array.from(ctx.elem.querySelectorAll("template"));
         }
 
         let fragment = document.createDocumentFragment();
@@ -467,9 +467,8 @@ micro.bind.transforms = {
      * arguments of :func:`micro.bind.list`.
      */
     join(ctx, arr, itemName, separator = ", ", transform, ...args) {
-        if (!ctx.elem.__template__) {
-            ctx.elem.__template__ = ctx.elem.firstElementChild;
-            ctx.elem.__template__.remove();
+        if (!ctx.elem.__templates__) {
+            ctx.elem.__templates__ = Array.from(ctx.elem.querySelectorAll("template"));
         }
 
         let fragment = document.createDocumentFragment();
@@ -483,7 +482,8 @@ micro.bind.transforms = {
                 if (i > 0) {
                     fragment.appendChild(document.createTextNode(separator));
                 }
-                let child = document.importNode(ctx.elem.__template__.content, true).querySelector("*");
+                let child =
+                    document.importNode(ctx.elem.__templates__[0].content, true).querySelector("*");
                 let scope = {[itemName]: item};
                 micro.bind.bind(child, [scope].concat(ctx.data));
                 fragment.appendChild(child);
@@ -493,7 +493,46 @@ micro.bind.transforms = {
         return fragment;
     },
 
-    filter: micro.bind.filter
+    filter: micro.bind.filter,
+
+    /**
+     * Test if the array *arr* includes a certain item.
+     *
+     * *searchElement* and *fromIndex* are equivalent to the arguments of :func:`Array.includes`.
+     */
+    includes(ctx, arr, searchElement, fromIndex) {
+        return arr ? arr.includes(searchElement, fromIndex) : false;
+    },
+
+    /**
+     * Select and render a template associated with a case by matching against *value*.
+     *
+     * *cases* is a list of conditions corresponding to a list of templates. There may be an
+     * additional default template. If *value* does not match any case, the default template is
+     * rendered, or nothing if there is no default template.
+     */
+    switch(ctx, value, ...cases) {
+        if (!ctx.elem.__templates__) {
+            ctx.elem.__templates__ = Array.from(ctx.elem.querySelectorAll("template"));
+        }
+
+        if (cases.length === 0) {
+            cases = [true];
+        }
+        if (!(ctx.elem.__templates__.length >= cases.length &&
+              ctx.elem.__templates__.length <= cases.length + 1)) {
+            throw new Error("templates-do-not-match-cases");
+        }
+
+        let i = cases.indexOf(value);
+        let template = ctx.elem.__templates__[i === -1 ? cases.length : i];
+        if (!template) {
+            return document.createDocumentFragment();
+        }
+        let node = document.importNode(template.content, true);
+        micro.bind.bind(node, ctx.data);
+        return node;
+    }
 };
 
 /**
@@ -508,14 +547,13 @@ micro.bind.transforms = {
  */
 micro.bind.list = function(elem, arr, itemName, transform, ...args) {
     function create(item) {
-        let child = document.importNode(elem.__template__.content, true).querySelector("*");
+        let child = document.importNode(elem.__templates__[0].content, true).querySelector("*");
         child[itemName] = item;
         return child;
     }
 
-    if (!elem.__template__) {
-        elem.__template__ = elem.firstElementChild;
-        elem.__template__.remove();
+    if (!elem.__templates__) {
+        elem.__templates__ = Array.from(elem.querySelectorAll("template"));
     }
 
     let fragment = document.createDocumentFragment();
@@ -549,9 +587,8 @@ micro.bind.list = function(elem, arr, itemName, transform, ...args) {
  *    Use :func:`micro.bind.transforms.join`.
  */
 micro.bind.join = function(elem, arr, itemName, separator = ", ", transform, ...args) {
-    if (!elem.__template__) {
-        elem.__template__ = elem.firstElementChild;
-        elem.__template__.remove();
+    if (!elem.__templates__) {
+        elem.__templates__ = Array.from(elem.querySelectorAll("template"));
     }
 
     let fragment = document.createDocumentFragment();
@@ -565,7 +602,7 @@ micro.bind.join = function(elem, arr, itemName, separator = ", ", transform, ...
             if (i > 0) {
                 fragment.appendChild(document.createTextNode(separator));
             }
-            let child = document.importNode(elem.__template__.content, true).querySelector("*");
+            let child = document.importNode(elem.__templates__[0].content, true).querySelector("*");
             child[itemName] = item;
             fragment.appendChild(child);
         }
