@@ -23,6 +23,19 @@
 micro.util = {};
 
 /**
+ * Dispatch an *event* at the specified *target*.
+ *
+ * If defined, the related on-event handler is called.
+ */
+micro.util.dispatchEvent = function(target, event) {
+    target.dispatchEvent(event);
+    let on = target[`on${event.type}`];
+    if (on) {
+        on.call(target, event);
+    }
+};
+
+/**
  * Convert *str* to a slug, i.e. a human readable URL path segment.
  *
  * All characters are converted to lower case, non-ASCII characters are removed and all

@@ -51,7 +51,7 @@ rules:
         - error
         - allow:
               - __bound__
-              - __template__
+              - __templates__
               - __type__
           allowAfterThis: true
     # Make consistent with other brackets
