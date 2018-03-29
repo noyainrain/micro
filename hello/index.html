@@ -41,6 +41,11 @@
                 <template>
                     <li class="micro-quick-nav" tabindex="0">
                         <span><micro-user data-user="greeting.authors.0"></micro-user>:</span>
+                        <div data-content="renderEntity greeting.entity"></div>
+                        <!--<div data-content="switch greeting.entity.__type__ 'LinkEntity' 'ImageEntity'">
+                            <template><micro-link-entity data-entity="greeting.entity"></micro-link-entity></template>
+                            <template><micro-image-entity data-entity="greeting.entity"></micro-image-entity></template>
+                        </div>-->
                         <q data-content="greeting.text"></q>
                     </li>
                 </template>
@@ -74,7 +79,7 @@
                 border-top: 1px solid #ddd;
             }
 
-            hello-start-page li span {
+            hello-start-page li > span {
                 color: #888;
             }
 

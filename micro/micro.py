@@ -84,7 +84,9 @@ class Application:
             'User': User,
             'Settings': Settings,
             'Event': Event,
-            'AuthRequest': AuthRequest
+            'AuthRequest': AuthRequest,
+            'LinkEntity': LinkEntity,
+            'ImageEntity': ImageEntity
         }
         self.user = None
         self.users = JSONRedisMapping(self.r, 'users')
@@ -207,7 +209,7 @@ class Application:
             raise WebError('cannothandle')
         print('CONTENT', content, vars(content))
         if content.content_type == 'text/html':
-            return LinkEntity(content.url, content.image, content.description, self)
+            return LinkEntity(content.url, content.image, content.description, content.icon, self)
         elif content.content_type in resolve.IMAGE_TYPES:
             return ImageEntity(content.url, content.content_type, self)
 
@@ -302,20 +304,40 @@ class Editable:
         # pylint: disable=missing-docstring; already documented
         return self.app.r.omget(self._authors)
 
-    def edit(self, **attrs):
+    def edit(self, v=1, **attrs):
         """See :http:post:`/api/(object-url)`."""
+        if v == 1:
+            # Immediately execute the coroutine
+            try:
+                self.edit(**attrs, v=2).send(None)
+            except StopIteration:
+                pass
+            return
+        if v != 2:
+            raise NotImplementedError()
+        return self._edit(**attrs)
+
+    async def _edit(self, **attrs):
+        from asyncio import iscoroutine
+
         if not self.app.user:
             raise PermissionError()
         if isinstance(self, Trashable) and self.trashed:
             raise ValueError('object_trashed')
 
-        self.do_edit(**attrs)
+        coro = self.do_edit(**attrs, **data)
+        if iscoroutine(coro):
+            await coro
         if not self.app.user.id in self._authors:
             self._authors.append(self.app.user.id)
         self.app.r.oset(self.id, self)
 
         if self.__activity is not None:
             self.__activity.publish(Event.create('editable-edit', self, app=self.app))
+
+    def check_attrs(self, **attrs):
+        """TODO."""
+        pass
 
     def do_edit(self, **attrs):
         """Subclass API: Perform the edit operation.
@@ -715,13 +737,20 @@ class ImageEntity(Entity):
         return {'__type__': type(self).__name__, 'url': self.url, 'content_type': self.content_type}
 
 class LinkEntity(Entity):
-    def __init__(self, url, image_url, summary, app):
+    def __init__(self, url, image_url, summary, icon, app):
         self.url = url
         self.image_url = image_url
         self.summary = summary
+        self.icon = icon
 
     def json(self):
-        return {'__type__': type(self).__name__, 'url': self.url, 'image_url': self.image_url, 'summary': self.summary}
+        return {
+            '__type__': type(self).__name__,
+            'url': self.url,
+            'image_url': self.image_url,
+            'summary': self.summary,
+            'icon': self.icon
+        }
 
 class ValueError(builtins.ValueError):
     """See :ref:`ValueError`.

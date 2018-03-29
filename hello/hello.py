@@ -43,13 +43,18 @@ class Hello(Application):
             provider_name=None, provider_url=None, provider_description={}, feedback_url=None,
             staff=[])
 
-    def create_greeting(self, text):
+    async def create_greeting(self, text, entity=None):
         """Create a :class:`Greeting` and return it."""
-        if str_or_none(text) is None:
-            raise micro.ValueError('text_empty')
-        greeting = Greeting(id=randstr(), app=self, authors=[self.user.id], text=text)
+        text = str_or_none(text)
+        if entity is not None:
+            entity = await self.resolve_entity(entity)
+        if text is None and entity is None:
+            raise micro.ValueError('text_entity_none')
+
+        greeting = Greeting(id=randstr(), app=self, authors=[self.user.id], text=text,
+                            entity=entity)
         self.r.oset(greeting.id, greeting)
-        self.r.rpush('greetings', greeting.id)
+        self.r.lpush('greetings', greeting.id)
         return greeting
 
 class Greeting(Object, Editable):
@@ -60,23 +65,35 @@ class Greeting(Object, Editable):
        Text content.
     """
 
-    def __init__(self, id, app, authors, text):
+    def __init__(self, id, app, authors, text, entity):
         super().__init__(id, app)
         Editable.__init__(self, authors)
         self.text = text
+        self.entity = entity
 
-    def do_edit(self, **attrs):
+    async def do_edit(self, **attrs):
+        text = str_or_none(attrs['text']) if 'text' in attrs else self.text
+        entity = self.entity
+        if 'entity' in attrs:
+            entity = attrs['entity']
+            if entity is not None:
+                entity = await self.resolve_entity(entity)
+        if text is None and entity is None:
+            raise micro.ValueError('text_entity_none')
+
         if 'text' in attrs:
-            if str_or_none(attrs['text']) is None:
-                raise micro.ValueError('text_empty')
-            self.text = attrs['text']
+            self.text = text
+        if 'entity' in attrs:
+            self.entity = entity
 
     def json(self, restricted=False, include=False):
         # pylint: disable=redefined-outer-name; fine name
-        json = super().json(restricted, include)
-        json.update(Editable.json(self, restricted, include))
-        json.update({'text': self.text})
-        return json
+        return {
+            **super().json(restricted, include),
+            **Editable.json(self, restricted, include),
+            'text': self.text,
+            'entity': self.entity.json() if self.entity else None
+        }
 
 def make_server(port=8080, url=None, client_path='.', debug=False, redis_url='', smtp_url=''):
     """Create a Hello server."""
@@ -92,9 +109,10 @@ class _GreetingsEndpoint(Endpoint):
         greetings = self.app.greetings.values()
         self.write(json.dumps([g.json(restricted=True, include=True) for g in greetings]))
 
-    def post(self):
-        args = self.check_args({'text': str})
-        greeting = self.app.create_greeting(**args)
+    async def post(self):
+        print(self.args)
+        args = self.check_args({'text': (str, None), 'entity': (str, None, 'opt')})
+        greeting = await self.app.create_greeting(**args)
         self.write(greeting.json(restricted=True, include=True))
 
 def main(args):

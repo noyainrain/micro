@@ -1,9 +1,8 @@
 # Content draft
 
-* Store entity in greeting and render it for greeting
-* renderEntity(entity) -> returns correct DOM element (so it can be used in
-  entity-input and in greeting)
-* micro-secondary could half max-height of entity
-* Entity layout: Try dynamic width, left aligned (if container styled to have
-  width 100%, align items center)
-* LinkEntity layout: Try text below image, always gray (use flexbox column instead of grid)
+* TODO OPTIONAL: AVEntity with YouTube
+* TODO position absolute remove button
+* TODO do not diff and update link array as long as cursor at link
+* TODO micro-secondary half max-height of entity
+
+* content-34c3 branch: only YouTube left

@@ -27,12 +27,13 @@ class WebContent:
     """
     # NOTE: maybe also image size
 
-    def __init__(self, url, content_type, description=None, image=None, size=None):
+    def __init__(self, url, content_type, description=None, image=None, size=None, icon=None):
         self.url = url
         self.content_type = content_type
         self.description = description
         self.image = image
         self.size = size
+        self.icon = icon
 
     def __repr__(self):
         #return '<{} {} {} {}>'.format(type(self).__name__, self.url, self.content_type, self.description)
@@ -84,6 +85,11 @@ class Parser(HTMLParser):
         self.tags = {}
 
     def handle_starttag(self, tag, attrs):
+        if tag == 'link':
+            attrs = {k: v for k, v in attrs}
+            if attrs.get('rel') == 'icon' and 'href' in attrs:
+                self.tags.setdefault('icon', attrs['href'])
+
         if tag != 'meta':
             return
         #prop = next((v for k, v in attrs if k == 'property' and v.startswith('og:')), False)
@@ -143,9 +149,13 @@ async def handle_website(url, content_type, data):
         width = tags.get('{}:width'.format(sub_tag))
         height = tags.get('{}:height'.format(sub_tag))
         size = None
+        icon = tags.get('icon')
+        if icon:
+            from urllib.parse import urljoin
+            icon = urljoin(url, icon)
         if width and height:
             size = (width, height)
-        return WebContent(url, content_type, description, image_url, size)
+        return WebContent(url, content_type, description, image_url, size, icon)
         #else:
         #    return WebContent(url, content_type)
     return None

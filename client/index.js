@@ -722,6 +722,22 @@ micro.util.findURLs = function(text) {
     return urls;
 };
 
+micro.bind.transforms.renderEntity = function(ctx, entity) {
+    if (!entity) {
+        return;
+    }
+    let tag = {
+        LinkEntity: "micro-link-entity",
+        ImageEntity: "micro-image-entity"
+    }[entity.__type__];
+    if (tag) {
+        let elem = document.createElement(tag);
+        elem.entity = entity;
+        return elem;
+    }
+    return "";
+};
+
 /** TODO. */
 micro.LinkEntity = class extends HTMLElement {
     createdCallback() {
@@ -729,7 +745,8 @@ micro.LinkEntity = class extends HTMLElement {
         this.appendChild(
             document.importNode(ui.querySelector("#micro-link-entity-template").content, true));
         this._data = new micro.bind.Watchable({
-            entity: null
+            entity: null,
+            hasIcon: false
         });
         micro.bind.bind(this.children, this._data);
         let updateClass = () => {
@@ -744,6 +761,7 @@ micro.LinkEntity = class extends HTMLElement {
 
     set entity(value) {
         this._data.entity = value;
+        this._data.hasIcon = Boolean(this._data.entity.icon);
     }
 };
 
@@ -773,16 +791,17 @@ micro.ImageEntity = class extends HTMLElement {
  */
 micro.TextEntityInput = class extends HTMLElement {
     createdCallback() {
+        console.log("CREATE TEXT ENTITY");
         this.appendChild(
             document.importNode(ui.querySelector("#micro-text-entity-input-template").content,
                                 true));
         this._urls = new Set();
         this._data = new micro.bind.Watchable({
-            entityElem: null,
+            entity: null,
 
             remove: () => {
                 console.log("REEEEMOOOVE");
-                this._data.entityElem = null;
+                this._data.entity = null;
             },
 
             input: async (event) => {
@@ -818,13 +837,8 @@ micro.TextEntityInput = class extends HTMLElement {
                     console.log("ENTITY", entity);
 
                     if (entity) {
-                        let tag = {
-                            LinkEntity: "micro-link-entity",
-                            ImageEntity: "micro-image-entity"
-                        }[entity.__type__];
-                        this._data.entityElem = document.createElement(tag);
-                        this._data.entityElem.entity = entity;
-                        console.log(this._data.entityElem);
+                        this._data.entity = entity;
+                        this._data.entity_url = newURL;
                     }
                 }
                 /*let newURL = urls.find(u =>
@@ -836,11 +850,29 @@ micro.TextEntityInput = class extends HTMLElement {
         micro.bind.bind(this.children, this._data);
 
         let updateClass = () => {
-            this.classList.toggle("micro-text-entity-input-entity", this._data.entityElem);
+            this.classList.toggle("micro-text-entity-input-entity", this._data.entity);
             this.classList.toggle("micro-text-entity-input-previewing", this._data.previewing);
         };
-        this._data.watch("entityElem", updateClass);
+        this._data.watch("entity", updateClass);
         this._data.watch("previewing", updateClass);
+
+        this._textarea = this.querySelector("textarea");
+    }
+
+    get value() {
+        return {
+            text: this._textarea.value,
+            entity: this._data.entity_url
+        };
+    }
+
+    set value(value) {
+        this._textarea.value = value.text;
+        this._data.entity_url = value.entity;
+    }
+
+    reset() {
+        this.value = {text: "", entity: null};
     }
 };
 
