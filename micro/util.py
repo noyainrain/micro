@@ -118,3 +118,35 @@ def setup_logging(debug=False):
     logger.setLevel(logging.INFO)
     if not debug:
         getLogger('tornado.access').setLevel(logging.ERROR)
+
+def version(v):
+    """Decorator for creating a versioned function.
+
+    When a versioned function is called, the implementation for the version given by an additional
+    keyword argument *v* is executed. If *v* is not specified, the default implementation is used.
+
+    *v* is the version of the decorated function, which also serves as default implementation.
+
+    The returned object provides a decorator `version(v)`, which can be used to define additional
+    versions.
+    """
+    versions = {}
+
+    def _wrapper(*args, v=v, **kwargs):
+        try:
+            func = versions[v]
+        except KeyError:
+            raise NotImplementedError()
+        return func(*args, **kwargs)
+
+    def _version(v):
+        def _decorator(func):
+            versions[v] = func
+            return _wrapper
+        return _decorator
+    _wrapper.version = _version
+
+    def _decorator(func):
+        versions[v] = func
+        return _wrapper
+    return _decorator
