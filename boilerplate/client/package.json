@@ -1,6 +1,6 @@
 {
     "scripts": {
-        "test-ui": "mocha '!(node_modules)/**/ui_test*.js'",
+        "test-ui": "mocha --preserve-symlinks '!(node_modules)/**/ui_test*.js'",
         "lint": "eslint .",
         "clean": "rm -rf node_modules"
     },
