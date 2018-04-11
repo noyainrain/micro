@@ -26,7 +26,7 @@ from redis import StrictRedis
 from redis.exceptions import ResponseError
 
 from micro.jsonredis import JSONRedis, JSONRedisSequence, JSONRedisMapping
-from micro.util import check_email, randstr, parse_isotime, str_or_none
+from .util import check_email, randstr, parse_isotime, str_or_none, version
 
 class Application:
     """Social micro web app.
@@ -103,22 +103,22 @@ class Application:
         nothing will be done. It is thus safe to call :meth:`update` without knowing if an update is
         necessary or not.
         """
-        version = self.r.get('micro_version')
+        v = self.r.get('micro_version')
 
         # If fresh, initialize database
-        if not version:
+        if not v:
             settings = self.create_settings()
             self.r.oset(settings.id, settings)
-            self.r.set('micro_version', 4)
+            self.r.set('micro_version', 5)
             self.do_update()
             return
 
-        version = int(version)
+        v = int(v)
         r = JSONRedis(self.r.r)
         r.caching = False
 
         # Deprecated since 0.15.0
-        if version < 3:
+        if v < 3:
             settings = r.oget('Settings')
             settings['provider_name'] = None
             settings['provider_url'] = None
@@ -127,12 +127,21 @@ class Application:
             r.set('micro_version', 3)
 
         # Deprecated since 0.6.0
-        if version < 4:
+        if v < 4:
             for obj in self._scan_objects(r):
                 if not issubclass(self.types[obj['__type__']], Trashable):
                     del obj['trashed']
                     r.oset(obj['id'], obj)
             r.set('micro_version', 4)
+
+        # Deprecated since 0.13.0
+        if v < 5:
+            settings = r.oget('Settings')
+            settings['icon_small'] = settings['favicon']
+            del settings['favicon']
+            settings['icon_large'] = None
+            r.oset(settings['id'], settings)
+            r.set('micro_version', 5)
 
         self.do_update()
 
@@ -225,6 +234,9 @@ class Application:
         except KeyError:
             return json
         type = self.types[type]
+        # Compatibility for Settings without icon_large (deprecated since 0.13.0)
+        if issubclass(type, Settings):
+            json['v'] = 2
         return type(app=self, **json)
 
     @staticmethod
@@ -515,14 +527,26 @@ class User(Object, Editable):
 class Settings(Object, Editable):
     """See :ref:`Settings`."""
 
+    @version(1)
     def __init__(
             self, id, app, authors, title, icon, favicon, provider_name, provider_url,
             provider_description, feedback_url, staff):
+        # pylint: disable=non-parent-init-called, super-init-not-called; versioned
+        icon_small, icon_large = favicon, None
+        self.__init__(id, app, authors, title, icon, icon_small, icon_large, provider_name,
+                      provider_url, provider_description, feedback_url, staff, v=2)
+
+    @__init__.version(2)
+    def __init__(
+            self, id, app, authors, title, icon, icon_small, icon_large, provider_name,
+            provider_url, provider_description, feedback_url, staff):
+        # pylint: disable=function-redefined; decorated
         super().__init__(id, app)
         Editable.__init__(self, authors=authors, activity=app.activity)
         self.title = title
         self.icon = icon
-        self.favicon = favicon
+        self.icon_small = icon_small
+        self.icon_large = icon_large
         self.provider_name = provider_name
         self.provider_url = provider_url
         self.provider_description = provider_description
@@ -538,6 +562,10 @@ class Settings(Object, Editable):
         if not self.app.user.id in self._staff:
             raise PermissionError()
 
+        # Compatibility for favicon (deprecated since 0.13.0)
+        if 'favicon' in attrs:
+            attrs.setdefault('icon_small', attrs['favicon'])
+
         e = InputError()
         if 'title' in attrs and not str_or_none(attrs['title']):
             e.errors['title'] = 'empty'
@@ -547,8 +575,10 @@ class Settings(Object, Editable):
             self.title = attrs['title']
         if 'icon' in attrs:
             self.icon = str_or_none(attrs['icon'])
-        if 'favicon' in attrs:
-            self.favicon = str_or_none(attrs['favicon'])
+        if 'icon_small' in attrs:
+            self.icon_small = str_or_none(attrs['icon_small'])
+        if 'icon_large' in attrs:
+            self.icon_large = str_or_none(attrs['icon_large'])
         if 'provider_name' in attrs:
             self.provider_name = str_or_none(attrs['provider_name'])
         if 'provider_url' in attrs:
@@ -559,21 +589,21 @@ class Settings(Object, Editable):
             self.feedback_url = str_or_none(attrs['feedback_url'])
 
     def json(self, restricted=False, include=False):
-        json = super().json()
-        json.update({
+        return {
+            **super().json(restricted, include),
+            **Editable.json(self, restricted, include),
             'title': self.title,
             'icon': self.icon,
-            'favicon': self.favicon,
+            'icon_small': self.icon_small,
+            'icon_large': self.icon_large,
             'provider_name': self.provider_name,
             'provider_url': self.provider_url,
             'provider_description': self.provider_description,
             'feedback_url': self.feedback_url,
-            'staff': self._staff
-        })
-        json.update(Editable.json(self, restricted=restricted, include=include))
-        if include:
-            json['staff'] = [u.json(restricted=restricted) for u in self.staff]
-        return json
+            'staff': [u.json(restricted) for u in self.staff] if include else self._staff,
+            # Compatibility for favicon (deprecated since 0.13.0)
+            **({'favicon': self.icon_small} if restricted else {})
+        }
 
 class Activity(JSONRedisSequence):
     """See :ref:`Activity`.

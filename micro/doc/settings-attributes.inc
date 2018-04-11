@@ -10,9 +10,13 @@
 
    URL of the site icon. May be ``null``.
 
-.. describe:: favicon
+.. describe:: icon_small
 
-   URL of the site icon optimized for a small size. May be ``null``.
+   URL of the site icon optimized for small scale. Should be 16 pixels square. May be ``null``.
+
+.. describe:: icon_large
+
+   URL of the site icon optimized for large scale. Should be 192 pixels square. May be ``null``.
 
 .. describe:: provider_name
 
@@ -34,3 +38,11 @@
 .. describe:: staff
 
    Staff users.
+
+.. describe:: favicon
+
+   URL of the site icon optimized for a small size. May be ``null``.
+
+   .. deprecated:: 0.13.0
+
+      Use *icon_small* instead.

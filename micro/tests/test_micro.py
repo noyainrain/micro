@@ -94,12 +94,13 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertEqual(app.settings.title, 'CatApp')
 
     def test_update_db_version_previous(self):
-        self.setup_db('0.5.0')
+        self.setup_db('0.12.0')
         app = CatApp(redis_url='15')
         app.update()
 
-        self.assertFalse(hasattr(app.settings, 'trashed'))
-        self.assertFalse(app.r.oget('Cat').trashed)
+        self.assertFalse(hasattr(app.settings, 'favicon'))
+        self.assertIsNone(app.settings.icon_small)
+        self.assertIsNone(app.settings.icon_large)
 
     def test_update_db_version_first(self):
         # NOTE: Tag tmp can be removed on next database update
@@ -112,6 +113,10 @@ class ApplicationUpdateTest(AsyncTestCase):
         # Update to version 4
         self.assertFalse(hasattr(app.settings, 'trashed'))
         self.assertFalse(app.r.oget('Cat').trashed)
+        # Update to version 5
+        self.assertFalse(hasattr(app.settings, 'favicon'))
+        self.assertIsNone(app.settings.icon_small)
+        self.assertIsNone(app.settings.icon_large)
 
 class EditableTest(MicroTestCase):
     def setUp(self):
