@@ -3,6 +3,7 @@ PIP=pip3
 NPM=npm
 
 PIPFLAGS=$$([ -z "$$VIRTUAL_ENV" ] && echo --user) -U
+NPMFLAGS=--no-save --no-optional
 
 .PHONY: test
 test:
@@ -10,7 +11,7 @@ test:
 
 .PHONY: test-client
 test-client:
-	$(NPM) -C client test
+	$(NPM) $(NPMFLAGS) -C client test
 
 .PHONY: test-ext
 test-ext:
@@ -18,7 +19,7 @@ test-ext:
 
 .PHONY: test-ui
 test-ui:
-	$(NPM) -C hello run test-ui
+	$(NPM) $(NPMFLAGS) -C hello run test-ui
 
 .PHONY: watch-test
 watch-test:
@@ -26,13 +27,13 @@ watch-test:
 
 .PHONY: watch-test-client
 watch-test-client:
-	$(NPM) -C client run watch-test
+	$(NPM) $(NPMFLAGS) -C client run watch-test
 
 .PHONY: lint
 lint:
 	pylint -j 0 micro hello/hello.py
-	$(NPM) -C client run lint
-	$(NPM) -C hello run lint
+	$(NPM) $(NPMFLAGS) -C client run lint
+	$(NPM) $(NPMFLAGS) -C hello run lint
 
 .PHONY: check
 check: test test-client test-ext test-ui lint
@@ -40,17 +41,18 @@ check: test test-client test-ext test-ui lint
 .PHONY: deps
 deps:
 	$(PIP) install $(PIPFLAGS) -r requirements.txt
-	@# NOTE: Work around npm update behaving weird if there are no production dependencies (see
-	@# https://github.com/npm/npm/issues/16901 )
-	$(NPM) -C client update --only=prod --no-optional --no-save
-	$(NPM) -C hello update --only=prod --no-optional --no-save
-	$(NPM) -C hello run link-micro
+	@# Relative dependency paths do not take prefix into account
+	(cd hello; $(NPM) $(NPMFLAGS) update --only=prod)
+	$(NPM) $(NPMFLAGS) -C hello dedupe
+	$(NPM) $(NPMFLAGS) -C client update --only=prod
+	@# Remove conflicting selenium-webdriver copy for Hello
+	$(NPM) $(NPMFLAGS) -C client uninstall selenium-webdriver
 
 .PHONY: deps-dev
 deps-dev:
 	$(PIP) install $(PIPFLAGS) -r requirements-dev.txt
-	$(NPM) -C client update --only=dev --no-optional --no-save
-	$(NPM) -C hello update --only=dev --no-optional --no-save
+	$(NPM) $(NPMFLAGS) -C client update --only=dev
+	$(NPM) $(NPMFLAGS) -C hello update --only=dev
 
 .PHONY: show-deprecated
 show-deprecated:
@@ -64,8 +66,8 @@ release:
 
 .PHONY: clean
 clean:
-	$(NPM) -C client run clean
-	$(NPM) -C hello run clean
+	$(NPM) $(NPMFLAGS) -C client run clean
+	$(NPM) $(NPMFLAGS) -C hello run clean
 
 .PHONY: help
 help:

@@ -108,7 +108,8 @@ describe("UI", function() {
         await input.clear();
         await input.sendKeys("CatApp");
         await form.findElement({name: "icon"}).sendKeys("/static/images/icon.svg");
-        await form.findElement({name: "favicon"}).sendKeys("/static/images/favicon.png");
+        await form.findElement({name: "icon_small"}).sendKeys("/static/images/icon-small.png");
+        await form.findElement({name: "icon_large"}).sendKeys("/static/images/icon-large.png");
         await form.findElement({name: "provider_name"}).sendKeys("Happy");
         await form.findElement({name: "provider_url"}).sendKeys("https://happy.example.org/");
         await form.findElement({name: "feedback_url"}).sendKeys("https://feedback.example.org/");

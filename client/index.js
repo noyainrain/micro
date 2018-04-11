@@ -131,8 +131,6 @@ micro.UI = class extends HTMLBodyElement {
         this._progressElem = this.querySelector(".micro-ui-progress");
         this._pageSpace = this.querySelector("main .micro-ui-inside");
 
-        this.settings = null;
-
         this.pages = [
             {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.EditUserPage.make},
             {url: "^/settings/edit$", page: micro.EditSettingsPage.make},
@@ -176,7 +174,18 @@ micro.UI = class extends HTMLBodyElement {
         this.insertBefore(
             document.importNode(this.querySelector(".micro-ui-template").content, true),
             this.querySelector("main"));
-        micro.bind.bind(this.children, {});
+        this._data = new micro.bind.Watchable({
+            settings: null
+        });
+        micro.bind.bind(this.children, this._data);
+
+        let update = () => {
+            document.querySelector('link[rel=icon][sizes="16x16"]').href =
+                this._data.settings.icon_small || "";
+            document.querySelector('link[rel=icon][sizes="192x192"]').href =
+                this._data.settings.icon_large || "";
+        };
+        this._data.watch("settings", update);
 
         let version = localStorage.microVersion || null;
         if (!version) {
@@ -212,7 +221,7 @@ micro.UI = class extends HTMLBodyElement {
             return null;
 
         }).then(() => micro.call("GET", "/api/settings")).then(settings => {
-            this.settings = settings;
+            this._data.settings = settings;
             this._update();
 
             // Update the user details
@@ -240,10 +249,17 @@ micro.UI = class extends HTMLBodyElement {
     }
 
     /**
+     * App settings.
+     */
+    get settings() {
+        return this._data.settings;
+    }
+
+    /**
      * Is the current :attr:`user` a staff member?
      */
     get staff() {
-        return this.settings.staff.map(s => s.id).indexOf(this.user.id) !== -1;
+        return this._data.settings.staff.map(s => s.id).indexOf(this.user.id) !== -1;
     }
 
     /**
@@ -356,22 +372,22 @@ micro.UI = class extends HTMLBodyElement {
     }
 
     _updateTitle() {
-        document.title = [this.page.caption, this.settings.title].filter(p => p).join(" - ");
+        document.title = [this.page.caption, this._data.settings.title].filter(p => p).join(" - ");
     }
 
     _update() {
         this.classList.toggle("micro-ui-user-is-staff", this.staff);
-        this.classList.toggle("micro-ui-settings-have-feedback-url", this.settings.feedback_url);
-        this.querySelector(".micro-ui-logo-text").textContent = this.settings.title;
+        this.classList.toggle("micro-ui-settings-have-feedback-url",
+                              this._data.settings.feedback_url);
+        this.querySelector(".micro-ui-logo-text").textContent = this._data.settings.title;
         let img = this.querySelector(".micro-ui-logo img");
-        if (this.settings.favicon) {
-            document.querySelector("link[rel=icon]").href = this.settings.favicon;
-            img.src = this.settings.favicon;
+        if (this._data.settings.icon_small) {
+            img.src = this._data.settings.icon_small;
             img.style.display = "";
         } else {
             img.style.display = "none";
         }
-        this.querySelector(".micro-ui-feedback a").href = this.settings.feedback_url;
+        this.querySelector(".micro-ui-feedback a").href = this._data.settings.feedback_url;
 
         this.querySelector(".micro-ui-header micro-user").user = this.user;
         this.querySelector(".micro-ui-edit-settings").style.display = this.staff ? "" : "none";
@@ -429,7 +445,7 @@ micro.UI = class extends HTMLBodyElement {
             this._update();
 
         } else if (event.target === this && event.type === "settings-edit") {
-            this.settings = event.detail.settings;
+            this._data.settings = event.detail.settings;
             this._update();
         }
     }
@@ -1018,47 +1034,37 @@ micro.EditSettingsPage = class extends micro.Page {
     createdCallback() {
         super.createdCallback();
         this.caption = "Edit site settings";
-        this.appendChild(document.importNode(
-            ui.querySelector(".micro-edit-settings-page-template").content, true));
-        this._form = this.querySelector("form");
-        this._form.elements.title.value = ui.settings.title;
-        this._form.elements.icon.value = ui.settings.icon || "";
-        this._form.elements.favicon.value = ui.settings.favicon || "";
-        this._form.elements.provider_name.value = ui.settings.provider_name || "";
-        this._form.elements.provider_url.value = ui.settings.provider_url || "";
-        this._form.elements.provider_description.value = ui.settings.provider_description.en || "";
-        this._form.elements.feedback_url.value = ui.settings.feedback_url || "";
-        this.querySelector(".micro-edit-settings-edit").addEventListener("submit", this);
-    }
+        this.appendChild(
+            document.importNode(ui.querySelector(".micro-edit-settings-page-template").content,
+                                true));
+        this._data = {
+            settings: ui.settings,
 
-    handleEvent(event) {
-        function toStringOrNull(str) {
-            return str.trim() ? str : null;
-        }
+            edit: async() => {
+                function toStringOrNull(str) {
+                    return str.trim() ? str : null;
+                }
 
-        if (event.currentTarget === this._form) {
-            event.preventDefault();
-            // Cancel submit if validation fails (not all browsers do this automatically)
-            if (!this._form.checkValidity()) {
-                return;
-            }
+                let form = this.querySelector("form");
+                let description = toStringOrNull(form.elements.provider_description.value);
+                description = description ? {en: description} : {};
 
-            let description = toStringOrNull(this._form.elements.provider_description.value);
-            description = description ? {en: description} : {};
-
-            micro.call("POST", "/api/settings", {
-                title: this._form.elements.title.value,
-                icon: this._form.elements.icon.value,
-                favicon: this._form.elements.favicon.value,
-                provider_name: this._form.elements.provider_name.value,
-                provider_url: this._form.elements.provider_url.value,
-                provider_description: description,
-                feedback_url: this._form.elements.feedback_url.value
-            }).then(settings => {
+                let settings = await micro.call("POST", "/api/settings", {
+                    title: form.elements.title.value,
+                    icon: form.elements.icon.value,
+                    icon_small: form.elements.icon_small.value,
+                    icon_large: form.elements.icon_large.value,
+                    provider_name: form.elements.provider_name.value,
+                    provider_url: form.elements.provider_url.value,
+                    provider_description: description,
+                    feedback_url: form.elements.feedback_url.value
+                });
                 ui.navigate("/");
-                ui.dispatchEvent(new CustomEvent("settings-edit", {detail: {settings}}));
-            });
-        }
+                micro.util.dispatchEvent(ui,
+                                         new CustomEvent("settings-edit", {detail: {settings}}));
+            }
+        };
+        micro.bind.bind(this.children, this._data);
     }
 };
 

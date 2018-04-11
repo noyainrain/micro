@@ -427,11 +427,14 @@ class _SettingsEndpoint(Endpoint):
         args = self.check_args({
             'title': (str, 'opt'),
             'icon': (str, None, 'opt'),
-            'favicon': (str, None, 'opt'),
+            'icon_small': (str, None, 'opt'),
+            'icon_large': (str, None, 'opt'),
             'provider_name': (str, None, 'opt'),
             'provider_url': (str, None, 'opt'),
             'provider_description': (dict, 'opt'),
-            'feedback_url': (str, None, 'opt')
+            'feedback_url': (str, None, 'opt'),
+            # Compatibility for favicon (deprecated since 0.13.0)
+            'favicon': (str, None, 'opt')
         })
         if 'provider_description' in args:
             try:

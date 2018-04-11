@@ -204,40 +204,54 @@
     <h1>Edit site settings</h1>
     <form class="micro-edit-settings-edit">
         <label>
-            <input name="title" required="required" />
+            <input name="title" required="required" data-value="settings.title" />
             <small>Title</small>
         </label>
         <label>
-            <input name="icon" />
+            <input name="icon" data-value="or settings.icon ''" />
             <small>Icon (optional)</small>
             <small>URL of the site icon.</small>
         </label>
         <label>
-            <input name="favicon" />
-            <small>Favicon (optional)</small>
-            <small>URL of the site icon optimized for a small size.</small>
+            <input name="icon_small" data-value="or settings.icon_small ''" />
+            <small>Icon small (optional)</small>
+            <small>
+                URL of the site icon optimized for small scale. Should be 16 pixels square.
+            </small>
         </label>
         <label>
-            <input name="provider_name" />
+            <input name="icon_large" data-value="or settings.icon_large ''" />
+            <small>Icon large (optional)</small>
+            <small>
+                URL of the site icon optimized for large scale. Should be 192 pixels square.
+            </small>
+        </label>
+        <label>
+            <input name="provider_name" data-value="or settings.provider_name ''" />
             <small>Service provider name (optional)</small>
         </label>
         <label>
-            <input name="provider_url" />
+            <input name="provider_url" data-value="or settings.provider_url ''" />
             <small>Service provider website (optional)</small>
             <small>URL of the website of the service provider.</small>
         </label>
         <label>
-            <input name="provider_description" />
+            <input name="provider_description"
+                   data-value="or settings.provider_description.en ''" />
             <small>Service provider description (optional)</small>
             <small>“The service is provided by Provider, …”</small>
         </label>
         <label>
-            <input name="feedback_url" />
+            <input name="feedback_url" data-value="or settings.feedback_url ''" />
             <small>Feedback &amp; help site (optional)</small>
             <small>URL of the feedback site / help desk.</small>
         </label>
         <ul is="micro-menu">
-            <li><button class="action"><span class="fa fa-check-circle"></span> Done</button></li>
+            <li>
+                <button is="micro-button" class="action" data-run="edit">
+                    <i class="fa fa-check-circle"></i> Done
+                </button>
+            </li>
             <li><a class="link action-cancel" href="/">Cancel</a></li>
         </ul>
     </form>
