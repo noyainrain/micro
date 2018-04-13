@@ -19,6 +19,7 @@ from urllib.parse import urljoin
 from tornado.httpclient import AsyncHTTPClient
 from tornado.testing import AsyncTestCase
 
+from .jsonredis import JSONRedis
 from .micro import (Activity, Application, Collection, Editable, Object, Orderable, Settings,
                     Trashable)
 from .util import randstr
@@ -64,8 +65,9 @@ class CatApp(Application):
 
         def create(self, name=None):
             """Create a :class:`Cat`."""
-            cat = Cat(id='Cat:{}'.format(randstr()), app=self.app, authors=[], trashed=False,
-                      name=name)
+            id = 'Cat:{}'.format(randstr())
+            cat = Cat(id, self.app, authors=[], trashed=False, name=name,
+                      activity=Activity('{}.activity'.format(id), self.app, subscriber_ids=[]))
             self.app.r.oset(cat.id, cat)
             self.app.r.rpush('cats', cat.id)
             return cat
@@ -75,12 +77,23 @@ class CatApp(Application):
         self.types.update({'Cat': Cat})
         self.cats = self.Cats((self, 'cats'))
 
+    def do_update(self):
+        r = JSONRedis(self.r.r)
+        r.caching = False
+
+        # Deprecated since 0.14.0
+        cat = r.oget('Cat')
+        if cat and 'activity' not in cat:
+            cat['activity'] = Activity('Cat.activity', app=self, subscriber_ids=[]).json()
+            r.oset(cat['id'], cat)
+
     def create_settings(self):
         # pylint: disable=unexpected-keyword-arg; decorated
         return Settings(
             id='Settings', app=self, authors=[], title='CatApp', icon=None, icon_small=None,
             icon_large=None, provider_name=None, provider_url=None, provider_description={},
-            feedback_url=None, staff=[], v=2)
+            feedback_url=None, staff=[], push_vapid_private_key=None, push_vapid_public_key=None,
+            v=2)
 
     def sample(self):
         """Set up some sample data."""
@@ -92,17 +105,23 @@ class CatApp(Application):
 class Cat(Object, Editable, Trashable):
     """Cute cat."""
 
-    def __init__(self, id, app, authors, trashed, name):
+    def __init__(self, id, app, authors, trashed, name, activity):
         super().__init__(id, app)
-        self.activity = Activity('{}.activity'.format(id), app=app)
-        Editable.__init__(self, authors, self.activity)
-        Trashable.__init__(self, trashed, self.activity)
+        Editable.__init__(self, authors, activity)
+        Trashable.__init__(self, trashed, activity)
         self.name = name
+        self.activity = activity
+        self.activity.host = self
 
     def do_edit(self, **attrs):
         if 'name' in attrs:
             self.name = attrs['name']
 
     def json(self, restricted=False, include=False):
-        return {**super().json(restricted, include), **Editable.json(self, restricted, include),
-                **Trashable.json(self, restricted, include), 'name': self.name}
+        return {
+            **super().json(restricted, include),
+            **Editable.json(self, restricted, include),
+            **Trashable.json(self, restricted, include),
+            'name': self.name,
+            'activity': self.activity.json(restricted)
+        }

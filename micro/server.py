@@ -28,13 +28,15 @@ from urllib.parse import urlparse
 from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
 from tornado.template import DictLoader, Loader, filter_whitespace
-from tornado.web import Application, RequestHandler, HTTPError
+from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
 
 from . import micro, templates
-from .micro import AuthRequest, Object, InputError, AuthenticationError, PermissionError
+from .micro import (AuthRequest, Object, InputError, AuthenticationError, CommunicationError,
+                    PermissionError)
 from .util import str_or_none, parse_slice, check_polyglot
 
 LIST_LIMIT = 100
+SLICE_URL = r'(?:/(\d*:\d*))?'
 
 _CLIENT_ERROR_LOG_TEMPLATE = """\
 Client error occurred
@@ -73,12 +75,16 @@ class Server:
 
        Client location from where static files and templates are delivered.
 
+    .. attribute:: client_service_path
+
+       Location of client service worker script. Defaults to the included micro service worker.
+
     .. attribute:: debug
 
        See ``--debug`` command line option.
     """
     def __init__(self, app, handlers, port=8080, url=None, client_path='client',
-                 client_modules_path='.', debug=False):
+                 client_modules_path='.', client_service_path=None, debug=False):
         url = url or 'http://localhost:{}'.format(port)
         try:
             urlparts = urlparse(url)
@@ -94,6 +100,9 @@ class Server:
         self.url = url
         self.client_path = client_path
         self.client_modules_path = client_modules_path
+        self.client_service_path = (
+            client_service_path or
+            os.path.join(client_modules_path, '@noyainrain/micro/service.js'))
         self.debug = debug
 
         self.app.email = 'bot@' + urlparts.hostname
@@ -110,13 +119,16 @@ class Server:
             (r'/api/users/([^/]+)/finish-set-email$', _UserFinishSetEmailEndpoint),
             (r'/api/users/([^/]+)/remove-email$', _UserRemoveEmailEndpoint),
             (r'/api/settings$', _SettingsEndpoint),
+            # Compatibility with non-object Activity (deprecated since 0.14.0)
+            make_activity_endpoint(r'/api/activity/v2', lambda *args: self.app.activity),
+            *make_list_endpoints(r'/api/activity(?:/v1)?', lambda *args: self.app.activity),
+            *handlers
         ]
-        self.handlers += make_list_endpoints(r'/api/activity', lambda *a: self.app.activity)
-        self.handlers += handlers
 
         self._server = HTTPServer(Application(
             self.handlers, compress_response=True, template_path=self.client_path,
-            static_path=self.client_path, debug=self.debug, server=self))
+            static_path=self.client_path, static_handler_class=_Static, debug=self.debug,
+            server=self))
         self._message_templates = DictLoader(templates.MESSAGE_TEMPLATES, autoescape=None)
         self._micro_templates = Loader(os.path.join(self.client_path, self.client_modules_path,
                                                     '@noyainrain/micro'))
@@ -179,6 +191,16 @@ class Endpoint(RequestHandler):
         if self.request.method in {'GET', 'HEAD'}:
             self.set_header('Cache-Control', 'no-cache')
 
+    def patch(self, *args, **kwargs):
+        try:
+            op = getattr(self, 'patch_{}'.format(self.args.pop('op')))
+        except KeyError:
+            raise HTTPError(http.client.BAD_REQUEST)
+        except AttributeError:
+            raise HTTPError(http.client.UNPROCESSABLE_ENTITY)
+        # Pass through future to support async methods
+        return op(*args, **kwargs)
+
     def write_error(self, status_code, exc_info):
         if issubclass(exc_info[0], KeyError):
             self.set_status(http.client.NOT_FOUND)
@@ -199,6 +221,9 @@ class Endpoint(RequestHandler):
         elif issubclass(exc_info[0], micro.ValueError):
             self.set_status(http.client.BAD_REQUEST)
             self.write({'__type__': exc_info[0].__name__, 'code': exc_info[1].code})
+        elif issubclass(exc_info[0], CommunicationError):
+            self.set_status(http.client.BAD_GATEWAY)
+            self.write({'__type__': 'CommunicationError'})
         else:
             super().write_error(status_code, exc_info=exc_info)
 
@@ -276,6 +301,21 @@ def make_orderable_endpoints(url, get_collection):
     """
     return [(url + r'/move$', _OrderableMoveEndpoint, {'get_collection': get_collection})]
 
+def make_activity_endpoint(url, get_activity):
+    """Make an API endpoint for an :class:`Activity` at *url*.
+
+    *get_activity* is a function of the form *get_activity(*args)*, responsible for retrieving the
+    activity. *args* are the URL arguments.
+    """
+    return (r'{}{}$'.format(url, SLICE_URL), _ActivityEndpoint, {'get_activity': get_activity})
+
+class _Static(StaticFileHandler):
+    def set_extra_headers(self, path):
+        if self.get_cache_time(path, self.modified, self.get_content_type()) == 0:
+            self.set_header('Cache-Control', 'no-cache')
+        if path == self.application.settings['server'].client_service_path:
+            self.set_header('Service-Worker-Allowed', '/')
+
 class _UI(RequestHandler):
     def initialize(self):
         self._server = self.application.settings['server']
@@ -292,7 +332,8 @@ class _UI(RequestHandler):
 
     def _render_micro_dependencies(self):
         return self._templates.load('dependencies.html').generate(
-            static_url=self.static_url, modules_path=self._server.client_modules_path)
+            static_url=self.static_url, modules_path=self._server.client_modules_path,
+            service_path=self._server.client_service_path)
 
     def _render_micro_boot(self):
         return self._templates.load('boot.html').generate()
@@ -396,6 +437,19 @@ class _UserEndpoint(Endpoint):
         user.edit(**args)
         self.write(user.json(restricted=True))
 
+    async def patch_enable_notifications(self, id):
+        # pylint: disable=missing-docstring; private
+        user = self.app.users[id]
+        args = self.check_args({'push_subscription': str})
+        await user.enable_device_notifications(**args)
+        self.write(user.json(restricted=True))
+
+    def patch_disable_notifications(self, id):
+        # pylint: disable=missing-docstring; private
+        user = self.app.users[id]
+        user.disable_device_notifications()
+        self.write(user.json(restricted=True))
+
 class _UserSetEmailEndpoint(Endpoint):
     def post(self, id):
         user = self.app.users[id]
@@ -445,3 +499,25 @@ class _SettingsEndpoint(Endpoint):
         settings = self.app.settings
         settings.edit(**args)
         self.write(settings.json(restricted=True, include=True))
+
+class _ActivityEndpoint(Endpoint):
+    def initialize(self, get_activity):
+        super().initialize()
+        self.get_activity = get_activity
+
+    def get(self, *args):
+        activity = self.get_activity(*args)
+        slice = parse_slice(args[-1] or ':', limit=LIST_LIMIT)
+        self.write(activity.json(restricted=True, include=True, slice=slice))
+
+    def patch_subscribe(self, *args):
+        # pylint: disable=missing-docstring; private
+        activity = self.get_activity(*args)
+        activity.subscribe()
+        self.write(activity.json(restricted=True, include=True))
+
+    def patch_unsubscribe(self, *args):
+        # pylint: disable=missing-docstring; private
+        activity = self.get_activity(*args)
+        activity.unsubscribe()
+        self.write(activity.json(restricted=True, include=True))

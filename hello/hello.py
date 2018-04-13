@@ -42,7 +42,8 @@ class Hello(Application):
         return Settings(
             id='Settings', app=self, authors=[], title='Hello', icon=None, icon_small=None,
             icon_large=None, provider_name=None, provider_url=None, provider_description={},
-            feedback_url=None, staff=[], v=2)
+            feedback_url=None, staff=[], push_vapid_private_key=None, push_vapid_public_key=None,
+            v=2)
 
     def create_greeting(self, text):
         """Create a :class:`Greeting` and return it."""
@@ -83,7 +84,8 @@ def make_server(port=8080, url=None, client_path='.', debug=False, redis_url='',
     """Create a Hello server."""
     app = Hello(redis_url, smtp_url=smtp_url)
     handlers = [(r'/api/greetings$', _GreetingsEndpoint)]
-    return Server(app, handlers, port, url, client_path, 'node_modules', debug)
+    return Server(app, handlers, port, url, client_path, client_modules_path='node_modules',
+                  debug=debug)
 
 class _GreetingsEndpoint(Endpoint):
     # pylint: disable=abstract-method; Tornado handlers define a semi-abstract data_received()
