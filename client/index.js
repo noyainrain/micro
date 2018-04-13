@@ -20,6 +20,8 @@
 
 "use strict";
 
+micro.util.watchErrors();
+
 micro.LIST_LIMIT = 100;
 micro.SHORT_DATE_TIME_FORMAT = {
     year: "2-digit",
@@ -27,63 +29,6 @@ micro.SHORT_DATE_TIME_FORMAT = {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit"
-};
-
-/**
- * Thrown for HTTP JSON REST API errors.
- *
- * .. attribute:: error
- *
- *    The error object.
- *
- * .. attribute:: status
- *
- *    The associated HTTP status code.
- */
-micro.APIError = class extends Error {
-    constructor(error, status) {
-        super();
-        this.error = error;
-        this.status = status;
-    }
-};
-
-/**
- * Call a *method* on the HTTP JSON REST API endpoint at *url*.
- *
- * *method* is a HTTP method (e.g. ``GET`` or ``POST``). Arguments are passed as JSON object *args*.
- * A promise is returned that resolves to the result as JSON value, once the call is complete.
- *
- * If an error occurs, the promise rejects with an :class:`APIError`. For any IO related errors, it
- * rejects with a :class:`TypeError`.
- */
-micro.call = function(method, url, args) {
-    let options = {method, credentials: "include"};
-    if (args) {
-        options.headers = {"Content-Type": "application/json"};
-        options.body = JSON.stringify(args);
-    }
-
-    return fetch(url, options).then(response => {
-        if (response.status > 500) {
-            // Consider server errors IO errors
-            throw new TypeError();
-        }
-
-        return response.json().then(result => {
-            if (!response.ok) {
-                throw new micro.APIError(result, response.status);
-            }
-            return result;
-        }, e => {
-            if (e instanceof SyntaxError) {
-                // Consider invalid JSON an IO error
-                throw new TypeError();
-            } else {
-                throw e;
-            }
-        });
-    });
 };
 
 /**
@@ -119,6 +64,10 @@ micro.findAncestor = micro.keyboard.findAncestor;
  *
  *    May be set by subclass in :meth:`init`. Defaults to ``[]``.
  *
+ * .. attribute:: service
+ *
+ *    Service worker of the app, more precisely a :class:`ServiceWorkerRegistration`.
+ *
  * .. attribute:: renderEvent
  *
  *    Subclass API: Table of event rendering hooks by event type. Used by the activity page to
@@ -126,7 +75,7 @@ micro.findAncestor = micro.keyboard.findAncestor;
  *    render the given *event* to a :class:`Node`.
  */
 micro.UI = class extends HTMLBodyElement {
-    createdCallback() {
+    async createdCallback() {
         this.page = null;
         this._progressElem = this.querySelector(".micro-ui-progress");
         this._pageSpace = this.querySelector("main .micro-ui-inside");
@@ -186,6 +135,21 @@ micro.UI = class extends HTMLBodyElement {
                 this._data.settings.icon_large || "";
         };
         this._data.watch("settings", update);
+
+        this.features = {
+            es6TypedArray: "ArrayBuffer" in window,
+            push: "PushManager" in window
+        };
+        this.classList.toggle("micro-feature-push", this.features.push);
+        this.classList.toggle("micro-feature-es6-typed-array", this.features.es6TypedArray);
+
+        this.service = null;
+        if (this.features.push && this.features.es6TypedArray) {
+            let url = document.querySelector("link[rel=service]").href;
+            navigator.serviceWorker.register(url, {scope: "/"}).then(service => {
+                this.service = service;
+            });
+        }
 
         let version = localStorage.microVersion || null;
         if (!version) {
@@ -313,6 +277,54 @@ micro.UI = class extends HTMLBodyElement {
         space.appendChild(notification);
     }
 
+    /**
+     * Show a dialog about enabling device notifications to the user.
+     *
+     * The result of the dialog is returned:
+     *
+     * - ``ok``: Notifications have been enabled
+     * - ``cancel``: The user canceled the dialog
+     * - ``error``: A communication error occured
+     */
+    async enableDeviceNotifications() {
+        if (!(this.features.push && this.features.es6TypedArray)) {
+            throw new Error("features");
+        }
+
+        // Chrome does not yet support base64-encoded VAPID keys (see
+        // https://bugs.chromium.org/p/chromium/issues/detail?id=802280)
+        let applicationServerKey = Uint8Array.from(
+            atob(this.settings.push_vapid_public_key.replace(/-/g, "+").replace(/_/g, "/")),
+            c => c.codePointAt(0));
+
+        let subscription;
+        try {
+            subscription = await this.service.pushManager.subscribe(
+                {userVisibleOnly: true, applicationServerKey});
+        } catch (e) {
+            if (e instanceof DOMException && e.name === "NotAllowedError") {
+                return "cancel";
+            }
+            throw e;
+        }
+        subscription = JSON.stringify(subscription.toJSON());
+
+        let user;
+        try {
+            user = await micro.call("PATCH", `/api/users/${this.user.id}`,
+                                    {op: "enable_notifications", push_subscription: subscription});
+        } catch (e) {
+            if (e instanceof micro.APIError &&
+                    e.error.__type__ === "CommunicationError") {
+                ui.notify("Oops, there was a problem communicating with your device. Please try again in a few minutes.");
+                return "error";
+            }
+            throw e;
+        }
+        micro.util.dispatchEvent(this, new CustomEvent("user-edit", {detail: {user}}));
+        return "ok";
+    }
+
     _open(page) {
         this._close();
         this.page = page;
@@ -408,23 +420,6 @@ micro.UI = class extends HTMLBodyElement {
     handleEvent(event) {
         if (event.currentTarget === window && event.type === "error") {
             this.notify(document.createElement("micro-error-notification"));
-
-            let type = "Error";
-            let stack = `${event.filename}:${event.lineno}`;
-            let message = event.message;
-            // Get more detail out of ErrorEvent.error, if the browser supports it
-            if (event.error) {
-                type = event.error.name;
-                stack = event.error.stack;
-                message = event.error.message;
-            }
-
-            micro.call("POST", "/log-client-error", {
-                type,
-                stack,
-                url: location.pathname,
-                message
-            });
 
         } else if (event.type === "click") {
             let a = micro.findAncestor(event.target, e => e instanceof HTMLAnchorElement, this);
