@@ -115,6 +115,18 @@ User is editable by the user oneself.
 
    Secret for authentication. Visible only to the user oneself.
 
+.. describe:: device_notification_status
+
+   Device notification status:
+
+   * ``on``: Notifications are enabled
+   * ``off``: Notifications are disabled
+   * ``off.expired``: Notifications are disabled because *push_subscription* expired
+
+.. describe:: push_subscription
+
+   Push subscription token used for sending device notifications. May be ``null``.
+
 .. http:get:: /api/users/(id)
 
    Get the user given by *id*.
@@ -154,6 +166,23 @@ User is editable by the user oneself.
 
    Permission: The user oneself.
 
+.. http:patch:: /api/users/(id)
+
+   ``{"op": "enable_device_notifications", "push_subscription"}``
+
+   Enable device notifications, using *push_subscription*.
+
+   A confirmation message is sent to the device. If there is a communication issue, a
+   :ref:`CommunicationError` is returned.
+
+   Permission: The user oneself.
+
+   ``{"op": "disable_device_notifications"}``
+
+   Disable device notifications.
+
+   Permission: The user oneself.
+
 .. _Activity:
 
 Activity
@@ -163,9 +192,27 @@ Activity feed (of events) around a common topic/context.
 
 *activity-url* is the URL that identifies the activity feed, e.g. ``/api/activity``.
 
-.. http:get:: (activity-url)
+.. describe:: user_subscribed
 
-   Get the list of recorded :ref:`Event` s.
+   Indicates if the user subscribed to the feed.
+
+.. describe:: items
+
+   List of recorded :ref:`Event` s.
+
+.. http:patch:: /api/(activity-url)
+
+   ``{"op": "subscribe"}``
+
+   Subscribe the user to the feed.
+
+   Permission: Authenticated users.
+
+   ``{"op": "unsubscribe"}``
+
+   Unsubscribe the user from the feed.
+
+   Permission: Authenticated users.
 
 .. _Event:
 
@@ -240,3 +287,10 @@ PermissionError
 ---------------
 
 Returned if the current user is not allowed to perform an action.
+
+.. _CommunicationError:
+
+CommunicationError
+------------------
+
+Returned if communication with a third party fails.

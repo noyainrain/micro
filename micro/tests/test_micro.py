@@ -16,6 +16,7 @@
 
 from subprocess import check_call
 from tempfile import mkdtemp
+from unittest.mock import patch
 
 from redis import RedisError
 from tornado.testing import AsyncTestCase
@@ -94,13 +95,16 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertEqual(app.settings.title, 'CatApp')
 
     def test_update_db_version_previous(self):
-        self.setup_db('0.12.0')
+        self.setup_db('0.13.0')
         app = CatApp(redis_url='15')
         app.update()
 
-        self.assertFalse(hasattr(app.settings, 'favicon'))
-        self.assertIsNone(app.settings.icon_small)
-        self.assertIsNone(app.settings.icon_large)
+        user = app.settings.staff[0]
+        self.assertTrue(app.settings.push_vapid_private_key)
+        self.assertTrue(app.settings.push_vapid_public_key)
+        self.assertIsNotNone(app.activity.subscribers)
+        self.assertEqual(user.device_notification_status, 'off')
+        self.assertIsNone(user.push_subscription)
 
     def test_update_db_version_first(self):
         # NOTE: Tag tmp can be removed on next database update
@@ -117,11 +121,18 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertFalse(hasattr(app.settings, 'favicon'))
         self.assertIsNone(app.settings.icon_small)
         self.assertIsNone(app.settings.icon_large)
+        # Update to version 6
+        user = app.settings.staff[0]
+        self.assertTrue(app.settings.push_vapid_private_key)
+        self.assertTrue(app.settings.push_vapid_public_key)
+        self.assertIsNotNone(app.activity.subscribers)
+        self.assertEqual(user.device_notification_status, 'off')
+        self.assertIsNone(user.push_subscription)
 
 class EditableTest(MicroTestCase):
     def setUp(self):
         super().setUp()
-        self.cat = Cat(id='Cat', trashed=False, app=self.app, authors=[], name=None)
+        self.cat = self.app.cats.create()
 
     def test_edit(self):
         self.cat.edit(name='Happy')
@@ -166,7 +177,8 @@ class OrderableTest(MicroTestCase):
         return [self.app.cats.create(), self.app.cats.create(), self.app.cats.create()]
 
     def make_external_cat(self):
-        return Cat(id='Cat', app=self.app, authors=[], trashed=False, name=None)
+        return Cat(id='Cat', app=self.app, authors=[], trashed=False, name=None,
+                   activity=Activity('Cat.activity', self.app, subscriber_ids=[]))
 
     def test_move(self):
         cats = self.make_cats()
@@ -201,8 +213,28 @@ class UserTest(MicroTestCase):
         self.assertEqual(self.user.name, 'Happy')
 
 class ActivityTest(MicroTestCase):
-    def test_publish(self):
-        activity = Activity('more_activity', app=self.app)
+    def make_activity(self):
+        return Activity('Activity:more', self.app, subscriber_ids=[])
+
+    @patch('micro.User.notify', autospec=True)
+    def test_publish(self, notify):
+        activity = self.make_activity()
+        activity.subscribe()
+        self.app.login()
+        activity.subscribe()
+
         event = Event.create('meow', None, app=self.app)
         activity.publish(event)
         self.assertIn(event, activity)
+        notify.assert_called_once_with(self.user, event)
+
+    def test_subscribe(self):
+        activity = self.make_activity()
+        activity.subscribe()
+        self.assertIn(self.user, activity.subscribers)
+
+    def test_unsubscribe(self):
+        activity = self.make_activity()
+        activity.subscribe()
+        activity.unsubscribe()
+        self.assertNotIn(self.user, activity.subscribers)

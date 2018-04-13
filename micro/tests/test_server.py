@@ -40,32 +40,36 @@ class ServerTest(ServerTestCase):
         self.client_user = self.user
 
     @gen_test
-    def test_availability(self):
+    async def test_availability(self):
         # UI
-        yield self.request('/')
-        yield self.request(
+        await self.request('/')
+        await self.request(
             '/log-client-error', method='POST',
             body='{"type": "Error", "stack": "micro.UI.prototype.createdCallback", "url": "/"}')
 
         # API
-        yield self.request('/api/login', method='POST', body='')
-        yield self.request('/api/users/' + self.user.id)
-        yield self.request('/api/users/' + self.user.id, method='POST', body='{"name": "Happy"}')
-        yield self.request('/api/settings')
+        await self.request('/api/login', method='POST', body='')
+        await self.request('/api/users/' + self.user.id)
+        await self.request('/api/users/' + self.user.id, method='POST', body='{"name": "Happy"}')
+        await self.request('/api/users/{}'.format(self.app.user.id), method='PATCH',
+                           body='{"op": "disable_notifications"}')
+        await self.request('/api/settings')
 
         # API (generic)
         cat = self.app.cats.create()
-        yield self.request('/api/cats/move', method='POST',
+        await self.request('/api/cats/move', method='POST',
                            body='{{"item_id": "{}", "to_id": null}}'.format(cat.id))
-        yield self.request('/api/cats/{}/trash'.format(cat.id), method='POST', body='')
-        yield self.request('/api/cats/{}/restore'.format(cat.id), method='POST', body='')
+        await self.request('/api/cats/{}/trash'.format(cat.id), method='POST', body='')
+        await self.request('/api/cats/{}/restore'.format(cat.id), method='POST', body='')
 
         # API (as staff member)
         self.client_user = self.staff_member
-        yield self.request(
+        await self.request(
             '/api/settings', method='POST',
             body='{"title": "CatzApp", "icon": "http://example.org/static/icon.svg"}')
-        yield self.request('/api/activity')
+        await self.request('/api/activity/v2')
+        await self.request('/api/activity/v2', method='PATCH', body='{"op": "subscribe"}')
+        await self.request('/api/activity/v2', method='PATCH', body='{"op": "unsubscribe"}')
 
     @gen_test
     def test_get_user(self):

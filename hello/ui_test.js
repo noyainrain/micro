@@ -98,6 +98,7 @@ describe("UI", function() {
         await browser.get(`${URL}/`);
         let menu = await browser.wait(until.elementLocated({css: ".micro-ui-header-menu"}),
                                       timeout);
+        await browser.wait(until.elementIsVisible(menu), timeout);
         await menu.click();
         await browser.findElement({css: ".micro-ui-edit-settings"}).click();
         await browser.wait(

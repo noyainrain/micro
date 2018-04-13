@@ -1,4 +1,5 @@
 # micro
+
 # Copyright (C) 2018 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
@@ -18,15 +19,26 @@ import builtins
 from collections.abc import Mapping
 from datetime import datetime
 from email.message import EmailMessage
+import errno
+import json
+from logging import getLogger
+import os
 import re
 from smtplib import SMTP
 from urllib.parse import urlparse
 
+from pywebpush import WebPusher, WebPushException
+from py_vapid import Vapid
+from py_vapid.utils import b64urlencode
 from redis import StrictRedis
 from redis.exceptions import ResponseError
+from tornado.httpclient import AsyncHTTPClient, HTTPError
+from tornado.ioloop import IOLoop
 
 from micro.jsonredis import JSONRedis, JSONRedisSequence, JSONRedisMapping
 from .util import check_email, randstr, parse_isotime, str_or_none, version
+
+_PUSH_TTL = 24 * 60 * 60
 
 class Application:
     """Social micro web app.
@@ -81,12 +93,12 @@ class Application:
         self.types = {
             'User': User,
             'Settings': Settings,
+            'Activity': Activity,
             'Event': Event,
             'AuthRequest': AuthRequest
         }
         self.user = None
         self.users = JSONRedisMapping(self.r, 'users')
-        self.activity = Activity('activity', pre=self.check_user_is_staff, app=self)
         self.email = email
         self.smtp_url = smtp_url
         self.render_email_auth_message = render_email_auth_message
@@ -95,6 +107,13 @@ class Application:
     def settings(self):
         """App :class:`Settings`."""
         return self.r.oget('Settings')
+
+    @property
+    def activity(self):
+        """Global :class:`Activity` feed."""
+        activity = self.r.oget('Activity')
+        activity.pre = self.check_user_is_staff
+        return activity
 
     def update(self):
         """Update the database.
@@ -108,8 +127,12 @@ class Application:
         # If fresh, initialize database
         if not v:
             settings = self.create_settings()
+            settings.push_vapid_private_key, settings.push_vapid_public_key = (
+                self._generate_push_vapid_keys())
             self.r.oset(settings.id, settings)
-            self.r.set('micro_version', 5)
+            activity = Activity(id='Activity', app=self, subscriber_ids=[])
+            self.r.oset(activity.id, activity)
+            self.r.set('micro_version', 6)
             self.do_update()
             return
 
@@ -142,6 +165,22 @@ class Application:
             settings['icon_large'] = None
             r.oset(settings['id'], settings)
             r.set('micro_version', 5)
+
+        # Deprecated since 0.14.0
+        if v < 6:
+            settings = r.oget('Settings')
+            settings['push_vapid_private_key'], settings['push_vapid_public_key'] = (
+                self._generate_push_vapid_keys())
+            r.oset(settings['id'], settings)
+            activity = Activity(id='Activity', app=self, subscriber_ids=[]).json()
+            r.oset(activity['id'], activity)
+
+            users = r.omget(r.lrange('users', 0, -1))
+            for user in users:
+                user['device_notification_status'] = 'off'
+                user['push_subscription'] = None
+            r.omset({user['id']: user for user in users})
+            r.set('micro_version', 6)
 
         self.do_update()
 
@@ -187,8 +226,9 @@ class Application:
 
         else:
             id = 'User:' + randstr()
-            user = User(id=id, app=self, authors=[id], name='Guest', email=None,
-                        auth_secret=randstr())
+            user = User(
+                id=id, app=self, authors=[id], name='Guest', email=None, auth_secret=randstr(),
+                device_notification_status='off', push_subscription=None)
             self.r.oset(user.id, user)
             self.r.rpush('users', user.id)
             self.r.hset('auth_secret_map', user.auth_secret, user.id)
@@ -229,6 +269,7 @@ class Application:
             raise TypeError()
 
     def _decode(self, json):
+        # pylint: disable=redefined-outer-name; good name
         try:
             type = json.pop('__type__')
         except KeyError:
@@ -249,6 +290,13 @@ class Application:
             else:
                 if isinstance(obj, Mapping) and '__type__' in obj:
                     yield obj
+
+    @staticmethod
+    def _generate_push_vapid_keys():
+        vapid = Vapid()
+        vapid.generate_keys()
+        return (b64urlencode(vapid.private_key.private_numbers().private_value.to_bytes(32, 'big')),
+                b64urlencode(vapid.public_key.public_numbers().encode_point()))
 
 class Object:
     """Object in the application universe.
@@ -309,7 +357,8 @@ class Editable:
         self.app.r.oset(self.id, self)
 
         if self.__activity is not None:
-            self.__activity.publish(Event.create('editable-edit', self, app=self.app))
+            activity = self.__activity() if callable(self.__activity) else self.__activity
+            activity.publish(Event.create('editable-edit', self, app=self.app))
 
     def do_edit(self, **attrs):
         """Subclass API: Perform the edit operation.
@@ -323,10 +372,7 @@ class Editable:
 
     def json(self, restricted=False, include=False):
         """Subclass API: Return a JSON object representation of the editable part of the object."""
-        json = {'authors': self._authors}
-        if include:
-            json['authors'] = [a.json(restricted=restricted) for a in self.authors]
-        return json
+        return {'authors': [a.json(restricted) for a in self.authors] if include else self._authors}
 
 class Trashable:
     """Mixin for :class:`Object` which can be trashed and restored."""
@@ -346,7 +392,8 @@ class Trashable:
         self.trashed = True
         self.app.r.oset(self.id, self)
         if self.__activity is not None:
-            self.__activity.publish(Event.create('trashable-trash', self, app=self.app))
+            activity = self.__activity() if callable(self.__activity) else self.__activity
+            activity.publish(Event.create('trashable-trash', self, app=self.app))
 
     def restore(self):
         """See :http:post:`/api/(object-url)/restore`."""
@@ -358,7 +405,8 @@ class Trashable:
         self.trashed = False
         self.app.r.oset(self.id, self)
         if self.__activity is not None:
-            self.__activity.publish(Event.create('trashable-restore', self, app=self.app))
+            activity = self.__activity() if callable(self.__activity) else self.__activity
+            activity.publish(Event.create('trashable-restore', self, app=self.app))
 
     def json(self, restricted=False, include=False):
         """Subclass API: Return a JSON representation of the trashable part of the object."""
@@ -408,12 +456,15 @@ class Orderable:
 class User(Object, Editable):
     """See :ref:`User`."""
 
-    def __init__(self, id, app, authors, name, email, auth_secret):
+    def __init__(self, id, app, authors, name, email, auth_secret, device_notification_status,
+                 push_subscription):
         super().__init__(id, app)
         Editable.__init__(self, authors=authors)
         self.name = name
         self.email = email
         self.auth_secret = auth_secret
+        self.device_notification_status = device_notification_status
+        self.push_subscription = push_subscription
 
     def store_email(self, email):
         """Update the user's *email* address.
@@ -482,6 +533,39 @@ class User(Object, Editable):
             raise ValueError('user_no_email')
         self._send_email(self.email, msg)
 
+    def notify(self, event):
+        """Notify the user about the :class:`Event` *event*.
+
+        If :attr:`push_subscription` has expired, device notifications are disabled.
+        """
+        if self.device_notification_status != 'on':
+            return
+        IOLoop.current().add_callback(self._notify, event)
+
+    async def enable_device_notifications(self, push_subscription):
+        """See :http:patch:`/api/users/(id)` (``enable_device_notifications``)."""
+        if self.app.user != self:
+            raise PermissionError()
+        await self._send_device_notification(
+            push_subscription, Event.create('user-enable-device-notifications', self, app=self.app))
+        self.device_notification_status = 'on'
+        self.push_subscription = push_subscription
+        self.app.r.oset(self.id, self)
+
+    def disable_device_notifications(self, reason=None):
+        """See :http:patch:`/api/users/(id)` (``disable_device_notifications``).
+
+        *reason* is either ``None`` or ``expired``, which determines the resulting
+        :attr:`device_notification_status`.
+        """
+        if self.app.user != self:
+            raise PermissionError()
+        if reason not in [None, 'expired']:
+            raise ValueError('reason_unknown')
+        self.device_notification_status = 'off.{}'.format(reason) if reason else 'off'
+        self.push_subscription = None
+        self.app.r.oset(self.id, self)
+
     def do_edit(self, **attrs):
         if self.app.user != self:
             raise PermissionError()
@@ -496,13 +580,18 @@ class User(Object, Editable):
 
     def json(self, restricted=False, include=False):
         """See :meth:`Object.json`."""
-        json = super().json(restricted=restricted, include=include)
-        json.update({'name': self.name, 'email': self.email, 'auth_secret': self.auth_secret})
-        json.update(Editable.json(self, restricted=restricted, include=include))
-        if restricted and not self.app.user == self:
-            del json['email']
-            del json['auth_secret']
-        return json
+        return {
+            **super().json(restricted, include),
+            **Editable.json(self, restricted, include),
+            'name': self.name,
+            **(
+                {} if restricted and self.app.user != self else {
+                    'email': self.email,
+                    'auth_secret': self.auth_secret,
+                    'device_notification_status': self.device_notification_status,
+                    'push_subscription': self.push_subscription
+                })
+        }
 
     def _send_email(self, to, msg):
         match = re.fullmatch(r'Subject: ([^\n]+)\n\n(.+)', msg, re.DOTALL)
@@ -524,8 +613,63 @@ class User(Object, Editable):
         except OSError:
             raise EmailError()
 
+    async def _notify(self, event):
+        try:
+            await self._send_device_notification(self.push_subscription, event)
+        except (ValueError, CommunicationError) as e:
+            if isinstance(e, ValueError):
+                if e.code != 'push_subscription_invalid':
+                    raise e
+                self.disable_device_notifications(reason='expired')
+            getLogger(__name__).error('Failed to deliver notification: %s', str(e))
+
+    async def _send_device_notification(self, push_subscription, event):
+        try:
+            push_subscription = json.loads(push_subscription)
+            if not isinstance(push_subscription, dict):
+                raise builtins.ValueError()
+            urlparts = urlparse(push_subscription.get('endpoint'))
+            pusher = WebPusher(push_subscription, self._HTTPClient)
+        except (builtins.ValueError, WebPushException):
+            raise ValueError('push_subscription_invalid')
+
+        # Unfortunately sign() tries to validate the email address
+        email = 'bot@email.localhost' if self.app.email == 'bot@localhost' else self.app.email
+        headers = Vapid.from_raw(self.app.settings.push_vapid_private_key.encode()).sign({
+            'aud': '{}://{}'.format(urlparts.scheme, urlparts.netloc),
+            'sub': 'mailto:{}'.format(email)
+        })
+
+        try:
+            response = await pusher.send(json.dumps(event.json(restricted=True, include=True)),
+                                         headers, ttl=_PUSH_TTL)
+        except OSError as e:
+            raise CommunicationError(str(e))
+        if response.code in (404, 410):
+            raise ValueError('push_subscription_invalid')
+        if response.code != 201:
+            raise CommunicationError('Server responded with status {}'.format(response.code))
+
+    class _HTTPClient:
+        @staticmethod
+        async def post(endpoint, data, headers, timeout):
+            # pylint: disable=unused-argument, missing-docstring; part of API
+            response = await AsyncHTTPClient().fetch(endpoint, method='POST', headers=headers,
+                                                     body=data, raise_error=False)
+            if response.code == 599:
+                # Timeouts are given as HTTPError
+                if isinstance(response.error, HTTPError):
+                    raise TimeoutError(errno.ETIMEDOUT, os.strerror(errno.ETIMEDOUT))
+                raise response.error
+            return response
+
 class Settings(Object, Editable):
-    """See :ref:`Settings`."""
+    """See :ref:`Settings`.
+
+    .. attribute:: push_vapid_private_key
+
+       VAPID private key used for sending device notifications.
+    """
 
     @version(1)
     def __init__(
@@ -539,10 +683,12 @@ class Settings(Object, Editable):
     @__init__.version(2)
     def __init__(
             self, id, app, authors, title, icon, icon_small, icon_large, provider_name,
-            provider_url, provider_description, feedback_url, staff):
+            provider_url, provider_description, feedback_url, staff, push_vapid_private_key=None,
+            push_vapid_public_key=None):
         # pylint: disable=function-redefined; decorated
+        # Compatibility for Settings without VAPID keys (deprecated since 0.14.0)
         super().__init__(id, app)
-        Editable.__init__(self, authors=authors, activity=app.activity)
+        Editable.__init__(self, authors=authors, activity=lambda: app.activity)
         self.title = title
         self.icon = icon
         self.icon_small = icon_small
@@ -552,6 +698,8 @@ class Settings(Object, Editable):
         self.provider_description = provider_description
         self.feedback_url = feedback_url
         self._staff = staff
+        self.push_vapid_private_key = push_vapid_private_key
+        self.push_vapid_public_key = push_vapid_public_key
 
     @property
     def staff(self):
@@ -601,30 +749,65 @@ class Settings(Object, Editable):
             'provider_description': self.provider_description,
             'feedback_url': self.feedback_url,
             'staff': [u.json(restricted) for u in self.staff] if include else self._staff,
+            'push_vapid_public_key': self.push_vapid_public_key,
             # Compatibility for favicon (deprecated since 0.13.0)
-            **({'favicon': self.icon_small} if restricted else {})
+            **({'favicon': self.icon_small} if restricted else
+               {'push_vapid_private_key': self.push_vapid_private_key})
         }
 
-class Activity(JSONRedisSequence):
-    """See :ref:`Activity`.
+class Activity(Object, JSONRedisSequence):
+    """See :ref:`Activity`."""
 
-    .. attribute:: app
+    def __init__(self, id, app, subscriber_ids, pre=None):
+        super().__init__(id, app)
+        JSONRedisSequence.__init__(self, app.r, '{}.items'.format(id), pre)
+        self.host = None
+        self._subscriber_ids = subscriber_ids
 
-       Context :class:`Application`.
-    """
-
-    def __init__(self, list_key, pre=None, app=None):
-        super().__init__(app.r, list_key, pre=pre)
-        self.app = app
+    @property
+    def subscribers(self):
+        """List of :class:`User`s who subscribed to the activity."""
+        return self.app.r.omget(self._subscriber_ids)
 
     def publish(self, event):
-        """Publish an *event* to the feed."""
-        if not self.app.user:
-            raise PermissionError()
+        """Publish an *event* to the feed.
+
+        All :attr:`subscribers`, except the user who triggered the event, are notified.
+        """
         # If the event is published to multiple activity feeds, it is stored (and overwritten)
         # multiple times, but that's acceptable for a more convenient API
         self.r.oset(event.id, event)
         self.r.lpush(self.list_key, event.id)
+        for subscriber in self.subscribers:
+            if subscriber is not event.user:
+                subscriber.notify(event)
+
+    def subscribe(self):
+        """See :http:patch:`/api/(activity-url)` (``subscribe``)."""
+        if not self.app.user:
+            raise PermissionError()
+        if not self.app.user.id in self._subscriber_ids:
+            self._subscriber_ids.append(self.app.user.id)
+        self.app.r.oset(self.host.id if self.host else self.id, self.host or self)
+
+    def unsubscribe(self):
+        """See :http:patch:`/api/(activity-url)` (``unsubscribe``)."""
+        if not self.app.user:
+            raise PermissionError()
+        try:
+            self._subscriber_ids.remove(self.app.user.id)
+        except ValueError:
+            pass
+        self.app.r.oset(self.host.id if self.host else self.id, self.host or self)
+
+    def json(self, restricted=False, include=False, slice=None):
+        # pylint: disable=arguments-differ; extension
+        return {
+            **super().json(restricted, include),
+            **({'user_subscribed': self.app.user.id in self._subscriber_ids} if restricted else
+               {'subscriber_ids': self._subscriber_ids}),
+            **({'items': event.json(True, True) for event in self[slice]} if slice else {})
+        }
 
 class Event(Object):
     """See :ref:`Event`."""
@@ -679,6 +862,7 @@ class Event(Object):
         return detail
 
     def json(self, restricted=False, include=False):
+        # pylint: disable=redefined-outer-name; good name
         json = super().json(restricted=restricted, include=include)
         json.update({
             'type': self.type,
@@ -708,12 +892,10 @@ class AuthRequest(Object):
         self._code = code
 
     def json(self, restricted=False, include=False):
-        json = super().json(restricted=restricted, include=include)
-        json.update({'email': self._email, 'code': self._code})
-        if restricted:
-            del json['email']
-            del json['code']
-        return json
+        return {
+            **super().json(restricted, include),
+            **({} if restricted else {'email': self._email, 'code': self._code})
+        }
 
 class ValueError(builtins.ValueError):
     """See :ref:`ValueError`.
@@ -757,6 +939,10 @@ class AuthenticationError(Exception):
 
 class PermissionError(Exception):
     """See :ref:`PermissionError`."""
+    pass
+
+class CommunicationError(Exception):
+    """See :ref:`CommunicationError`."""
     pass
 
 class EmailError(Exception):
