@@ -13,7 +13,12 @@ from collections import Sequence, Mapping
 from weakref import WeakValueDictionary
 from redis.exceptions import ResponseError
 
-class JSONRedis:
+from redis import StrictRedis
+from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar
+
+T = TypeVar('T')
+
+class JSONRedis(Generic[T]):
     """Extended :class:`Redis` client for convenient use with JSON objects.
 
     Objects are stored as JSON-encoded strings in the Redis database and en-/decoding is handled
@@ -49,14 +54,14 @@ class JSONRedis:
         Switch to enable / disable object caching.
     """
 
-    def __init__(self, r, encode=None, decode=None, caching=True):
-        self.r = r
+    def __init__(self, r: StrictRedis, encode=None, decode: Callable[[Any], T] = None, caching = True) -> None:
+        self.r: StrictRedis = r
         self.encode = encode
         self.decode = decode
         self.caching = caching
-        self._cache = WeakValueDictionary()
+        self._cache: WeakValueDictionary[str, T] = WeakValueDictionary()
 
-    def oget(self, key):
+    def oget(self, key: str) -> Optional[T]:
         """Return the object at *key*."""
         object = self._cache.get(key) if self.caching else None
         if not object:
@@ -66,30 +71,42 @@ class JSONRedis:
                     object = json.loads(value.decode(), object_hook=self.decode)
                 except ValueError:
                     raise ResponseError()
-                if self.caching:
+                if self.caching and object:
                     self._cache[key] = object
         return object
 
-    def oset(self, key, object):
+    def oset(self, key: str, object: T) -> None:
         """Set *key* to hold *object*."""
         if self.caching:
             self._cache[key] = object
         self.set(key, json.dumps(object, default=self.encode))
 
-    def omget(self, keys):
+    def omget(self, keys: List[str]) -> List[Optional[T]]:
         """Return a list of objects for the given *keys*."""
         # NOTE: Not atomic at the moment
         return [self.oget(k) for k in keys]
 
-    def omset(self, mapping):
+    def omset(self, mapping: Dict[str, T]) -> None:
         """Set each key in *mapping* to its corresponding object."""
         # NOTE: Not atomic at the moment
         for key, object in mapping.items():
             self.oset(key, object)
 
-    def __getattr__(self, name):
+    # TODO needed for inherited methods???
+    def __getattr__(self, name: str) -> Callable:
         # proxy
         return getattr(self.r, name)
+
+#from datetime import datetime
+#def _decode(x: Any) -> datetime:
+#    if isinstance(x, int):
+#        return datetime(x, x, x)
+#    return datetime(42, 42, 42)
+#x: JSONRedis[int] = JSONRedis(StrictRedis(), decode=_decode)
+#v = x.oget('hello')
+#if v:
+#    print(v * 3)
+#print(x.foo)
 
 class JSONRedisSequence(Sequence):
     """Read-Only list interface for JSON objects stored in Redis.

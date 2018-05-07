@@ -35,6 +35,10 @@ lint:
 	$(NPM) $(NPMFLAGS) -C client run lint
 	$(NPM) $(NPMFLAGS) -C hello run lint
 
+.PHONY: type
+type:
+	mypy micro/jsonredis.py micro/util.py micro/tests/test_util.py
+
 .PHONY: check
 check: test test-client test-ext test-ui lint
 

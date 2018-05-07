@@ -25,21 +25,23 @@ from datetime import datetime
 
 from tornado.log import LogFormatter
 
-def str_or_none(str):
+from typing import Any, Callable, Dict, NewType, Optional
+
+def str_or_none(str: str) -> Optional[str]:
     """Return *str* unmodified if it has content, otherwise return ``None``.
 
     A string is considered to have content if it contains at least one non-whitespace character.
     """
     return str if str and str.strip() else None
 
-def randstr(length=16, charset=string.ascii_lowercase):
+def randstr(length: int = 16, charset: str = string.ascii_lowercase) -> str:
     """Generate a random string.
 
     The string will have the given *length* and consist of characters from *charset*.
     """
     return ''.join(random.choice(charset) for i in range(length))
 
-def parse_isotime(isotime):
+def parse_isotime(isotime: str) -> datetime:
     """Parse an ISO 8601 time string into a naive :class:`datetime.datetime`.
 
     Note that this rudimentary parser makes bold assumptions about the format: The first six
@@ -51,7 +53,9 @@ def parse_isotime(isotime):
     except (TypeError, ValueError):
         raise ValueError('isotime_bad_format')
 
-def parse_slice(str, limit=None):
+import sys
+
+def parse_slice(str: str, limit: int = None) -> slice:
     """Parse a slice string into a :class:`slice`.
 
     The slice string *str* has the format ``start:stop``. Negative values are not supported. The
@@ -61,15 +65,17 @@ def parse_slice(str, limit=None):
     if not match:
         raise ValueError('str_bad_format')
 
-    start, stop = match.group(1), match.group(2)
-    start, stop = int(start) if start else None, int(stop) if stop else None
+    starts, stops = match.group(1), match.group(2)
+    start, stop = int(starts) if starts else None, int(stops) if stops else None
     if limit:
         if stop is None:
-            stop = float('inf')
+            stop = sys.maxsize #float('inf')
         stop = min(stop, (start or 0) + limit)
     return slice(start, stop)
 
-def check_polyglot(polyglot):
+Polyglot = NewType('Polyglot', Dict[str, str])
+
+def check_polyglot(polyglot: Polyglot) -> Polyglot:
     """Check the *polyglot* string."""
     if not all(re.fullmatch('[a-z]{2}', l) for l in polyglot):
         raise ValueError('polyglot_language_bad_format')
@@ -77,7 +83,7 @@ def check_polyglot(polyglot):
         raise ValueError('polyglot_value_empty')
     return polyglot
 
-def check_email(email):
+def check_email(email: str) -> None:
     """Check the *email* address."""
     if not str_or_none(email):
         raise ValueError('email_empty')
@@ -119,7 +125,13 @@ def setup_logging(debug=False):
     if not debug:
         getLogger('tornado.access').setLevel(logging.ERROR)
 
-def version(v):
+# TODO interesting, see Generecis > Decorators
+
+Decorator = Callable[[Callable], Callable]
+
+from mypy_extensions import KwArg, NamedArg, VarArg
+
+def version(v: int) -> Decorator: # TODO specify more specific
     """Decorator for creating a versioned function.
 
     When a versioned function is called, the implementation for the version given by an additional
@@ -130,9 +142,10 @@ def version(v):
     The returned object provides a decorator `version(v)`, which can be used to define additional
     versions.
     """
-    versions = {}
+    versions: Dict[int, Callable] = {} # TODO more specific
 
-    def _wrapper(*args, v=v, **kwargs):
+    # TODO can i be more specific?
+    def _wrapper(*args: Any, v: int = v, **kwargs: Any) -> Any:
         try:
             func = versions[v]
         except KeyError:
@@ -144,9 +157,11 @@ def version(v):
             versions[v] = func
             return _wrapper
         return _decorator
-    _wrapper.version = _version
+    # TODO
+    #_wrapper.version = _version
 
-    def _decorator(func):
+    # TODO: can i give this the alias Decorator?
+    def _decorator(func: Callable) -> Callable[[VarArg(), NamedArg(int, 'v'), KwArg()], Any]:
         versions[v] = func
         return _wrapper
     return _decorator
