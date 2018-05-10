@@ -138,13 +138,16 @@ micro.UI = class extends HTMLBodyElement {
 
         this.features = {
             es6TypedArray: "ArrayBuffer" in window,
+            serviceWorkers: "serviceWorker" in navigator,
             push: "PushManager" in window
         };
-        this.classList.toggle("micro-feature-push", this.features.push);
-        this.classList.toggle("micro-feature-es6-typed-array", this.features.es6TypedArray);
+        this.classList.add(
+            ...Object.entries(this.features)
+                .filter(([, supported]) => supported)
+                .map(([feature]) => `micro-feature-${micro.bind.dash(feature)}`));
 
         this.service = null;
-        if (this.features.push && this.features.es6TypedArray) {
+        if (this.features.push && this.features.serviceWorkers && this.features.es6TypedArray) {
             let url = document.querySelector("link[rel=service]").href;
             navigator.serviceWorker.register(url, {scope: "/"}).then(service => {
                 this.service = service;
@@ -287,7 +290,7 @@ micro.UI = class extends HTMLBodyElement {
      * - ``error``: A communication error occured
      */
     async enableDeviceNotifications() {
-        if (!(this.features.push && this.features.es6TypedArray)) {
+        if (!(this.features.push && this.features.serviceWorkers && this.features.es6TypedArray)) {
             throw new Error("features");
         }
 

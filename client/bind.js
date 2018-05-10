@@ -229,8 +229,7 @@ micro.bind.bind = function(elem, data, template = null) {
                         elem.textContent = value;
                     }
                 } else if (prop.startsWith("class") && prop !== "className") {
-                    elem.classList.toggle(
-                        prop.slice(5).replace(/(.)([A-Z])/g, "$1-$2").toLowerCase(), value);
+                    elem.classList.toggle(micro.bind.dash(prop.slice(5)), value);
                 } else {
                     elem[prop] = value;
                 }
@@ -609,6 +608,11 @@ micro.bind.join = function(elem, arr, itemName, separator = ", ", transform, ...
     }
 
     return fragment;
+};
+
+/** Convert a camel case *str* to dashed style. */
+micro.bind.dash = function(str) {
+    return str.replace(/(?!^)([A-Z])/g, "-$1").toLowerCase();
 };
 
 /** Split *arr* into chunks of the given *size*. */
