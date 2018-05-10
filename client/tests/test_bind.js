@@ -289,3 +289,10 @@ describe("transforms", function() {
         });
     });
 });
+
+describe("dash()", function() {
+    it("should convert to dashed style", function() {
+        let dashed = micro.bind.dash("OneTwoAThree");
+        expect(dashed).to.equal("one-two-a-three");
+    });
+});
