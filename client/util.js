@@ -36,7 +36,7 @@ micro.util = {};
  */
 micro.APIError = class extends Error {
     constructor(error, status) {
-        super();
+        super(error.__type__);
         this.error = error;
         this.status = status;
     }
@@ -160,22 +160,34 @@ micro.util.formatFragment = function(str, args) {
  * Watch for unhandled exceptions and report them.
  */
 micro.util.watchErrors = function() {
-    addEventListener("error", event => {
-        let type = "Error";
-        let stack = `${event.filename}:${event.lineno}`;
-        let message = event.message;
-        // Get more detail out of ErrorEvent.error, if the browser supports it
-        if (event.error) {
-            type = event.error.name;
-            stack = event.error.stack;
-            message = event.error.message;
-        }
-
-        micro.call("POST", "/log-client-error", {
-            type,
-            stack,
+    async function report(e) {
+        await micro.call("POST", "/log-client-error", {
+            type: e.name,
+            stack: e.stack,
             url: location.pathname,
-            message
+            message: e.message
         });
+    }
+    addEventListener("error", event => {
+        report(event.error ||
+               {name: "Error", stack: `${event.filename}:${event.lineno}`, message: event.message});
     });
+
+    /**
+     * Catch unhandled rejections.
+     *
+     * Use it whenever an asynchronous function / :class:`Promise`
+     *
+     * - Is called without `await`
+     * - Is passed to non-micro code
+     */
+    micro.util.catch = e => {
+        report(e);
+        throw e;
+    };
+    // NOTE: Once cross-browser support for unhandled rejection events exists, the above can be
+    // replaced with:
+    // addEventListener("unhandledrejection", event => {
+    //     report(event.reason);
+    // });
 };

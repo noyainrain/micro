@@ -42,7 +42,9 @@ micro.util.watchErrors();
  *    Subclass API: Table of notification render functions by event type.
  *
  *    A render function has the form *render(event)* and produces an :class:`Object`
- *    *{title, body, url}* from the given :ref:`Event` *event*. May return a :class:`Promise`.
+ *    *{title, body, url}* from the given :ref:`Event` *event*. May return a :class:`Promise`. If
+ *    one of the common call errors `TypeError`, `AuthenticationError`, `NotFoundError` or
+ *    `PermissionError` is thrown, no notification is displayed.
  *
  *    The key defines the event *type* (e.g. `editable-edit`) a renderer can handle, optionally
  *    augmented with event's *object* type (e.g. `editable-edit+Settings`). When rendering a
@@ -65,7 +67,17 @@ micro.service.Service = class {
         addEventListener("push", event => {
             event.waitUntil((async() => {
                 if (!this.settings) {
-                    this.settings = await micro.call("GET", "/api/settings");
+                    try {
+                        this.settings = await micro.call("GET", "/api/settings");
+                    } catch (e) {
+                        if (
+                            e instanceof TypeError ||
+                                e instanceof micro.APIError &&
+                                e.error.__type__ === "AuthenticationError") {
+                            return;
+                        }
+                        throw e;
+                    }
                 }
 
                 let ev = event.data.json();
@@ -80,16 +92,25 @@ micro.service.Service = class {
                     throw new Error("notification-renderers");
                 }
 
-                let notification = render(ev);
-                if (notification instanceof Promise) {
-                    notification = await notification;
+                try {
+                    let notification = await Promise.resolve(render(ev));
+                    await registration.showNotification(notification.title, {
+                        body: notification.body || undefined,
+                        icon: this.settings.icon_large || undefined,
+                        data: {url: notification.url}
+                    });
+                } catch (e) {
+                    if (
+                        e instanceof TypeError ||
+                            e instanceof micro.APIError &&
+                            e.error.__type__ in
+                                ["AuthenticationError", "NotFoundError", "PermissionError"]) {
+                        // Pass
+                    } else {
+                        throw e;
+                    }
                 }
-                registration.showNotification(notification.title, {
-                    body: notification.body || undefined,
-                    icon: this.settings.icon_large || undefined,
-                    data: {url: notification.url}
-                });
-            })());
+            })().catch(micro.util.catch));
         });
 
         addEventListener("notificationclick", event => {
@@ -97,12 +118,12 @@ micro.service.Service = class {
                 let windows = await clients.matchAll({type: "window"});
                 for (let client of windows) {
                     if (new URL(client.url).pathname === event.notification.data.url) {
-                        client.focus();
+                        await client.focus();
                         return;
                     }
                 }
-                clients.openWindow(event.notification.data.url);
-            })());
+                await clients.openWindow(event.notification.data.url);
+            })().catch(micro.util.catch));
         });
     }
 
