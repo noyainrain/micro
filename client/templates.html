@@ -120,16 +120,27 @@
     <i class="fa fa-user"></i><span></span>
 </template>
 
+<template id="micro-offline-page-template">
+    <h1 class="micro-icon-title"><i class="fa fa-wifi"></i></h1>
+    <p>Oops, you seem to be offline!</p>
+    <p><small>Please check your connection and try again.</small></p>
+</template>
+<style>
+    micro-offline-page {
+        text-align: center;
+    }
+</style>
+
 <template class="micro-not-found-page-template">
     <h1 class="micro-icon-title"><i class="fa fa-map-signs"></i></h1>
     <p>Oops, we have not found the page you are looking for!</p>
-    <p><small>If you've been here before, someone has deleted what was here.</small></p>
+    <p><small>If you've been here before, someone has deleted it.</small></p>
 </template>
 
 <template class="micro-forbidden-page-template">
     <h1 class="micro-icon-title"><i class="fa fa-lock"></i></h1>
     <p>Oops, you are not allowed to view this page!<p>
-    <p><small>If you've been here before, someone has revoked your permission.</small></p>
+    <p><small>If you've been here before, someone has revoked your permissions.</small></p>
 </template>
 
 <template class="micro-about-page-template">
