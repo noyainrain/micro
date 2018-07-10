@@ -1162,13 +1162,40 @@ micro.ActivityPage = class extends micro.Page {
         this.caption = "Site activity";
         this.appendChild(document.importNode(
             ui.querySelector(".micro-activity-page-template").content, true));
-        this._showMoreButton = this.querySelector("button");
-        this._showMoreButton.run = this._showMore.bind(this);
+        this._data = {
+            events: new micro.bind.Watchable([]),
+
+            formatDate(ctx, time) {
+                return new Date(time).toLocaleString("en", micro.SHORT_DATE_TIME_FORMAT);
+            },
+
+            renderEvent(ctx, event) {
+                return ui.renderEvent[event.type](event);
+            },
+
+            showMore: this._showMore.bind(this)
+        };
+        micro.bind.bind(this.children, this._data);
+
         this._start = 0;
     }
 
     attachedCallback() {
-        this._showMoreButton.trigger().catch(micro.util.catch);
+        this.querySelector("button").trigger().catch(micro.util.catch);
+        this.stream = new EventSource("/api/activity/v2/stream");
+        // TODO unsubscribe
+        this.stream.addEventListener("open", event => {
+            console.log("open", event);
+        });
+        this.stream.addEventListener("error", event => {
+            console.log("error", event);
+        });
+        this.stream.addEventListener("message", event => {
+            console.log("message", event);
+            let e = JSON.parse(event.data);
+            ui.dispatchEvent(new CustomEvent(e.type, {detail: e}));
+            this._data.events.unshift(e);
+        });
     }
 
     async _showMore() {
@@ -1179,18 +1206,7 @@ micro.ActivityPage = class extends micro.Page {
             ui.handleCallError(e);
             return;
         }
-
-        let ul = this.querySelector(".micro-timeline");
-        for (let event of events) {
-            let li = document.createElement("li");
-            let time = document.createElement("time");
-            time.dateTime = event.time;
-            time.textContent =
-                new Date(event.time).toLocaleString("en", micro.SHORT_DATE_TIME_FORMAT);
-            li.appendChild(time);
-            li.appendChild(ui.renderEvent[event.type](event));
-            ul.appendChild(li);
-        }
+        this._data.events.splice(this._start, 0, ...events);
         this.classList.toggle("micro-activity-all", events.length < micro.LIST_LIMIT);
         this._start += micro.LIST_LIMIT;
     }

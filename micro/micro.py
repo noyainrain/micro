@@ -124,7 +124,7 @@ class Application:
     @property
     def activity(self) -> 'Activity':
         """Global :class:`Activity` feed."""
-        activity = self.r.oget('Activity', default=AssertionError, expect=expect_type(Activity))
+        activity = self.r.oget('Activity', default=KeyError, expect=expect_type(Activity))
         activity.pre = self.check_user_is_staff
         return activity
 
@@ -775,33 +775,37 @@ class Settings(Object, Editable):
                {'push_vapid_private_key': self.push_vapid_private_key})
         }
 
-class Activity(Object, JSONRedisSequence):
+class Activity(Object, JSONRedisSequence['Event', JSONifiable]):
     """See :ref:`Activity`."""
 
     def __init__(self, id: str, app: Application, subscriber_ids: List[str],
                  pre: Callable[[], None] = None) -> None:
         super().__init__(id, app)
-        JSONRedisSequence.__init__(self, app.r, '{}.items'.format(id), pre)
+        JSONRedisSequence.__init__(self, app.r, '{}.items'.format(id), pre, expect_type(Event))
         self.host = None
         self._subscriber_ids = subscriber_ids
+        self._live_subscribers = [] # type: List[Callable[[Event], None]]
 
     @property
-    def subscribers(self):
+    def subscribers(self) -> List[User]:
         """List of :class:`User`s who subscribed to the activity."""
-        return self.app.r.omget(self._subscriber_ids)
+        return self.app.r.omget(self._subscriber_ids, default=KeyError, expect=expect_type(User))
 
-    def publish(self, event):
+    def publish(self, event: 'Event') -> None:
         """Publish an *event* to the feed.
 
         All :attr:`subscribers`, except the user who triggered the event, are notified.
         """
         # If the event is published to multiple activity feeds, it is stored (and overwritten)
         # multiple times, but that's acceptable for a more convenient API
+        print('publish', self, self._live_subscribers)
         self.r.oset(event.id, event)
         self.r.lpush(self.list_key, event.id)
         for subscriber in self.subscribers:
             if subscriber is not event.user:
-                subscriber.notify(event)
+                subscriber.notify(event) # type: ignore
+        for notify in self._live_subscribers:
+            notify(event)
 
     def subscribe(self):
         """See :http:patch:`/api/(activity-url)` (``subscribe``)."""
@@ -820,6 +824,10 @@ class Activity(Object, JSONRedisSequence):
         except ValueError:
             pass
         self.app.r.oset(self.host.id if self.host else self.id, self.host or self)
+
+    def subscribe_live(self, notify: Callable[['Event'], None]) -> None:
+        self._live_subscribers.append(notify)
+        print('subscribe', self, self._live_subscribers)
 
     def json(self, restricted=False, include=False, slice=None):
         # pylint: disable=arguments-differ; extension
@@ -863,42 +871,46 @@ class Event(Object):
         self._detail = detail
 
     @property
-    def object(self):
+    def object(self) -> Optional[Object]:
         # pylint: disable=missing-docstring; already documented
-        return self.app.r.oget(self._object_id) if self._object_id else None
+        return (self.app.r.oget(self._object_id, default=KeyError, expect=expect_type(Object))
+                if self._object_id else None)
 
     @property
-    def user(self):
+    def user(self) -> User:
         # pylint: disable=missing-docstring; already documented
         return self.app.users[self._user_id]
 
     @property
-    def detail(self):
+    def detail(self) -> Dict[str, '__builtins__.object']:
         # pylint: disable=missing-docstring; already documented
         detail = {}
         for key, value in self._detail.items():
             if key.endswith('_id'):
                 key = key[:-3]
-                value = self.app.r.oget(value)
+                assert isinstance(value, str)
+                value = self.app.r.oget(value, default=ReferenceError)
             detail[key] = value
         return detail
 
-    def json(self, restricted=False, include=False):
+    def json(self, restricted: bool = False,
+             include: bool = False) -> Dict[str, '__builtins__.object']:
         # pylint: disable=redefined-outer-name; good name
-        json = super().json(restricted=restricted, include=include)
-        json.update({
+        return {
+            **super().json(restricted, include),
             'type': self.type,
-            'object': self._object_id,
-            'user': self._user_id,
             'time': self.time.isoformat() + 'Z' if self.time else None,
-            'detail': self._detail
-        })
-        if include:
-            json['object'] = self.object.json(restricted=restricted) if self.object else None
-            json['user'] = self.user.json(restricted=restricted)
-            json['detail'] = {k: v.json(restricted=restricted) if isinstance(v, Object) else v
-                              for k, v in self.detail.items()}
-        return json
+            **({
+                'object': self.object.json(restricted) if self.object else None,
+                'user': self.user.json(restricted),
+                'detail': {k: v.json(restricted) if isinstance(v, Object) else v
+                           for k, v in self.detail.items()}
+            } if include else {
+                'object': self._object_id,
+                'user': self._user_id,
+                'detail': self._detail
+            })
+        }
 
     def __str__(self) -> str:
         return '<{} {} on {} by {}>'.format(type(self).__name__, self.type, self._object_id,

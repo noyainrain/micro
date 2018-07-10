@@ -32,17 +32,19 @@ from mypy_extensions import VarArg
 from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
 from tornado.template import DictLoader, Loader, filter_whitespace
-from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
+from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler, asynchronous
 
 from . import micro, templates
 from .micro import ( # pylint: disable=unused-import; type checking
     AuthRequest, Object, InputError, AuthenticationError, CommunicationError, PermissionError, User,
-    JSONifiable, Activity)
+    JSONifiable, Activity, Event)
 from .util import str_or_none, parse_slice, check_polyglot
 
 if typing.TYPE_CHECKING:
     # pylint: disable=no-name-in-module, unused-import; type checking
     from tornado.web import Handler
+
+GetActivityFunc = Callable[[VarArg(str)], Activity]
 
 LIST_LIMIT = 100
 SLICE_URL = r'(?:/(\d*:\d*))?'
@@ -132,7 +134,7 @@ class Server:
             (r'/api/users/([^/]+)/remove-email$', _UserRemoveEmailEndpoint),
             (r'/api/settings$', _SettingsEndpoint),
             # Compatibility with non-object Activity (deprecated since 0.14.0)
-            make_activity_endpoint(r'/api/activity/v2', lambda *args: self.app.activity),
+            *make_activity_endpoints(r'/api/activity/v2', lambda *args: self.app.activity),
             *make_list_endpoints(r'/api/activity(?:/v1)?', lambda *args: self.app.activity),
             *handlers
         ]
@@ -182,7 +184,7 @@ class Endpoint(RequestHandler):
     """
     current_user = None # type: User
 
-    def initialize(self) -> None:
+    def initialize(self, **kwargs: object) -> None:
         self.server = cast(Dict[str, Server], self.application.settings)['server']
         self.app = self.server.app
         self.args = {} # type: Dict[str, object]
@@ -314,13 +316,16 @@ def make_orderable_endpoints(url, get_collection):
     """
     return [(url + r'/move$', _OrderableMoveEndpoint, {'get_collection': get_collection})]
 
-def make_activity_endpoint(url: str, get_activity: Callable[[VarArg(str)], Activity]) -> 'Handler':
+def make_activity_endpoints(url: str, get_activity: GetActivityFunc) -> 'List[Handler]':
     """Make an API endpoint for an :class:`Activity` at *url*.
 
     *get_activity* is a function of the form *get_activity(*args)*, responsible for retrieving the
     activity. *args* are the URL arguments.
     """
-    return (r'{}{}$'.format(url, SLICE_URL), _ActivityEndpoint, {'get_activity': get_activity})
+    return [
+        (r'{}{}$'.format(url, SLICE_URL), _ActivityEndpoint, {'get_activity': get_activity}),
+        (r'{}/stream$'.format(url), _ActivityStreamEndpoint, {'get_activity': get_activity})
+    ]
 
 class _Static(StaticFileHandler):
     def set_extra_headers(self, path):
@@ -534,3 +539,23 @@ class _ActivityEndpoint(Endpoint):
         activity = self.get_activity(*args)
         activity.unsubscribe()
         self.write(activity.json(restricted=True, include=True))
+
+class _ActivityStreamEndpoint(Endpoint):
+    def initialize(self, get_activity: GetActivityFunc) -> None: # type: ignore
+        super().initialize()
+        self.get_activity = get_activity
+        self._activity = None
+
+    @asynchronous
+    def get(self, *args: str) -> None:
+        print('stream get', args)
+        self._activity = self.get_activity(*args)
+        self.set_header('Content-Type', 'text/event-stream')
+        self.flush()
+
+        def _event(event: Event) -> None:
+            print('stream event', event, self._activity)
+            # TODO pass user to json()
+            self.write('data: {}\n\n'.format(json.dumps(event.json(restricted=True, include=True))))
+            self.flush()
+        self._activity.subscribe_live(_event)
