@@ -48,6 +48,7 @@ class NotificationTest(MicroTestCase):
     @gen_test(timeout=20)
     async def test_notify_invalid_push_subscription(self):
         await self.user.enable_device_notifications(self.push_subscription)
+        self.app.login()
         self.user.push_subscription = 'foo'
         self.user.notify(Event.create('test', None, app=self.app))
         await moment
@@ -78,7 +79,7 @@ class NotificationTest(MicroTestCase):
     @gen_test(timeout=20)
     async def test_disable_device_notifications(self):
         await self.user.enable_device_notifications(self.push_subscription)
-        self.user.disable_device_notifications()
+        self.user.disable_device_notifications(self.user)
         self.assertEqual(self.user.device_notification_status, 'off')
 
 CONFIG_TEMPLATE = """\

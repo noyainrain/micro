@@ -25,6 +25,8 @@ from logging import getLogger
 import os
 import re
 from smtplib import SMTP
+from typing import ( # pylint: disable=unused-import; type checking
+    Callable, Dict, List, Optional, Type, Union, cast)
 from urllib.parse import urlparse
 
 from pywebpush import WebPusher, WebPushException
@@ -34,11 +36,22 @@ from redis import StrictRedis
 from redis.exceptions import ResponseError
 from tornado.httpclient import AsyncHTTPClient, HTTPError
 from tornado.ioloop import IOLoop
+from typing_extensions import Protocol
 
-from micro.jsonredis import JSONRedis, JSONRedisSequence, JSONRedisMapping
+from micro.jsonredis import JSONRedis, JSONRedisSequence, JSONRedisMapping, expect_type
 from .util import check_email, randstr, parse_isotime, str_or_none, version
 
 _PUSH_TTL = 24 * 60 * 60
+
+class JSONifiable(Protocol):
+    """TODO."""
+    def __init__(self, **kwargs: object) -> None:
+        # pylint: disable=super-init-not-called; protocol
+        pass
+
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
+        """TODO."""
+        pass
 
 class Application:
     """Social micro web app.
@@ -74,8 +87,9 @@ class Application:
        :class:`Redis` database. More precisely a :class:`JSONRedis` instance.
     """
 
-    def __init__(self, redis_url='', email='bot@localhost', smtp_url='',
-                 render_email_auth_message=None):
+    def __init__(
+            self, redis_url: str = '', email: str = 'bot@localhost', smtp_url: str = '',
+            render_email_auth_message: 'Callable[[str, AuthRequest, str], str]' = None) -> None:
         check_email(email)
         try:
             # pylint: disable=pointless-statement; port errors are only triggered on access
@@ -85,10 +99,9 @@ class Application:
 
         self.redis_url = redis_url
         try:
-            self.r = StrictRedis.from_url(self.redis_url)
+            self.r = JSONRedis(StrictRedis.from_url(self.redis_url), self._encode, self._decode)
         except builtins.ValueError:
             raise ValueError('redis_url_invalid')
-        self.r = JSONRedis(self.r, self._encode, self._decode)
 
         self.types = {
             'User': User,
@@ -96,9 +109,9 @@ class Application:
             'Activity': Activity,
             'Event': Event,
             'AuthRequest': AuthRequest
-        }
+        } # type: Dict[str, Type[JSONifiable]]
         self.user = None
-        self.users = JSONRedisMapping(self.r, 'users')
+        self.users = JSONRedisMapping(self.r, 'users', expect_type(User))
         self.email = email
         self.smtp_url = smtp_url
         self.render_email_auth_message = render_email_auth_message
@@ -109,9 +122,9 @@ class Application:
         return self.r.oget('Settings')
 
     @property
-    def activity(self):
+    def activity(self) -> 'Activity':
         """Global :class:`Activity` feed."""
-        activity = self.r.oget('Activity')
+        activity = self.r.oget('Activity', default=AssertionError, expect=expect_type(Activity))
         activity.pre = self.check_user_is_staff
         return activity
 
@@ -255,26 +268,28 @@ class Application:
             raise object
         return object
 
-    def check_user_is_staff(self):
+    def check_user_is_staff(self) -> None:
         """Check if the current :attr:`user` is a staff member."""
         # pylint: disable=protected-access; Settings is a friend
         if not (self.user and self.user.id in self.settings._staff):
             raise PermissionError()
 
     @staticmethod
-    def _encode(object):
+    def _encode(object: JSONifiable) -> Dict[str, object]:
         try:
             return object.json()
         except AttributeError:
             raise TypeError()
 
-    def _decode(self, json):
+    def _decode(self, json: Dict[str, object]) -> Union[JSONifiable, Dict[str, object]]:
         # pylint: disable=redefined-outer-name; good name
         try:
-            type = json.pop('__type__')
+            type_name = json.pop('__type__')
         except KeyError:
             return json
-        type = self.types[type]
+        if not isinstance(type_name, str):
+            return json
+        type = self.types[type_name]
         # Compatibility for Settings without icon_large (deprecated since 0.13.0)
         if issubclass(type, Settings):
             json['v'] = 2
@@ -306,11 +321,11 @@ class Object:
        Context :class:`Application`.
     """
 
-    def __init__(self, id, app):
+    def __init__(self, id: str, app: Application) -> None:
         self.id = id
         self.app = app
 
-    def json(self, restricted=False, include=False):
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
         """Return a JSON object representation of the object.
 
         The name of the object type is included as ``__type__``.
@@ -325,8 +340,11 @@ class Object:
         """
         # pylint: disable=unused-argument; part of subclass API
         # Compatibility for trashed (deprecated since 0.6.0)
-        return {'__type__': type(self).__name__, 'id': self.id,
-                **({'trashed': False} if restricted else {})}
+        return {
+            '__type__': type(self).__name__,
+            'id': self.id,
+            **({'trashed': False} if restricted else {})
+        }
 
     def __repr__(self):
         return '<{}>'.format(self.id)
@@ -334,15 +352,18 @@ class Object:
 class Editable:
     """:class:`Object` that can be edited."""
     # pylint: disable=no-member; mixin
+    app = None # type: Application
 
-    def __init__(self, authors, activity=None):
+    def __init__(self, authors: List[str], activity: 'Activity' = None) -> None:
         self._authors = authors
         self.__activity = activity
 
     @property
-    def authors(self):
+    def authors(self) -> List['User']:
         # pylint: disable=missing-docstring; already documented
-        return self.app.r.omget(self._authors)
+        authors = self.app.r.omget(self._authors)
+        assert all(isinstance(author, User) for author in authors)
+        return cast(List[User], authors)
 
     def edit(self, **attrs):
         """See :http:post:`/api/(object-url)`."""
@@ -370,7 +391,7 @@ class Editable:
         """
         raise NotImplementedError()
 
-    def json(self, restricted=False, include=False):
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
         """Subclass API: Return a JSON object representation of the editable part of the object."""
         return {'authors': [a.json(restricted) for a in self.authors] if include else self._authors}
 
@@ -456,8 +477,10 @@ class Orderable:
 class User(Object, Editable):
     """See :ref:`User`."""
 
-    def __init__(self, id, app, authors, name, email, auth_secret, device_notification_status,
-                 push_subscription):
+    def __init__(
+            self, id: str, app: Application, authors: List[str], name: str, email: str,
+            auth_secret: str, device_notification_status: str,
+            push_subscription: Optional[str]) -> None:
         super().__init__(id, app)
         Editable.__init__(self, authors=authors)
         self.name = name
@@ -552,16 +575,13 @@ class User(Object, Editable):
         self.push_subscription = push_subscription
         self.app.r.oset(self.id, self)
 
-    def disable_device_notifications(self, reason=None):
-        """See :http:patch:`/api/users/(id)` (``disable_device_notifications``).
-
-        *reason* is either ``None`` or ``expired``, which determines the resulting
-        :attr:`device_notification_status`.
-        """
-        if self.app.user != self:
+    def disable_device_notifications(self, user: Optional['User']) -> None:
+        """See :http:patch:`/api/users/(id)` (``disable_device_notifications``)."""
+        if user != self:
             raise PermissionError()
-        if reason not in [None, 'expired']:
-            raise ValueError('reason_unknown')
+        self._disable_device_notifications()
+
+    def _disable_device_notifications(self, reason: str = None) -> None:
         self.device_notification_status = 'off.{}'.format(reason) if reason else 'off'
         self.push_subscription = None
         self.app.r.oset(self.id, self)
@@ -578,7 +598,7 @@ class User(Object, Editable):
         if 'name' in attrs:
             self.name = attrs['name']
 
-    def json(self, restricted=False, include=False):
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
         """See :meth:`Object.json`."""
         return {
             **super().json(restricted, include),
@@ -620,7 +640,7 @@ class User(Object, Editable):
             if isinstance(e, ValueError):
                 if e.code != 'push_subscription_invalid':
                     raise e
-                self.disable_device_notifications(reason='expired')
+                self._disable_device_notifications(reason='expired')
             getLogger(__name__).error('Failed to deliver notification: %s', str(e))
 
     async def _send_device_notification(self, push_subscription, event):
@@ -680,7 +700,7 @@ class Settings(Object, Editable):
         self.__init__(id, app, authors, title, icon, icon_small, icon_large, provider_name,
                       provider_url, provider_description, feedback_url, staff, v=2)
 
-    @__init__.version(2)
+    @__init__.version(2) # type: ignore
     def __init__(
             self, id, app, authors, title, icon, icon_small, icon_large, provider_name,
             provider_url, provider_description, feedback_url, staff, push_vapid_private_key=None,
@@ -758,7 +778,8 @@ class Settings(Object, Editable):
 class Activity(Object, JSONRedisSequence):
     """See :ref:`Activity`."""
 
-    def __init__(self, id, app, subscriber_ids, pre=None):
+    def __init__(self, id: str, app: Application, subscriber_ids: List[str],
+                 pre: Callable[[], None] = None) -> None:
         super().__init__(id, app)
         JSONRedisSequence.__init__(self, app.r, '{}.items'.format(id), pre)
         self.host = None
@@ -832,7 +853,8 @@ class Event(Object):
             id='Event:' + randstr(), type=type, object=object.id if object else None,
             user=app.user.id, time=datetime.utcnow().isoformat() + 'Z', detail=transformed, app=app)
 
-    def __init__(self, id, type, object, user, time, detail, app):
+    def __init__(self, id: str, type: str, object: str, user: str, time: str,
+                 detail: Dict[str, object], app: Application) -> None:
         super().__init__(id, app)
         self.type = type
         self.time = parse_isotime(time) if time else None
@@ -878,7 +900,7 @@ class Event(Object):
                               for k, v in self.detail.items()}
         return json
 
-    def __str__(self):
+    def __str__(self) -> str:
         return '<{} {} on {} by {}>'.format(type(self).__name__, self.type, self._object_id,
                                             self._user_id)
     __repr__ = __str__
@@ -886,7 +908,7 @@ class Event(Object):
 class AuthRequest(Object):
     """See :ref:`AuthRequest`."""
 
-    def __init__(self, id, app, email, code):
+    def __init__(self, id: str, app: Application, email: str, code: str) -> None:
         super().__init__(id, app)
         self._email = email
         self._code = code

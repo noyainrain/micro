@@ -23,17 +23,26 @@ import json
 from logging import getLogger
 import os
 import re
+import typing
+from typing import ( # pylint: disable=unused-import; type checking
+    Callable, Dict, List, Sequence, cast)
 from urllib.parse import urlparse
 
+from mypy_extensions import VarArg
 from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
 from tornado.template import DictLoader, Loader, filter_whitespace
 from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
 
 from . import micro, templates
-from .micro import (AuthRequest, Object, InputError, AuthenticationError, CommunicationError,
-                    PermissionError)
+from .micro import ( # pylint: disable=unused-import; type checking
+    AuthRequest, Object, InputError, AuthenticationError, CommunicationError, PermissionError, User,
+    JSONifiable, Activity)
 from .util import str_or_none, parse_slice, check_polyglot
+
+if typing.TYPE_CHECKING:
+    # pylint: disable=no-name-in-module, unused-import; type checking
+    from tornado.web import Handler
 
 LIST_LIMIT = 100
 SLICE_URL = r'(?:/(\d*:\d*))?'
@@ -83,8 +92,11 @@ class Server:
 
        See ``--debug`` command line option.
     """
-    def __init__(self, app, handlers, port=8080, url=None, client_path='client',
-                 client_modules_path='.', client_service_path=None, debug=False):
+
+    def __init__(
+            self, app: micro.Application, handlers: 'Sequence[Handler]', port: int = 8080,
+            url: str = None, client_path: str = 'client', client_modules_path: str = '.',
+            client_service_path: str = None, debug: bool = False) -> None:
         url = url or 'http://localhost:{}'.format(port)
         try:
             urlparts = urlparse(url)
@@ -92,7 +104,7 @@ class Server:
             raise ValueError('url_invalid')
         not_allowed = {'username', 'password', 'path', 'params', 'query', 'fragment'}
         if not (urlparts.scheme in {'http', 'https'} and urlparts.hostname and
-                not any(getattr(urlparts, k) for k in not_allowed)):
+                not any(cast(object, getattr(urlparts, k)) for k in not_allowed)):
             raise ValueError('url_invalid')
 
         self.app = app
@@ -168,17 +180,18 @@ class Endpoint(RequestHandler):
 
        Dictionary of JSON arguments passed by the client.
     """
+    current_user = None # type: User
 
-    def initialize(self):
-        self.server = self.application.settings['server']
+    def initialize(self) -> None:
+        self.server = cast(Dict[str, Server], self.application.settings)['server']
         self.app = self.server.app
-        self.args = {}
+        self.args = {} # type: Dict[str, object]
 
     def prepare(self):
         self.app.user = None
         auth_secret = self.get_cookie('auth_secret')
         if auth_secret:
-            self.app.authenticate(auth_secret)
+            self.current_user = self.app.authenticate(auth_secret)
 
         if self.request.body:
             try:
@@ -271,7 +284,7 @@ class Endpoint(RequestHandler):
 
         return args
 
-def make_list_endpoints(url, get_list):
+def make_list_endpoints(url: str, get_list: Callable[[VarArg(str)], Sequence[JSONifiable]]) -> 'List[Handler]':
     """Make the API endpoints for a list with support for slicing.
 
     *url* is the URL of the list.
@@ -301,7 +314,7 @@ def make_orderable_endpoints(url, get_collection):
     """
     return [(url + r'/move$', _OrderableMoveEndpoint, {'get_collection': get_collection})]
 
-def make_activity_endpoint(url, get_activity):
+def make_activity_endpoint(url: str, get_activity: Callable[[VarArg(str)], Activity]) -> 'Handler':
     """Make an API endpoint for an :class:`Activity` at *url*.
 
     *get_activity* is a function of the form *get_activity(*args)*, responsible for retrieving the
@@ -444,10 +457,10 @@ class _UserEndpoint(Endpoint):
         await user.enable_device_notifications(**args)
         self.write(user.json(restricted=True))
 
-    def patch_disable_notifications(self, id):
+    def patch_disable_notifications(self, id: str) -> None:
         # pylint: disable=missing-docstring; private
         user = self.app.users[id]
-        user.disable_device_notifications()
+        user.disable_device_notifications(self.current_user)
         self.write(user.json(restricted=True))
 
 class _UserSetEmailEndpoint(Endpoint):

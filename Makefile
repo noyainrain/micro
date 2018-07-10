@@ -29,6 +29,10 @@ watch-test:
 watch-test-client:
 	$(NPM) $(NPMFLAGS) -C client run watch-test
 
+.PHONY: type
+type:
+	mypy -m micro -m micro.server
+
 .PHONY: lint
 lint:
 	pylint -j 0 micro hello/hello.py
