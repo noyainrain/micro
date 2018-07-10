@@ -29,6 +29,10 @@ watch-test:
 watch-test-client:
 	$(NPM) $(NPMFLAGS) -C client run watch-test
 
+.PHONY: type
+type:
+	mypy -m micro.micro -m micro.server -m micro.jsonredis
+
 .PHONY: lint
 lint:
 	pylint -j 0 micro hello/hello.py
@@ -36,7 +40,7 @@ lint:
 	$(NPM) $(NPMFLAGS) -C hello run lint
 
 .PHONY: check
-check: test test-client test-ext test-ui lint
+check: type test test-client test-ext test-ui lint
 
 .PHONY: deps
 deps:
@@ -86,8 +90,9 @@ help:
 	@echo "                 SUBJECT:       Text included in subject of remote tests"
 	@echo "watch-test:      Watch source files and run all unit tests on change"
 	@echo "watch-test-client: Watch client source files and run all unit tests on change"
+	@echo "type:            Type check the code"
 	@echo "lint:            Lint and check the style of the code"
-	@echo "check:           Run all code quality checks (test and lint)"
+	@echo "check:           Run all code quality checks (type, test and lint)"
 	@echo "deps:            Update the dependencies"
 	@echo "deps-dev:        Update the development dependencies"
 	@echo "show-deprecated: Show deprecated code ready for removal (deprecated for at"

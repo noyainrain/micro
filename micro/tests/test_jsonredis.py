@@ -21,9 +21,16 @@ class JSONRedisTestCase(TestCase):
         self.r.flushdb()
 
 class JSONRedisTest(JSONRedisTestCase):
-    def test_oset_oget(self):
+    def setup_data(self, cache=True):
         cat = Cat('cat:0', 'Happy')
-        self.r.oset('cat:0', cat)
+        if cache:
+            self.r.oset(cat.id, cat)
+        else:
+            self.r.set(cat.id, json.dumps(Cat.encode(cat)))
+        return cat
+
+    def test_oset_oget(self):
+        cat = self.setup_data()
         got_cat = self.r.oget('cat:0')
         self.assertIsInstance(got_cat, Cat)
         self.assertEqual(got_cat, cat)
@@ -32,23 +39,21 @@ class JSONRedisTest(JSONRedisTestCase):
     def test_oset_oget_caching_disabled(self):
         self.r.caching = False
 
-        cat = Cat('cat:0', 'Happy')
-        self.r.oset('cat:0', cat)
+        cat = self.setup_data()
         got_cat = self.r.oget('cat:0')
         self.assertIsInstance(got_cat, Cat)
         self.assertEqual(got_cat, cat)
         self.assertNotEqual(got_cat.instance_id, cat.instance_id)
 
     def test_oget_object_destroyed(self):
-        cat = Cat('cat:0', 'Happy')
-        self.r.oset('cat:0', cat)
+        cat = self.setup_data()
         destroyed_instance_id = cat.instance_id
         del cat
         got_cat = self.r.oget('cat:0')
         self.assertNotEqual(got_cat.instance_id, destroyed_instance_id)
 
     def test_oget_cache_empty(self):
-        self.r.set('cat:0', json.dumps(Cat.encode(Cat('cat:0', 'Happy'))))
+        self.setup_data(cache=False)
 
         got_cat = self.r.oget('cat:0')
         same_cat = self.r.oget('cat:0')
@@ -56,7 +61,7 @@ class JSONRedisTest(JSONRedisTestCase):
         self.assertEqual(same_cat.instance_id, got_cat.instance_id)
 
     def test_oget_cache_empty_caching_disabled(self):
-        self.r.set('cat:0', json.dumps(Cat.encode(Cat('cat:0', 'Happy'))))
+        self.setup_data(cache=False)
         self.r.caching = False
 
         got_cat = self.r.oget('cat:0')
@@ -71,6 +76,18 @@ class JSONRedisTest(JSONRedisTestCase):
         self.r.set('not-json', 'not-json')
         with self.assertRaises(ResponseError):
             self.r.oget('not-json')
+
+    def test_oget_default(self):
+        cat = self.setup_data()
+        self.assertEqual(self.r.oget(cat.id, default=Cat('cat', 'Default')), cat)
+
+    def test_oget_default_missing_key(self):
+        cat = Cat('cat', 'Default')
+        self.assertEqual(self.r.oget('foo', default=cat), cat)
+
+    def test_oget_default_exception_missing_key(self):
+        with self.assertRaises(KeyError):
+            self.r.oget('foo', default=KeyError)
 
     def test_omget_omset(self):
         cats = {'cat:0': Cat('cat:0', 'Happy'), 'cat:1': Cat('cat:1', 'Grumpy')}
