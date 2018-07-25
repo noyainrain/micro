@@ -290,3 +290,50 @@
         </li>
     </ul>
 </template>
+<style>
+    /*.micro-modified {
+        position: relative;
+    }
+
+    .micro-modified::before {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        content: '';
+        transform: translateY(-50%);
+        width: var(--micro-size-s);
+        height: var(--micro-size-s);
+        animation: modified 1s ease;
+        border-radius: var(--micro-size-s);
+        background: var(--micro-color-primary);
+        z-index: 2;
+    }
+
+    @keyframes modified {
+        from {
+            opacity: 1;
+        }
+
+        to {
+            opacity: 0;
+            transform: scale(4);
+        }
+    }*/
+
+    .micro-modified {
+        animation: modified 1s ease;
+        z-index: 2;
+    }
+
+    @keyframes modified {
+        from {
+            box-shadow: 0 0 0 0 #08ff;
+            box-shadow: 0 0 0 0 #77c0ffff;
+        }
+
+        to {
+            box-shadow: 0 0 0 var(--micro-size-s) #08f0;
+            box-shadow: 0 0 0 var(--micro-size-s) #77c0ff00;
+        }
+    }
+</style>

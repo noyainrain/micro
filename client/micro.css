@@ -14,6 +14,8 @@ html {
     --micro-color-secondary: #f80;
     --micro-color-mono-shade: #545454; /* Lightness: primary-shade */
     --micro-focus-shadow: inset 0 0 0 1px var(--micro-color-primary-tint);
+    --micro-size-m: 1.5rem;
+    --micro-size-s: 0.75rem;
 }
 
 /* ---- General ---- */

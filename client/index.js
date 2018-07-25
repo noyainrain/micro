@@ -1194,7 +1194,9 @@ micro.ActivityPage = class extends micro.Page {
             console.log("message", event);
             let e = JSON.parse(event.data);
             ui.dispatchEvent(new CustomEvent(e.type, {detail: e}));
+
             this._data.events.unshift(e);
+            animate(this.querySelector(".micro-timeline li:first-child"));
         });
     }
 
@@ -1209,8 +1211,15 @@ micro.ActivityPage = class extends micro.Page {
         this._data.events.splice(this._start, 0, ...events);
         this.classList.toggle("micro-activity-all", events.length < micro.LIST_LIMIT);
         this._start += micro.LIST_LIMIT;
+
+        animate(this.querySelector(".micro-timeline li:first-child"));
     }
 };
+
+function animate(elem) {
+    elem.classList.add("micro-modified");
+    elem.addEventListener("animationend", () => elem.classList.remove("micro-modified"));
+}
 
 document.registerElement("micro-ui", {prototype: micro.UI.protoype, extends: "body"});
 document.registerElement("micro-simple-notification", micro.SimpleNotification);
