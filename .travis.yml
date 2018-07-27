@@ -11,6 +11,7 @@ install:
     - make deps
     - make deps-dev
 script:
+    - make type
     - make test
     - make test-ext
     # Skip code style checks if WIP is indicated

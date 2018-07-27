@@ -16,16 +16,17 @@
 
 import argparse
 from argparse import ArgumentParser
+from datetime import datetime
 import logging
 from logging import StreamHandler, getLogger
+import random
 import re
 import string
-import random
-from datetime import datetime
+from typing import Optional
 
 from tornado.log import LogFormatter
 
-def str_or_none(str):
+def str_or_none(str: str) -> Optional[str]:
     """Return *str* unmodified if it has content, otherwise return ``None``.
 
     A string is considered to have content if it contains at least one non-whitespace character.
@@ -39,7 +40,7 @@ def randstr(length=16, charset=string.ascii_lowercase):
     """
     return ''.join(random.choice(charset) for i in range(length))
 
-def parse_isotime(isotime):
+def parse_isotime(isotime: str) -> datetime:
     """Parse an ISO 8601 time string into a naive :class:`datetime.datetime`.
 
     Note that this rudimentary parser makes bold assumptions about the format: The first six
@@ -47,7 +48,10 @@ def parse_isotime(isotime):
     Everything else, i.e. microsecond and time zone information, is ignored.
     """
     try:
-        return datetime(*(int(t) for t in re.split(r'\D', isotime)[:6]))
+        values = [int(t) for t in re.split(r'\D', isotime)[:6]]
+        year, month, day = values[:3]
+        hour, minute, second = (values[3:] + [0, 0, 0])[:3]
+        return datetime(year, month, day, hour, minute, second)
     except (TypeError, ValueError):
         raise ValueError('isotime_bad_format')
 
@@ -77,7 +81,7 @@ def check_polyglot(polyglot):
         raise ValueError('polyglot_value_empty')
     return polyglot
 
-def check_email(email):
+def check_email(email: str) -> None:
     """Check the *email* address."""
     if not str_or_none(email):
         raise ValueError('email_empty')

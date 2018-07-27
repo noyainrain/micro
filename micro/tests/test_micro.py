@@ -115,7 +115,7 @@ class ApplicationUpdateTest(AsyncTestCase):
         # Update to version 3
         self.assertFalse(app.settings.provider_description)
         # Update to version 4
-        self.assertFalse(hasattr(app.settings, 'trashed'))
+        self.assertNotIn('trashed', app.settings.json())
         self.assertFalse(app.r.oget('Cat').trashed)
         # Update to version 5
         self.assertFalse(hasattr(app.settings, 'favicon'))

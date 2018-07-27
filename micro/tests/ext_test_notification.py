@@ -49,6 +49,7 @@ class NotificationTest(MicroTestCase):
     async def test_notify_invalid_push_subscription(self):
         await self.user.enable_device_notifications(self.push_subscription)
         self.user.push_subscription = 'foo'
+        self.app.login()
         self.user.notify(Event.create('test', None, app=self.app))
         await moment
         self.assertEqual(self.user.device_notification_status, 'off.expired')

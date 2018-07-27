@@ -1,0 +1,9 @@
+from typing import Dict
+
+class Loader:
+    def __init__(self, root_directory: str, **kwargs: object) -> None: ...
+
+class DictLoader:
+    def __init__(self, dict: Dict[str, str], **kwargs: object) -> None: ...
+
+def filter_whitespace(mode: str, text: str) -> str: ...

@@ -6,14 +6,27 @@
 """Extended :class:`Redis` client for convinient use with JSON objects.
 
 Also includes :class:`JSONRedisMapping`, an utility map interface for JSON objects.
+
+.. data:: ExpectFunc
+
+   Function of the form `expect(obj: T) -> U` which asserts that an object *obj* is of a certain
+   type *U* and raises a :exc:`TypeError` if not.
 """
 
 import json
-from collections import Sequence, Mapping
+from typing import (Callable, Dict, Generic, List, Mapping, Optional, Sequence, Type, TypeVar,
+                    Union, cast, overload)
 from weakref import WeakValueDictionary
+
+from redis import StrictRedis
 from redis.exceptions import ResponseError
 
-class JSONRedis:
+T = TypeVar('T')
+U = TypeVar('U')
+
+ExpectFunc = Callable[[T], U] # pylint: disable=invalid-name; type
+
+class JSONRedis(Generic[T]):
     """Extended :class:`Redis` client for convenient use with JSON objects.
 
     Objects are stored as JSON-encoded strings in the Redis database and en-/decoding is handled
@@ -49,37 +62,97 @@ class JSONRedis:
         Switch to enable / disable object caching.
     """
 
-    def __init__(self, r, encode=None, decode=None, caching=True):
+    def __init__(
+            self, r: StrictRedis, encode: Callable[[T], Dict[str, object]] = None,
+            decode: Callable[[Dict[str, object]], Union[T, Dict[str, object]]] = None,
+            caching: bool = True) -> None:
         self.r = r
         self.encode = encode
         self.decode = decode
         self.caching = caching
-        self._cache = WeakValueDictionary()
+        self._cache = WeakValueDictionary() # type: WeakValueDictionary[str, T]
 
-    def oget(self, key):
-        """Return the object at *key*."""
+    @overload
+    def oget(self, key: str, *, default: None = None, expect: None = None) -> Optional[T]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def oget(self, key: str, *, default: Union[T, Type[Exception]], expect: None = None) -> T:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def oget(self, key: str, *, default: None = None, expect: ExpectFunc[T, U]) -> Optional[U]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def oget(self, key: str, *, default: Union[T, Type[Exception]], expect: ExpectFunc[T, U]) -> U:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    def oget(self, key: str, default: Union[T, Type[Exception]] = None,
+             expect: ExpectFunc[T, U] = None) -> Union[Optional[T], T, U, Optional[U]]:
+        """Return the object at *key*.
+
+        If *key* does not exist, *default* is returned. If *default* is an :exc:`Exception`, it is
+        raised instead. The object type can be narrowed with *expect*.
+        """
+        # pylint: disable=function-redefined,missing-docstring; overload
         object = self._cache.get(key) if self.caching else None
-        if not object:
-            value = self.get(key)
-            if value:
+        if object is None:
+            value = cast(Optional[bytes], self.get(key))
+            if value is not None:
+                if not value.startswith(b'{'):
+                    raise ResponseError()
                 try:
-                    object = json.loads(value.decode(), object_hook=self.decode)
+                    # loads() actually returns Union[T, Dict[str, object]], but as T may be dict
+                    # there is no way to eliminate it here
+                    object = cast(T, json.loads(value.decode(), object_hook=self.decode))
                 except ValueError:
                     raise ResponseError()
                 if self.caching:
                     self._cache[key] = object
-        return object
+        if object is None:
+            if isinstance(default, type) and issubclass(default, Exception): # type: ignore
+                raise cast(Exception, default(key))
+            object = cast(Optional[T], default)
+        return expect(object) if expect and object is not None else object
 
-    def oset(self, key, object):
+    def oset(self, key: str, object: T) -> None:
         """Set *key* to hold *object*."""
         if self.caching:
             self._cache[key] = object
         self.set(key, json.dumps(object, default=self.encode))
 
-    def omget(self, keys):
-        """Return a list of objects for the given *keys*."""
+    @overload
+    def omget(self, keys: Sequence[str], *, default: None = None,
+              expect: None = None) -> List[Optional[T]]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def omget(self, keys: Sequence[str], *, default: Union[T, Type[Exception]],
+              expect: None = None) -> List[T]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def omget(self, keys: Sequence[str], *, default: None = None,
+              expect: ExpectFunc[T, U]) -> List[Optional[U]]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def omget(self, keys: Sequence[str], *, default: Union[T, Type[Exception]],
+              expect: ExpectFunc[T, U]) -> List[U]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    def omget(
+            self, keys: Sequence[str], default: Union[T, Type[Exception]] = None,
+            expect: ExpectFunc[T, U] = None
+        ) -> Union[List[Optional[T]], List[T], List[Optional[U]], List[U]]:
+        """Return a list of objects for the given *keys*.
+
+        *default* and *expect* correspond to the arguments of :meth:`oget`."""
+        # pylint: disable=function-redefined,missing-docstring; overload
         # NOTE: Not atomic at the moment
-        return [self.oget(k) for k in keys]
+        objects = [self.oget(k, default=default, expect=expect) for k in keys]
+        return cast(Union[List[Optional[T]], List[T], List[Optional[U]], List[U]], objects)
 
     def omset(self, mapping):
         """Set each key in *mapping* to its corresponding object."""
@@ -91,7 +164,7 @@ class JSONRedis:
         # proxy
         return getattr(self.r, name)
 
-class JSONRedisSequence(Sequence):
+class JSONRedisSequence(Sequence[T]):
     """Read-Only list interface for JSON objects stored in Redis.
 
     .. attribute:: r
@@ -108,7 +181,7 @@ class JSONRedisSequence(Sequence):
        database. May be ``None``.
     """
 
-    def __init__(self, r, list_key, pre=None):
+    def __init__(self, r: JSONRedis[T], list_key: str, pre: Callable[[], None] = None) -> None:
         self.r = r
         self.list_key = list_key
         self.pre = pre
@@ -135,7 +208,7 @@ class JSONRedisSequence(Sequence):
     def __len__(self):
         return self.r.llen(self.list_key)
 
-class JSONRedisMapping(Mapping):
+class JSONRedisMapping(Generic[T, U], Mapping[str, T]):
     """Simple, read-only map interface for JSON objects stored in Redis.
 
     Which items the map contains is determined by the Redis list at *map_key*. Because a list is
@@ -148,18 +221,23 @@ class JSONRedisMapping(Mapping):
     .. attribute:: map_key
 
        Key of the Redis list that tracks the (keys of the) objects that the map contains.
+
+    .. attribute:: expect
+
+       Function narrowing the type of retrieved objects. May be ``None``.
     """
 
-    def __init__(self, r, map_key):
+    def __init__(self, r: JSONRedis[U], map_key: str, expect: ExpectFunc[U, T] = None) -> None:
         self.r = r
         self.map_key = map_key
+        self.expect = expect
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> T:
         # NOTE: with set:
         #if key not in self:
         if key not in iter(self):
             raise KeyError()
-        return self.r.oget(key)
+        return cast(T, self.r.oget(key, default=ReferenceError, expect=self.expect))
 
     def __iter__(self):
         # NOTE: with set:
@@ -178,3 +256,11 @@ class JSONRedisMapping(Mapping):
 
     def __repr__(self):
         return str(dict(self))
+
+def expect_type(cls: Type[T]) -> ExpectFunc[object, T]:
+    """Return a function which asserts that a given *obj* is an instance of *cls*."""
+    def _f(obj: object) -> T:
+        if not isinstance(obj, cls):
+            raise TypeError()
+        return obj
+    return _f
