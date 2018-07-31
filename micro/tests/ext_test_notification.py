@@ -14,12 +14,12 @@
 
 # pylint: disable=missing-docstring; test module
 
+from asyncio import sleep
 import configparser
 from configparser import ConfigParser
 import json
 import sys
 
-from tornado.gen import moment
 from tornado.testing import gen_test
 
 from micro import Application, CommunicationError, Event
@@ -51,7 +51,9 @@ class NotificationTest(MicroTestCase):
         self.user.push_subscription = 'foo'
         self.app.login()
         self.user.notify(Event.create('test', None, app=self.app))
-        await moment
+        # Scheduled coroutines are run in the next IO loop iteration but one
+        await sleep(0)
+        await sleep(0)
         self.assertEqual(self.user.device_notification_status, 'off.expired')
 
     @gen_test(timeout=20)

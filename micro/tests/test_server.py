@@ -17,7 +17,7 @@
 import http.client
 import json
 
-from tornado.httpclient import HTTPError
+from tornado.httpclient import HTTPClientError
 from tornado.testing import gen_test
 
 from micro.server import Server, make_orderable_endpoints, make_trashable_endpoints
@@ -79,20 +79,20 @@ class ServerTest(ServerTestCase):
 
     @gen_test
     def test_get_user_id_nonexistent(self):
-        with self.assertRaises(HTTPError) as cm:
+        with self.assertRaises(HTTPClientError) as cm:
             yield self.request('/api/users/foo')
         self.assertEqual(cm.exception.code, http.client.NOT_FOUND)
 
     @gen_test
     def test_post_user_body_invalid_json(self):
-        with self.assertRaises(HTTPError) as cm:
+        with self.assertRaises(HTTPClientError) as cm:
             yield self.request('/api/users/' + self.user.id, method='POST', body='foo')
         e = cm.exception
         self.assertEqual(e.code, http.client.BAD_REQUEST)
 
     @gen_test
     def test_post_user_name_bad_type(self):
-        with self.assertRaises(HTTPError) as cm:
+        with self.assertRaises(HTTPClientError) as cm:
             yield self.request('/api/users/' + self.user.id, method='POST', body='{"name": 42}')
         self.assertEqual(cm.exception.code, http.client.BAD_REQUEST)
         error = json.loads(cm.exception.response.body.decode())
@@ -100,7 +100,7 @@ class ServerTest(ServerTestCase):
 
     @gen_test
     def test_post_settings_provider_description_bad_type(self):
-        with self.assertRaises(HTTPError) as cm:
+        with self.assertRaises(HTTPClientError) as cm:
             yield self.request('/api/settings', method='POST',
                                body='{"provider_description": {"en": " "}}')
         self.assertEqual(cm.exception.code, http.client.BAD_REQUEST)

@@ -172,7 +172,7 @@ micro.bind.bind = function(elem, data, template = null) {
     }
 
     function compact(str) {
-        str = str.replace(/\n/g, "\\n");
+        str = str.replace(/\n/ug, "\\n");
         return str.length > 32 ? `${str.slice(0, 31)}…` : str;
     }
     if (micro.bind.trace) {
@@ -204,7 +204,7 @@ micro.bind.bind = function(elem, data, template = null) {
                     }
                     return arg;
                 });
-                let value = values[0];
+                let [value] = values;
 
                 // Apply transform
                 if (values.length > 1) {
@@ -285,12 +285,12 @@ micro.bind.parse = function(expr) {
     };
 
     // NOTE: For escaped quote characters we could use the pattern ('(\\'|[^'])*'|\S)+
-    return (expr.match(/('[^']*'|\S)+/g) || []).map(arg => {
+    return (expr.match(/('[^']*'|\S)+/ug) || []).map(arg => {
         if (arg in KEYWORDS) {
             return KEYWORDS[arg];
         } else if (arg.startsWith("'")) {
             return arg.slice(1, -1);
-        } else if (/^[-+]?[0-9]/.test(arg)) {
+        } else if (/^[-+]?[0-9]/u.test(arg)) {
             return parseFloat(arg);
         }
         return {name: arg, tokens: arg.split(".")};
@@ -398,7 +398,7 @@ micro.bind.transforms = {
      */
     format(ctx, str, ...args) {
         args = new Map(micro.bind.chunk(args, 2));
-        return str.replace(/{([^}\s]+)}/g, (match, key) => args.get(key));
+        return str.replace(/\{([^}\s]+)\}/ug, (match, key) => args.get(key));
     },
 
     /** Format a string with support for pluralization. */
@@ -612,7 +612,7 @@ micro.bind.join = function(elem, arr, itemName, separator = ", ", transform, ...
 
 /** Convert a camel case *str* to dashed style. */
 micro.bind.dash = function(str) {
-    return str.replace(/(?!^)([A-Z])/g, "-$1").toLowerCase();
+    return str.replace(/(?!^)([A-Z])/ug, "-$1").toLowerCase();
 };
 
 /** Split *arr* into chunks of the given *size*. */

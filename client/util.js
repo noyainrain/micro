@@ -109,8 +109,8 @@ micro.util.truncate = function(str, length = 16) {
  * empty string if there is a match.
  */
 micro.util.slugify = (str, {max = 32, reserved = []} = {}) => {
-    let slug = str.replace(/[^\x00-\x7F]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-")
-        .slice(0, max).replace(/^-|-$/g, "");
+    let slug = str.replace(/[^\x00-\x7F]/ug, "").toLowerCase().replace(/[^a-z0-9]+/ug, "-")
+        .slice(0, max).replace(/^-|-$/ug, "");
     return slug && !reserved.includes(slug) ? `/${slug}` : "";
 };
 
@@ -121,7 +121,7 @@ micro.util.slugify = (str, {max = 32, reserved = []} = {}) => {
  * mapping keys to values to replace.
  */
 micro.util.format = function(str, args) {
-    return str.replace(/{([^}\s]+)}/g, (match, key) => args[key]);
+    return str.replace(/\{([^}\s]+)\}/ug, (match, key) => args[key]);
 };
 
 /**
@@ -134,7 +134,7 @@ micro.util.format = function(str, args) {
  */
 micro.util.formatFragment = function(str, args) {
     let fragment = document.createDocumentFragment();
-    let pattern = /{([a-zA-Z0-9_-]+)}/g;
+    let pattern = /\{([a-zA-Z0-9_-]+)\}/ug;
     let match = null;
 
     do {
