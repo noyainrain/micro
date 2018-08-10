@@ -180,7 +180,7 @@ describe("enableActivedClass", function() {
     });
 
     describe("on blur", function() {
-        it("should reset activated class", async function() {
+        it("should reset activated class", function() {
             let buttons = setupDOM();
             buttons[0].focus();
             buttons[0].click();

@@ -1,6 +1,6 @@
 {
     "name": "@noyainrain/micro",
-    "version": "0.17.0",
+    "version": "0.18.0",
     "description": "Toolkit for social micro web apps.",
     "repository": "noyainrain/micro",
     "license": "LGPL-3.0",
@@ -13,16 +13,15 @@
     "dependencies": {
         "whatwg-fetch": "^2.0",
         "webcomponents.js": "^0.7",
-        "font-awesome": "^4.4",
+        "@fortawesome/fontawesome-free": "^5.1",
         "typeface-open-sans": "^0.0",
         "selenium-webdriver": "^3.5"
     },
     "devDependencies": {
-        "eslint": "^4.0",
-        "eslint-config-eslint": "^4.0",
-        "mocha": "^4.0",
+        "eslint": "~5.3",
+        "mocha": "^5.1",
         "chai": "^4.1",
-        "karma": "^1.7",
+        "karma": "^2.0",
         "karma-firefox-launcher": "^1.1",
         "karma-chrome-launcher": "^2.2",
         "karma-mocha": "^1.3",

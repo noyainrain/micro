@@ -24,7 +24,7 @@ from redis.exceptions import ResponseError
 T = TypeVar('T')
 U = TypeVar('U')
 
-ExpectFunc = Callable[[T], U] # pylint: disable=invalid-name; type
+ExpectFunc = Callable[[T], U]
 
 class JSONRedis(Generic[T]):
     """Extended :class:`Redis` client for convenient use with JSON objects.
@@ -199,11 +199,10 @@ class JSONRedisSequence(Sequence[T]):
             stop = -1 if key.stop is None else key.stop - 1
             return self.r.omget(k.decode() for k in self.r.lrange(self.list_key, start, stop))
 
-        else:
-            id = self.r.lindex(self.list_key, key)
-            if not id:
-                raise IndexError()
-            return self.r.oget(id.decode())
+        id = self.r.lindex(self.list_key, key)
+        if not id:
+            raise IndexError()
+        return self.r.oget(id.decode())
 
     def __len__(self):
         return self.r.llen(self.list_key)

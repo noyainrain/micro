@@ -118,6 +118,7 @@ micro.service.Service = class {
                 let windows = await clients.matchAll({type: "window"});
                 for (let client of windows) {
                     if (new URL(client.url).pathname === event.notification.data.url) {
+                        // eslint-disable-next-line no-await-in-loop
                         await client.focus();
                         return;
                     }

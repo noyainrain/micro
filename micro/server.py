@@ -23,8 +23,7 @@ import json
 from logging import getLogger
 import os
 import re
-from typing import ( # pylint: disable=unused-import; type checking
-    Callable, Dict, List, Optional, Sequence, Tuple, Type, Union, cast)
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 from urllib.parse import urlparse
 
 from mypy_extensions import VarArg
@@ -34,9 +33,8 @@ from tornado.template import DictLoader, Loader, filter_whitespace
 from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
 
 from . import micro, templates
-from .micro import ( # pylint: disable=unused-import; type checking
-    Activity, AuthRequest, JSONifiable, Object, User, InputError, AuthenticationError,
-    CommunicationError, PermissionError)
+from .micro import (Activity, AuthRequest, JSONifiable, Object, User, InputError,
+                    AuthenticationError, CommunicationError, PermissionError)
 from .util import str_or_none, parse_slice, check_polyglot
 
 LIST_LIMIT = 100
@@ -53,8 +51,8 @@ Device info: %s"""
 
 _LOGGER = getLogger(__name__)
 
-Handler = Union[ # pylint: disable=invalid-name; type
-    Tuple[str, Type[RequestHandler]], Tuple[str, Type[RequestHandler], Dict[str, object]]]
+Handler = Union[Tuple[str, Type[RequestHandler]],
+                Tuple[str, Type[RequestHandler], Dict[str, object]]]
 
 class Server:
     """Server for micro apps.
@@ -143,16 +141,16 @@ class Server:
         self._micro_templates = Loader(os.path.join(self.client_path, self.client_modules_path,
                                                     '@noyainrain/micro'))
 
-    def start(self):
+    def start(self) -> None:
         """Start the server."""
-        self.app.update()
+        self.app.update() # type: ignore
         self._server.listen(self.port)
 
-    def run(self):
+    def run(self) -> None:
         """Start the server and run it continuously."""
         self.start()
         try:
-            IOLoop.instance().start()
+            IOLoop.current().start()
         except KeyboardInterrupt:
             pass
 

@@ -25,16 +25,17 @@ from logging import getLogger
 import os
 import re
 from smtplib import SMTP
-from typing import ( # pylint: disable=unused-import; type checking
-    Callable, Dict, List, Optional, Type, Union, overload)
+from typing import Callable, Dict, List, Optional, Type, Union, overload
 from urllib.parse import urlparse
+from warnings import catch_warnings
 
 from pywebpush import WebPusher, WebPushException
 from py_vapid import Vapid
 from py_vapid.utils import b64urlencode
 from redis import StrictRedis
 from redis.exceptions import ResponseError
-from tornado.httpclient import AsyncHTTPClient, HTTPError
+from tornado.httpclient import AsyncHTTPClient, HTTPResponse
+from tornado.simple_httpclient import HTTPStreamClosedError, HTTPTimeoutError
 from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
@@ -694,16 +695,23 @@ class User(Object, Editable):
 
     class _HTTPClient:
         @staticmethod
-        async def post(endpoint, data, headers, timeout):
+        async def post(endpoint: str, data: bytes, headers: Dict[str, str],
+                       timeout: float) -> HTTPResponse:
             # pylint: disable=unused-argument, missing-docstring; part of API
-            response = await AsyncHTTPClient().fetch(endpoint, method='POST', headers=headers,
-                                                     body=data, raise_error=False)
-            if response.code == 599:
-                # Timeouts are given as HTTPError
-                if isinstance(response.error, HTTPError):
-                    raise TimeoutError(errno.ETIMEDOUT, os.strerror(errno.ETIMEDOUT))
-                raise response.error
-            return response
+            try:
+                # raise_error=False triggers a deprecation warning in Tornado 5. Reraise suppressed
+                # IO errors to match the future behavior.
+                with catch_warnings(record=True):
+                    response = await AsyncHTTPClient().fetch(
+                        endpoint, method='POST', headers=headers, body=data, raise_error=False)
+                    if response.code == 599:
+                        assert response.error is not None
+                        raise response.error
+                    return response
+            except HTTPStreamClosedError:
+                raise BrokenPipeError(errno.ESHUTDOWN, os.strerror(errno.ESHUTDOWN))
+            except HTTPTimeoutError:
+                raise TimeoutError(errno.ETIMEDOUT, os.strerror(errno.ETIMEDOUT))
 
 class Settings(Object, Editable):
     """See :ref:`Settings`.

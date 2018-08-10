@@ -175,7 +175,7 @@ micro.UI = class extends HTMLBodyElement {
                 this.user = JSON.parse(localStorage.microUser);
 
                 // If requested, log in with code
-                let match = /^#login=(.+)$/.exec(location.hash);
+                let match = /^#login=(.+)$/u.exec(location.hash);
                 if (match) {
                     history.replaceState(null, null, location.pathname);
                     try {
@@ -360,7 +360,7 @@ micro.UI = class extends HTMLBodyElement {
         // Chrome does not yet support base64-encoded VAPID keys (see
         // https://bugs.chromium.org/p/chromium/issues/detail?id=802280)
         let applicationServerKey = Uint8Array.from(
-            atob(this.settings.push_vapid_public_key.replace(/-/g, "+").replace(/_/g, "/")),
+            atob(this.settings.push_vapid_public_key.replace(/-/ug, "+").replace(/_/ug, "/")),
             c => c.codePointAt(0));
 
         let subscription;
@@ -413,7 +413,7 @@ micro.UI = class extends HTMLBodyElement {
         let match = null;
         let route = null;
         for (route of this.pages) {
-            match = new RegExp(route.url).exec(url);
+            match = new RegExp(route.url, "u").exec(url);
             if (match) {
                 break;
             }
@@ -955,7 +955,7 @@ micro.EditUserPage = class extends micro.Page {
 
     attachedCallback() {
         (async() => {
-            let match = /^#set-email=([^:]+):([^:]+)$/.exec(location.hash);
+            let match = /^#set-email=([^:]+):([^:]+)$/u.exec(location.hash);
             if (match) {
                 history.replaceState(null, null, location.pathname);
                 let authRequestID = `AuthRequest:${match[1]}`;
