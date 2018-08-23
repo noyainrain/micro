@@ -62,20 +62,25 @@ hello.StartPage = class extends micro.Page {
                 } catch (e) {
                     ui.handleCallError(e);
                 }
+            },
+
+            makeGreetingHash(ctx, greeting) {
+                return `greetings-${greeting.id.split(":")[1]}`;
             }
         });
         micro.bind.bind(this.children, this._data);
     }
 
     attachedCallback() {
-        (async() => {
+        super.attachedCallback();
+        this.ready.when((async() => {
             try {
                 let greetings = await ui.call("GET", "/api/greetings");
                 this._data.greetings = new micro.bind.Watchable(greetings);
             } catch (e) {
                 ui.handleCallError(e);
             }
-        })().catch(micro.util.catch);
+        })().catch(micro.util.catch));
     }
 };
 

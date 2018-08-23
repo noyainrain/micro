@@ -43,7 +43,7 @@ micro.util.watchErrors();
  *
  *    A render function has the form *render(event)* and produces an :class:`Object`
  *    *{title, body, url}* from the given :ref:`Event` *event*. May return a :class:`Promise`. If
- *    one of the common call errors `TypeError`, `AuthenticationError`, `NotFoundError` or
+ *    one of the common call errors `NetworkError`, `AuthenticationError`, `NotFoundError` or
  *    `PermissionError` is thrown, no notification is displayed.
  *
  *    The key defines the event *type* (e.g. `editable-edit`) a renderer can handle, optionally
@@ -71,7 +71,7 @@ micro.service.Service = class {
                         this.settings = await micro.call("GET", "/api/settings");
                     } catch (e) {
                         if (
-                            e instanceof TypeError ||
+                            e instanceof micro.NetworkError ||
                                 e instanceof micro.APIError &&
                                 e.error.__type__ === "AuthenticationError") {
                             return;
@@ -101,7 +101,7 @@ micro.service.Service = class {
                     });
                 } catch (e) {
                     if (
-                        e instanceof TypeError ||
+                        e instanceof micro.NetworkError ||
                             e instanceof micro.APIError &&
                             e.error.__type__ in
                                 ["AuthenticationError", "NotFoundError", "PermissionError"]) {

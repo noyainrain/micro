@@ -23,6 +23,9 @@
 self.micro = self.micro || {};
 micro.util = {};
 
+/** Thrown if network communication failed. */
+micro.NetworkError = class extends TypeError {};
+
 /**
  * Thrown for HTTP JSON REST API errors.
  *
@@ -49,7 +52,11 @@ micro.APIError = class extends Error {
  * A promise is returned that resolves to the result as JSON value, once the call is complete.
  *
  * If an error occurs, the promise rejects with an :class:`APIError`. For any IO related errors, it
- * rejects with a :class:`TypeError`.
+ * rejects with a :class:`micro.NetworkError`.
+ *
+ * .. deprecated:: 0.19.0
+ *
+ *    :class:`TypeError` for IO related errors. Check for :class:`micro.NetworkError` instead.
  */
 micro.call = async function(method, url, args) {
     let options = {method, credentials: "include"};
@@ -58,14 +65,15 @@ micro.call = async function(method, url, args) {
         options.body = JSON.stringify(args);
     }
 
+    let response;
     let result;
-    let response = await fetch(url, options);
     try {
+        response = await fetch(url, options);
         result = await response.json();
     } catch (e) {
-        if (e instanceof SyntaxError) {
-            // Consider invalid JSON an IO error
-            throw new TypeError();
+        if (e instanceof TypeError || e instanceof SyntaxError) {
+            // Consider invalid JSON an IO error as well
+            throw new micro.NetworkError();
         }
         throw e;
     }
@@ -73,6 +81,28 @@ micro.call = async function(method, url, args) {
         throw new micro.APIError(result, response.status);
     }
     return result;
+};
+
+/**
+ * Promise that resolves when another given promise is done.
+ *
+ * .. method:: when(promise)
+ *
+ *    Resolve once *promise* is fulfilled.
+ */
+micro.util.PromiseWhen = function() {
+    let when = null;
+    let p = new Promise(resolve => {
+        when = function(promise) {
+            if (!resolve) {
+                throw new Error("already-called-when");
+            }
+            resolve(promise);
+            resolve = null;
+        };
+    });
+    p.when = when;
+    return p;
 };
 
 /**
