@@ -14,6 +14,10 @@ html {
     --micro-color-primary-tint: #77c0ff; /* Lightness: border */
     --micro-color-secondary: #f80;
     --micro-color-mono-shade: #545454; /* Lightness: primary-shade */
+    --micro-size-m: 1.5em;
+    --micro-size-s: 0.75em;
+    --micro-size-xs: 0.375em;
+    --micro-size-rm: 1.5rem;
     --micro-focus-shadow: inset 0 0 0 1px var(--micro-color-primary-tint);
 }
 

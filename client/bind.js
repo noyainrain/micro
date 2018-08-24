@@ -531,6 +531,22 @@ micro.bind.transforms = {
         let node = document.importNode(template.content, true);
         micro.bind.bind(node, ctx.data);
         return node;
+    },
+
+    /**
+     * TODO
+     */
+    render(ctx, template) {
+        if (!ctx.elem.__templates__) {
+            ctx.elem.__templates__ = Array.from(ctx.elem.querySelectorAll("template"));
+        }
+        template = template || ctx.elem.__templates__[0] || null;
+        if (!template) {
+            return document.createDocumentFragment();
+        }
+        let elem = document.importNode(template.content, true);
+        micro.bind.bind(elem, ctx.data);
+        return elem;
     }
 };
 

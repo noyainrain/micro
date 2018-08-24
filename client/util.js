@@ -119,6 +119,28 @@ micro.util.dispatchEvent = function(target, event) {
 };
 
 /**
+ * TODO
+ */
+micro.util.makeEventHandler = function(type) {
+    let listener = null;
+    return {
+        get() {
+            return listener;
+        },
+
+        set(value) {
+            if (listener) {
+                this.removeEventListener(type, listener);
+            }
+            listener = value;
+            if (value) {
+                this.addEventListener(type, value);
+            }
+        }
+    };
+};
+
+/**
  * Truncate *str* at *length*.
  *
  * A truncated string ends with an ellipsis character.

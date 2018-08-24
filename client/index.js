@@ -823,6 +823,176 @@ micro.Menu = class extends HTMLUListElement {
 };
 
 /**
+ * Options for an `input` field.
+ *
+ * Attaches itself to the preceding sibling `input` and presents options based on the user input.
+ *
+ * Content may include a `template` that is used to render an individual option, bound as *option*.
+ * By default an option is displayed as simple text. Arbitrary content can be placed in the `footer`
+ * slot.
+ *
+ * .. attribute: delay
+ *
+ *    Time to wait in milliseconds after user input before updating the presented options. Defaults
+ *    to `0`.
+ */
+micro.OptionsElement = class extends HTMLElement {
+    createdCallback() {
+        this.delay = 0;
+        this._input = null;
+        this._options = [];
+        this._limit = 5;
+        this._toText = null;
+        this._job = null;
+        Object.defineProperty(this, "onselect", micro.util.makeEventHandler("select"));
+
+        let template = this.querySelector("template:not([name])");
+        let footerTemplate = this.querySelector("template[name=footer]");
+
+        this.appendChild(
+            document.importNode(document.querySelector("#micro-options-template").content, true)
+        );
+        this._data = new micro.bind.Watchable({
+            options: [],
+            template,
+            footerTemplate,
+            active: false,
+            generating: false,
+            toText: (ctx, option) => this._toText ? this._toText(option) : option,
+
+            select: (option, event) => {
+                this._input.value = typeof option === "string" ? option : this._toText(option);
+                this.deactivate();
+                this.dispatchEvent(new CustomEvent("select", {detail: {option}}));
+            }
+        });
+        micro.bind.bind(this.children, this._data);
+
+        let update = () => {
+            this.classList.toggle("micro-options-has-footer", this._data.footerTemplate);
+            this.classList.toggle("micro-options-active", this._data.active);
+            this.classList.toggle("micro-options-generating", this._data.generating);
+        };
+        ["footerTemplate", "active", "generating"].forEach(prop => this._data.watch(prop, update));
+        update();
+        this.addEventListener("mousedown", event => event.preventDefault());
+    }
+
+    attachedCallback() {
+        this._input = this.previousElementSibling;
+        this._input.autocomplete = "off";
+        this._input.addEventListener(
+            "input", () => {
+                if (!this._data.active) {
+                    this.activate();
+                    return;
+                }
+                this._updateOptions(this.delay);
+            }
+        );
+        this._input.addEventListener("blur", () => this.deactivate());
+    }
+
+    /**
+     * Pool of available options. Only options which (partially) match the user input are presented.
+     *
+     * Alternatively, may be a function of the form `options(query, limit)` that dynamically
+     * generates a list of options to present from the user input *query*. *limit* is the maximum
+     * number of results. May be async.
+     *
+     * An option may either be a string or an arbitrary object. In the latter case, :attr:`toText`
+     * must be set and is used when a text representation is needed.
+     */
+    get options() {
+        return this._options;
+    }
+
+    set options(value) {
+        this._options = value;
+        if (this._data.active) {
+            this._updateOptions();
+        }
+    }
+
+    /**
+     * Maximum number of options to display. Defaults to `5`.
+     */
+    get limit() {
+        return this._limit;
+    }
+
+    set limit(value) {
+        this._limit = value;
+        if (this._data.active) {
+            this._updateOptions();
+        }
+    }
+
+    /**
+     * Function of the form *toText(option)* that returns a text representation of *option*. May be
+     * ``null``.
+     */
+    get toText() {
+        return this._toText;
+    }
+
+    set toText(value) {
+        this._toText = value;
+        if (this._data.active) {
+            this._updateOptions();
+        }
+    }
+
+    /** Activate, i.e. show the element. */
+    activate() {
+        this._data.active = true;
+        this._updateOptions();
+    }
+
+    /** Deactivate, i.e. hide the element. */
+    deactivate() {
+        this._data.active = false;
+    }
+
+    _updateOptions(delay = 0) {
+        if (this._job) {
+            return;
+        }
+
+        let update = async() => {
+            this._data.options = await this._generateOptions(this._input.value, this._limit);
+            if (!this._job) {
+                this._data.generating = false;
+            }
+        };
+
+        this._data.generating = true;
+        if (delay) {
+            this._job = setTimeout(
+                () => {
+                    this._job = null;
+                    update().catch(micro.bind.catch);
+                },
+                delay
+            );
+        } else {
+            update().catch(micro.bind.catch);
+        }
+    }
+
+    async _generateOptions(query, limit) {
+        if (this._options instanceof Function) {
+            return await Promise.resolve(this._options(query, limit));
+        }
+        return this._options.filter(
+            option =>
+                (typeof option === "string" ? option : this._toText(option)).includes(query.trim())
+        ).slice(0, limit);
+    }
+};
+document.registerElement("micro-options", micro.OptionsElement);
+
+/**
  * User element.
  *
  * .. attribute:: user

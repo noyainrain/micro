@@ -20,6 +20,10 @@
                 <h1 class="micro-logo"><a class="link" data-content="settings.title"></a></h1>
                 <p>A micro toolkit example</p>
             </div>
+            <label>
+                <input />
+                <micro-options data-options="options"></micro-options>
+            </label>
             <div>
                 <p>Leave a greeting for everyone to read:</p>
                 <form data-shortcut-context="new ShortcutContext">
@@ -34,7 +38,7 @@
                     </p>
                 </form>
             </div>
-            <ul data-content="list greetings 'greeting'">
+            <ul class="hello-start-greetings" data-content="list greetings 'greeting'">
                 <template>
                     <li data-id="makeGreetingHash greeting" class="micro-quick-nav" tabindex="0">
                         <span><micro-user data-user="greeting.authors.0"></micro-user>:</span>
@@ -61,26 +65,26 @@
                 height: calc(2 * 1.5em + 2 * 1.5em / 4);
             }
 
-            hello-start-page ul {
+            .hello-start-greetings {
                 padding: 0;
                 list-style: none;
             }
 
-            hello-start-page li {
+            .hello-start-greetings > li {
                 padding: calc(1.5em / 2) 0;
                 border-top: 1px solid #ddd;
             }
 
-            hello-start-page li span {
+            .hello-start-greetings > li span {
                 color: #888;
             }
 
-            hello-start-page q {
+            .hello-start-greetings > li q {
                 quotes: "«" "»";
             }
 
-            hello-start-page q::before,
-            hello-start-page q::after {
+            .hello-start-greetings q::before,
+            .hello-start-greetings q::after {
                 color: #888;
             }
         </style>
