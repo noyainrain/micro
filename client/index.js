@@ -46,10 +46,6 @@ micro.findAncestor = micro.keyboard.findAncestor;
  * At the core of the UI are pages, where any page has a corresponding (shareable and bookmarkable)
  * URL. The UI takes care of user navigation.
  *
- * .. attribute:: page
- *
- *    The current :ref:`Page`. May be ``null``.
- *
  * .. attribute:: pages
  *
  *    Subclass API: Table of available pages.
@@ -65,7 +61,7 @@ micro.findAncestor = micro.keyboard.findAncestor;
  *    additional arguments. The function may return a promise. For convenience, if one of the
  *    following common call errors is thrown:
  *
- *    - `TypeError`: The `micro-offline-page` is shown
+ *    - `NetworkError`: The `micro-offline-page` is shown
  *    - `NotFoundError`: The `micro-not-found-page` is shown
  *    - `PermissionError`: The `micro-forbidden-page` is shown
  *
@@ -80,10 +76,17 @@ micro.findAncestor = micro.keyboard.findAncestor;
  *    Subclass API: Table of event rendering hooks by event type. Used by the activity page to
  *    visualize :ref:`Event` s. A hook has the form *renderEvent(event)* and is responsible to
  *    render the given *event* to a :class:`Node`.
+ *
+ * .. describe:: navigate
+ *
+ *    Fired when the user navigates around the UI (either via link, browser history,
+ *    :meth:`navigate` or initially on app launch). *oldURL* and *newURL* are the previous and now
+ *    current URL respectively.
  */
 micro.UI = class extends HTMLBodyElement {
     createdCallback() {
-        this.page = null;
+        this._url = null;
+        this._page = null;
         this._progressElem = this.querySelector(".micro-ui-progress");
         this._pageSpace = this.querySelector("main .micro-ui-inside");
 
@@ -107,8 +110,19 @@ micro.UI = class extends HTMLBodyElement {
         };
 
         window.addEventListener("error", this);
-        this.addEventListener("click", this);
-        window.addEventListener("popstate", this);
+        window.addEventListener("popstate", () => this._navigate().catch(micro.util.catch));
+        this.addEventListener("click", event => {
+            let a = micro.findAncestor(event.target, e => e instanceof HTMLAnchorElement, this);
+            if (a && a.origin === location.origin) {
+                event.preventDefault();
+                this.navigate(a.pathname + a.hash).catch(micro.util.catch);
+            }
+        });
+        this.addEventListener("focusin", event => {
+            if (event.target.id) {
+                this.url = `#${event.target.id}`;
+            }
+        });
         this.addEventListener("user-edit", this);
         this.addEventListener("settings-edit", this);
 
@@ -202,7 +216,7 @@ micro.UI = class extends HTMLBodyElement {
                         let user = await ui.call("GET", `/api/users/${this.user.id}`);
                         this.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
                     } catch (e) {
-                        if (e instanceof TypeError || e instanceof micro.APIError &&
+                        if (e instanceof micro.NetworkError || e instanceof micro.APIError &&
                             e.error.__type__ === "AuthenticationError") {
                             // Pass
                         } else {
@@ -214,12 +228,12 @@ micro.UI = class extends HTMLBodyElement {
                 await this.init();
 
                 this.querySelector(".micro-ui-header").style.display = "block";
-                await this._route(location.pathname);
+                await this._navigate();
 
             } catch (e) {
-                if (e instanceof TypeError) {
+                if (e instanceof micro.NetworkError) {
                     this._progressElem.style.display = "none";
-                    this._open(document.createElement("micro-offline-page"));
+                    this.page = document.createElement("micro-offline-page");
                 } else if (e instanceof micro.APIError &&
                            e.error.__type__ === "AuthenticationError") {
                     // Pass
@@ -229,6 +243,37 @@ micro.UI = class extends HTMLBodyElement {
             }
         };
         go().catch(micro.util.catch);
+    }
+
+    /** Current URL. Set to rewrite the browser URL. */
+    get url() {
+        return this._url;
+    }
+
+    set url(value) {
+        value = new URL(value, location.href);
+        value = value.pathname + value.hash;
+        this._url = value;
+        history.replaceState(null, null, this._url);
+    }
+
+    /** Active :class:`micro.Page`. Set to open the given page. May be ``null``. */
+    get page() {
+        return this._page;
+    }
+
+    set page(value) {
+        if (this._page) {
+            this._page.remove();
+        }
+        this._page = value;
+        if (this._page) {
+            this._pageSpace.appendChild(this._page);
+            // Compatibility for overriding attachedCallback without chaining (deprecated since
+            // 0.19.0)
+            micro.Page.prototype.attachedCallback.call(this._page);
+            this._updateTitle();
+        }
     }
 
     /**
@@ -294,7 +339,7 @@ micro.UI = class extends HTMLBodyElement {
     /**
      * Handle a common call error *e* with a default reaction:
      *
-     * - `TypeError`: Notify the user that they seem to be offline
+     * - `NetworkError`: Notify the user that they seem to be offline
      * - `NotFoundError`: Notify the user that the current page has been deleted
      * - `PermissionError`: Notify the user that their permissions for the current page have been
      *   revoked
@@ -302,8 +347,7 @@ micro.UI = class extends HTMLBodyElement {
      * Other errors are not handled and re-thrown.
      */
     handleCallError(e) {
-        if (e instanceof TypeError) {
-            console.log("STRANGE ERROR", e);
+        if (e instanceof micro.NetworkError) {
             this.notify(
                 "Oops, you seem to be offline! Please check your connection and try again.");
         } else if (e instanceof micro.APIError && e.error.__type__ === "NotFoundError") {
@@ -319,8 +363,12 @@ micro.UI = class extends HTMLBodyElement {
      * Navigate to the given *url*.
      */
     async navigate(url) {
-        history.pushState(null, null, url);
-        await this._route(url);
+        url = new URL(url, location.href);
+        url = url.pathname + url.hash;
+        if (url !== this._url) {
+            history.pushState(null, null, url);
+        }
+        await this._navigate();
     }
 
     /**
@@ -392,24 +440,39 @@ micro.UI = class extends HTMLBodyElement {
         }
     }
 
-    _open(page) {
-        this._close();
-        this.page = page;
-        this._pageSpace.appendChild(page);
-        this._updateTitle();
-    }
+    async _navigate() {
+        let oldURL = this._url;
+        let oldLocation = oldURL ? new URL(oldURL, location.origin) : null;
+        this._url = location.pathname + location.hash;
 
-    _close() {
-        if (this.page) {
-            this._pageSpace.removeChild(this.page);
+        if (oldLocation === null || location.pathname !== oldLocation.pathname) {
+            this._progressElem.style.display = "block";
             this.page = null;
+            this.page = await this._route(location.pathname);
+            this._progressElem.style.display = "none";
         }
+
+        if (location.hash) {
+            await this.page.ready;
+            try {
+                let elem = this.querySelector(location.hash);
+                if (elem) {
+                    elem.focus({preventScroll: true});
+                    elem.scrollIntoView();
+                }
+            } catch (e) {
+                // Ignore if hash is not a valid CSS selector
+                if (e instanceof DOMException && e.name === "SyntaxError") {
+                    return;
+                }
+                throw e;
+            }
+        }
+
+        this.dispatchEvent(new CustomEvent("navigate", {detail: {oldURL, newURL: this._url}}));
     }
 
     async _route(url) {
-        this._close();
-        this._progressElem.style.display = "block";
-
         let match = null;
         let route = null;
         for (route of this.pages) {
@@ -419,32 +482,27 @@ micro.UI = class extends HTMLBodyElement {
             }
         }
 
-        let page;
         if (!match) {
-            page = document.createElement("micro-not-found-page");
-        } else if (typeof route.page === "string") {
-            page = document.createElement(route.page);
-        } else {
-            let args = [url].concat(match.slice(1));
-            try {
-                page = await Promise.resolve(route.page(...args));
-            } catch (e) {
-                if (e instanceof TypeError) {
-                    page = document.createElement("micro-offline-page");
-                } else if (e instanceof micro.APIError &&
-                           e.error.__type__ === "NotFoundError") {
-                    page = document.createElement("micro-not-found-page");
-                } else if (e instanceof micro.APIError &&
-                           e.error.__type__ === "PermissionError") {
-                    page = document.createElement("micro-forbidden-page");
-                } else {
-                    throw e;
-                }
-            }
+            return document.createElement("micro-not-found-page");
         }
-
-        this._progressElem.style.display = "none";
-        this._open(page);
+        if (typeof route.page === "string") {
+            return document.createElement(route.page);
+        }
+        let args = [url].concat(match.slice(1));
+        try {
+            return await Promise.resolve(route.page(...args));
+        } catch (e) {
+            if (e instanceof micro.NetworkError) {
+                return document.createElement("micro-offline-page");
+            } else if (e instanceof micro.APIError &&
+                       e.error.__type__ === "NotFoundError") {
+                return document.createElement("micro-not-found-page");
+            } else if (e instanceof micro.APIError &&
+                       e.error.__type__ === "PermissionError") {
+                return document.createElement("micro-forbidden-page");
+            }
+            throw e;
+        }
     }
 
     _updateTitle() {
@@ -484,20 +542,6 @@ micro.UI = class extends HTMLBodyElement {
     handleEvent(event) {
         if (event.currentTarget === window && event.type === "error") {
             this.notify(document.createElement("micro-error-notification"));
-
-        } else if (event.type === "click") {
-            let a = micro.findAncestor(event.target, e => e instanceof HTMLAnchorElement, this);
-            // NOTE: `a.origin === location.origin` would be more elegant, but Edge does not support
-            // HTMLHyperlinkElementUtils yet (see
-            // https://developer.microsoft.com/en-us/microsoft-edge/platform/documentation/apireference/interfaces/htmlanchorelement/
-            // ).
-            if (a && a.href.startsWith(location.origin)) {
-                event.preventDefault();
-                this.navigate(a.pathname).catch(micro.util.catch);
-            }
-
-        } else if (event.target === window && event.type === "popstate") {
-            this._route(location.pathname).catch(micro.util.catch);
 
         } else if (event.target === this && event.type === "user-edit") {
             this._storeUser(event.detail.user);
@@ -809,10 +853,40 @@ micro.UserElement = class extends HTMLElement {
 
 /**
  * Page.
+ *
+ * .. attribute:: ready
+ *
+ *    Promise that resolves once the page is ready.
+ *
+ *    Subclass API: :meth:`micro.util.PromiseWhen.when` may be used to signal when the page will be
+ *    ready. By default, the page is considered all set after it has been attached to the DOM.
  */
 micro.Page = class extends HTMLElement {
     createdCallback() {
+        this.ready = new micro.util.PromiseWhen();
         this._caption = null;
+    }
+
+    /**
+     * .. deprecated:: 0.19.0
+     *
+     *    Overriding without chaining.
+     */
+    attachedCallback() {
+        setTimeout(
+            () => {
+                try {
+                    this.ready.when(Promise.resolve());
+                } catch (e) {
+                    // The subclass may call when
+                    if (e.message === "already-called-when") {
+                        return;
+                    }
+                    throw e;
+                }
+            },
+            0
+        );
     }
 
     /**
@@ -954,7 +1028,8 @@ micro.EditUserPage = class extends micro.Page {
     }
 
     attachedCallback() {
-        (async() => {
+        super.attachedCallback();
+        this.ready.when((async() => {
             let match = /^#set-email=([^:]+):([^:]+)$/u.exec(location.hash);
             if (match) {
                 history.replaceState(null, null, location.pathname);
@@ -995,7 +1070,7 @@ micro.EditUserPage = class extends micro.Page {
                     }
                 }
             }
-        })().catch(micro.util.catch);
+        })().catch(micro.util.catch));
     }
 
     /**
@@ -1168,7 +1243,8 @@ micro.ActivityPage = class extends micro.Page {
     }
 
     attachedCallback() {
-        this._showMoreButton.trigger().catch(micro.util.catch);
+        super.attachedCallback();
+        this.ready.when(this._showMoreButton.trigger().catch(micro.util.catch));
     }
 
     async _showMore() {

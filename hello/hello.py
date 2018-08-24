@@ -49,7 +49,8 @@ class Hello(Application):
         """Create a :class:`Greeting` and return it."""
         if str_or_none(text) is None:
             raise micro.ValueError('text_empty')
-        greeting = Greeting(id=randstr(), app=self, authors=[self.user.id], text=text)
+        greeting = Greeting(id='Greeting:{}'.format(randstr()), app=self, authors=[self.user.id],
+                            text=text)
         self.r.oset(greeting.id, greeting)
         self.r.rpush('greetings', greeting.id)
         return greeting
