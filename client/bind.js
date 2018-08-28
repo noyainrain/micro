@@ -70,6 +70,11 @@ micro.bind.Watchable = function(target = {}) {
             return target.length;
         },
 
+        pop() {
+            // TODO
+            return ext.splice(target.length - 1, 1)[0];
+        },
+
         unshift(...items) {
             ext.splice(0, 0, ...items);
             return target.length;

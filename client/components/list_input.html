@@ -1,0 +1,134 @@
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+/**
+ * TODO.
+ */
+micro.ListInputElement = class extends HTMLElement {
+    createdCallback() {
+        let add = item => {
+            this.nativeInput.value = "";
+            this._data.items.push(item);
+        };
+
+        this.appendChild(
+            document.importNode(document.querySelector("#micro-list-input-template").content, true)
+        );
+        this.nativeInput = this.querySelector("input");
+        this._data = new micro.bind.Watchable({
+            items: new micro.bind.Watchable([]),
+            template: this.querySelector("micro-list-input > template"),
+
+            remove: item => {
+                this._data.items.splice(this._data.items.indexOf(item), 1);
+                this.nativeInput.focus();
+            },
+
+            handleKeys: event => {
+                switch(event.key) {
+                case "Enter":
+                case "Tab":
+                    if (this.nativeInput.value) {
+                        event.preventDefault();
+                        add(this.nativeInput.value);
+                    }
+                    break;
+                case "Backspace":
+                    if (event.target.selectionStart === 0) {
+                        let item = this._data.items.pop();
+                        if (item) {
+                            this.nativeInput.value = item;
+                        }
+                    }
+                    break;
+                }
+            },
+
+            /*options: null,
+            onSelect: add,
+
+            compileOptions(ctx, options, values) {
+                // TODO implement
+            }*/
+        });
+        micro.bind.bind(this.children, this._data);
+        this.classList.add("micro-input-wrapper");
+
+        // XXX
+        //this.options = ["Hallo", "Lustig", "Ja"];
+    }
+
+    get items() {
+        this._data.items;
+    }
+
+    set items(value) {
+        this._data.items = new micro.bind.Watchable(value.slice());
+        this._compileOptions();
+    }
+
+    /*get options() {
+        return this.data._options;
+    }
+
+    set options(value) {
+        this.data._options = value;
+    }
+
+    get toText() {
+        return this._data.toText;
+    }
+
+    set toText(value) {
+        this._data.toText = value;
+    }*/
+};
+document.registerElement("micro-list-input", micro.ListInputElement);
+
+});
+</script>
+
+<template id="micro-list-input-template">
+    <div data-content="list items 'item'">
+        <template>
+            <span>
+                <span data-content="render template">
+                    <template>
+                        <span data-content="item"></span>
+                    </template>
+                </span>
+                <button
+                    is="micro-button" type="button" class="action action-subtle" tabindex="-1"
+                    data-run="bind remove item"
+                >
+                    <i class="fa fa-minus-circle"></i>
+                </button>
+            </span>
+        </template>
+    </div>
+    <input data-onkeydown="handleKeys" />
+    <!--
+    <micro-options
+        data-options="compileOptions options values" data-to-text="toText" data-onselect="onSelect"
+        data-content="template"
+    >
+    </micro-options>
+    -->
+</template>
+
+<style>
+    micro-list-input input {
+        display: block;
+        width: 100%;
+    }
+
+    micro-list-input .action {
+        color: inherit;
+        margin-right: 1ch; /* TODO space */
+    }
+
+    micro-list-input .action > i {
+        color: var(--micro-color-primary);
+        font-size: var(--micro-size-s);
+    }
+</style>
