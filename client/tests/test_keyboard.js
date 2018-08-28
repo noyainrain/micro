@@ -14,16 +14,16 @@ window.expect = window.expect || chai.expect;
 
 describe("ShortcutContext", function() {
     function setupDOM(calls) {
-        document.body.innerHTML = "<main><span><input></input></span></main>";
-        document.querySelector("main").addEventListener(
-            "keydown", event => calls.push(["keydown", event.key]));
-        let span = document.querySelector("span");
+        let main = document.querySelector("main");
+        main.innerHTML = "<span><input></input></span>";
+        main.addEventListener("keydown", event => calls.push(["keydown", event.key]));
+        let span = main.firstElementChild;
         span.shortcutContext = new micro.keyboard.ShortcutContext(span);
         span.shortcutContext.add("A", (...args) => calls.push(["shortcut"].concat(args)));
         span.shortcutContext.add("B,A", (...args) => calls.push(["shortcut"].concat(args)));
         span.shortcutContext.add("Control+Enter",
                                  (...args) => calls.push(["shortcut"].concat(args)));
-        return [span, document.querySelector("input")];
+        return [span, span.firstElementChild];
     }
 
     describe("on keydown", function() {
@@ -67,10 +67,10 @@ describe("ShortcutContext", function() {
 
 describe("Shortcut", function() {
     function setupDOM(calls) {
-        document.body.innerHTML = "<main><button></button></main>";
-        let main = document.body.firstElementChild;
+        let main = document.querySelector("main");
+        main.innerHTML = "<button></button>";
         main.shortcutContext = new micro.keyboard.ShortcutContext(main);
-        let button = document.querySelector("button");
+        let button = main.firstElementChild;
         button.shortcut = new micro.keyboard.Shortcut(button, "A");
         button.addEventListener("click", () => calls.push(["click"]));
         return main;
@@ -96,13 +96,14 @@ describe("Shortcut", function() {
 
 describe("quickNavigate", function() {
     function setupDOM(focusIndex) {
-        document.body.innerHTML = `
+        let main = document.querySelector("main");
+        main.innerHTML = `
             <div class="micro-quick-nav" tabindex="0"></div>
             <div></div>
             <div class="micro-quick-nav" tabindex="0" style="display: none;"></div>
             <div class="micro-quick-nav" tabindex="0"></div>
         `;
-        let elems = Array.from(document.body.children);
+        let elems = Array.from(main.children);
         elems[focusIndex].focus();
         return elems;
     }
@@ -144,19 +145,20 @@ describe("watchLifecycle", function() {
         it("should notify watchers", async function() {
             let calls = [];
             let span = makeSpan(calls);
-            document.body.appendChild(span);
+            document.querySelector("main").appendChild(span);
             await timeout();
             expect(calls).to.deep.equal([["connect", span]]);
         });
 
         it("should do nothing for disconnected elem", async function() {
+            let main = document.querySelector("main");
             let calls = [];
             let span = makeSpan(calls);
-            document.body.appendChild(span);
+            main.appendChild(span);
             await timeout();
             span.remove();
             await timeout();
-            document.body.appendChild(span);
+            main.appendChild(span);
             await timeout();
             expect(calls).to.deep.equal([["connect", span], ["disconnect", span]]);
         });
@@ -165,9 +167,10 @@ describe("watchLifecycle", function() {
 
 describe("enableActivedClass", function() {
     function setupDOM() {
-        document.body.innerHTML = "<button></button><button></button>";
+        let main = document.querySelector("main");
+        main.innerHTML = "<button></button><button></button>";
         micro.keyboard.enableActivatedClass();
-        return Array.from(document.body.children);
+        return Array.from(main.children);
     }
 
     describe("on click", function() {

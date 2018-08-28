@@ -27,8 +27,15 @@ before(async function() {
     let html = await response.text();
     let templatesNode = document.createElement("div");
     templatesNode.innerHTML = html;
-    document.body.appendChild(document.createElement("main"));
     document.body.appendChild(templatesNode);
+});
+
+beforeEach(function() {
+    document.body.appendChild(document.createElement("main"));
+});
+
+afterEach(function() {
+    document.querySelector("main").remove();
 });
 
 describe("OptionsElement", function() {

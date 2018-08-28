@@ -143,11 +143,8 @@ describe("bind()", function() {
     }
 
     it("should update DOM", function() {
-        let main = document.querySelector("main");
-        main.innerHTML = '<span data-title="value"></span>';
-        let span = main.firstElementChild;
-        micro.bind.bind(span, {value: "Purr"});
-        expect(span.title).to.equal("Purr");
+        let span = setupDOM("value", {value: "Purr"});
+        expect(span.result).to.equal("Purr");
     });
 
     it("should update DOM with multiple elements", function() {
