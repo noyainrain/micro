@@ -531,6 +531,25 @@ micro.bind.transforms = {
         let node = document.importNode(template.content, true);
         micro.bind.bind(node, ctx.data);
         return node;
+    },
+
+    /**
+     * Render a given *template*.
+     *
+     * The context element may contain a fallback `template`. If *template* is ``null``, the
+     * fallback template is rendered, or nothing if there is no fallback.
+     */
+    render(ctx, template) {
+        if (!ctx.elem.__templates__) {
+            ctx.elem.__templates__ = Array.from(ctx.elem.querySelectorAll("template"));
+        }
+        template = template || ctx.elem.__templates__[0];
+        if (!template) {
+            return document.createDocumentFragment();
+        }
+        let elem = document.importNode(template.content, true);
+        micro.bind.bind(elem, ctx.data);
+        return elem;
     }
 };
 

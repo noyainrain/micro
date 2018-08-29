@@ -119,6 +119,32 @@ micro.util.dispatchEvent = function(target, event) {
 };
 
 /**
+ * Create an on-event handler property for the given event *type*.
+ *
+ * The returned property can be assigned to an object, for example::
+ *
+ *    Object.defineProperty(elem, "onmeow", micro.util.makeOnEvent("meow"));
+ */
+micro.util.makeOnEvent = function(type) {
+    let listener = null;
+    return {
+        get() {
+            return listener;
+        },
+
+        set(value) {
+            if (listener) {
+                this.removeEventListener(type, listener);
+            }
+            listener = value;
+            if (listener) {
+                this.addEventListener(type, listener);
+            }
+        }
+    };
+};
+
+/**
  * Truncate *str* at *length*.
  *
  * A truncated string ends with an ellipsis character.

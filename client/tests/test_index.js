@@ -15,9 +15,19 @@
  */
 
 /* eslint-env mocha */
-/* eslint-disable prefer-arrow-callback */
+/* global chai, expect */
+/* eslint-disable no-unused-expressions, prefer-arrow-callback */
 
 "use strict";
+
+window.expect = window.expect || chai.expect;
+
+before(async function() {
+    let templates = document.createElement("div");
+    let response = await fetch("/base/templates.html");
+    templates.innerHTML = await response.text();
+    document.body.appendChild(templates);
+});
 
 beforeEach(function() {
     document.body.appendChild(document.createElement("main"));
@@ -25,4 +35,79 @@ beforeEach(function() {
 
 afterEach(function() {
     document.querySelector("main").remove();
+});
+
+describe("OptionsElement", function() {
+    async function setupDOM({options = ["Long", "Happy", "Grumpy"], templateHTML = ""} = {}) {
+        let main = document.querySelector("main");
+        main.innerHTML = `
+            <input />
+            <micro-options>
+                ${templateHTML}
+            </micro-options>
+        `;
+        // Custom elements are upgraded in the next iteration
+        await new Promise(resolve => setTimeout(resolve, 0));
+        let elem = main.lastElementChild;
+        elem.options = options;
+        return [elem, main.firstElementChild];
+    }
+
+    function getPresentedOptions(elem) {
+        return Array.from(elem.querySelector("ul").children, node => node.textContent.trim());
+    }
+
+    describe("activate()", function() {
+        it("should present options", async function() {
+            let [elem] = await setupDOM();
+            elem.limit = 2;
+            elem.activate();
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(getPresentedOptions(elem)).to.deep.equal(["Long", "Happy"]);
+        });
+
+        it("should present options for dynamic options", async function() {
+            let [elem] = await setupDOM({options: () => ["Long", "Happy"]});
+            elem.activate();
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(getPresentedOptions(elem)).to.deep.equal(["Long", "Happy"]);
+        });
+
+        it("should present options for template", async function() {
+            let [elem] = await setupDOM({
+                options: [{name: "Long"}, {name: "Happy"}],
+                templateHTML: `
+                    <template>
+                        <p>
+                            <span data-content="option.name"></span> Cat
+                        </p>
+                    </template>
+                `
+            });
+            elem.toText = option => option.name;
+            elem.activate();
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(getPresentedOptions(elem)).to.deep.equal(["Long Cat", "Happy Cat"]);
+        });
+    });
+
+    describe("on input", function() {
+        it("should present matching options", async function() {
+            let [elem, input] = await setupDOM();
+            input.value = "pY";
+            input.dispatchEvent(new Event("input"));
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(getPresentedOptions(elem)).to.deep.equal(["Happy", "Grumpy"]);
+        });
+    });
+
+    describe("on option click", function() {
+        it("should set input value", async function() {
+            let [elem, input] = await setupDOM();
+            elem.activate();
+            await new Promise(resolve => setTimeout(resolve, 0));
+            elem.querySelector("li").dispatchEvent(new MouseEvent("click"));
+            expect(input.value).to.equal("Long");
+        });
+    });
 });

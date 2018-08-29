@@ -129,6 +129,19 @@ describe("bind()", function() {
         return p;
     }
 
+    function setupDOMWithRender() {
+        let main = document.querySelector("main");
+        main.innerHTML = `
+            <p data-content="render template">
+                <template><span data-content="value"></span> (fallback)</template>
+            </p>
+            <template><span data-content="value"></span></template>
+        `;
+        let elem = main.firstElementChild;
+        let template = main.lastElementChild;
+        return [elem, template];
+    }
+
     it("should update DOM", function() {
         let span = setupDOM("value", {value: "Purr"});
         expect(span.result).to.equal("Purr");
@@ -225,6 +238,18 @@ describe("bind()", function() {
     it("should update DOM with switch for non-matching value and no default template", function() {
         let p = setupDOMWithSwitch("x", false);
         expect(p.textContent).to.be.empty;
+    });
+
+    it("should update DOM with render", function() {
+        let [elem, template] = setupDOMWithRender();
+        micro.bind.bind(elem, {template, value: "Purr"});
+        expect(elem.textContent).to.equal("Purr");
+    });
+
+    it("should update DOM with render for null template", function() {
+        let [elem] = setupDOMWithRender();
+        micro.bind.bind(elem, {template: null, value: "Purr"});
+        expect(elem.textContent).to.equal("Purr (fallback)");
     });
 
     it("should update DOM with nested binding", function() {

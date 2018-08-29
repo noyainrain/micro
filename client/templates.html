@@ -116,6 +116,63 @@
     <button class="micro-menu-toggle-secondary action action-subtle"><i class="fa"></i></button>
 </template>
 
+<template id="micro-options-template">
+    <div class="micro-entity-list">
+        <ul data-content="list options 'option'">
+            <template>
+                <li
+                    class="micro-panel" data-onclick="bind onClick option"
+                    data-content="render template"
+                >
+                    <template>
+                        <p data-content="toText option"></p>
+                    </template>
+                </li>
+            </template>
+        </ul>
+    </div>
+    <footer class="micro-panel">
+        <p class="micro-progress"><i class="fa fa-spinner fa-spin"></i></p>
+        <div class="micro-options-footer-content" data-content="render footerTemplate"></div>
+    </footer>
+</template>
+<style>
+    micro-options {
+        position: absolute;
+        z-index: 1;
+        background: white;
+        box-shadow: var(--micro-shadow);
+    }
+
+    micro-options > .micro-entity-list {
+        margin: 0;
+    }
+
+    micro-options > .micro-entity-list > ul > li {
+        cursor: pointer;
+    }
+
+    micro-options > .micro-entity-list > ul > li:hover {
+        background: var(--micro-color-delimiter);
+    }
+
+    micro-options > footer {
+        display: flex;
+        border-top: 1px solid var(--micro-color-delimiter);
+    }
+
+    .micro-options-footer-content {
+        flex: auto;
+        text-align: right;
+    }
+
+    micro-options:not(.micro-options-active),
+    micro-options:not(.micro-options-has-footer) > footer,
+    micro-options:not(.micro-options-generating) > footer > .micro-progress {
+        display: none;
+    }
+</style>
+
 <template class="micro-user-template">
     <i class="fa fa-user"></i><span></span>
 </template>
