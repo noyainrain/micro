@@ -1,8 +1,8 @@
 # listinput
 
-* OQ why on click remove?
-* TODO input-wrapper style (see Listling assign)
+* TODO on click wrapper focus input
+* OQ style of remove button
+* TODO on backspace do not delete last character
 * TODO on blur add item
-* TODO render with template
-* TODO set
+* TODO set / unique
 * TODO options

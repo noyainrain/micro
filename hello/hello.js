@@ -54,6 +54,8 @@ hello.StartPage = class extends micro.Page {
 
             options: ["foo", "bar", "fobax"],
 
+            tags: ["Juice", "Vegetable", "Other"],
+
             createGreeting: async() => {
                 try {
                     let form = this.querySelector("form");
