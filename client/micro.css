@@ -48,6 +48,7 @@ h1,
 p,
 ul,
 ol,
+dl,
 pre {
     display: block;
     margin: 1.5rem 0;
@@ -83,6 +84,21 @@ li h1 {
 ul,
 ol {
     padding-left: 1.5em;
+}
+
+dl {
+    display: grid;
+    grid: auto-flow / max-content 1fr;
+    column-gap: var(--micro-size-xs);
+}
+
+dt {
+    align-self: center;
+    color: var(--micro-color-text-subtle);
+}
+
+dd {
+    margin: 0;
 }
 
 pre {

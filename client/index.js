@@ -85,6 +85,8 @@ micro.findAncestor = micro.keyboard.findAncestor;
  */
 micro.UI = class extends HTMLBodyElement {
     createdCallback() {
+        this.mapServiceKey =
+            document.querySelector("meta[itemprop=map-service-key]").content || null;
         this._url = null;
         this._page = null;
         this._progressElem = this.querySelector(".micro-ui-progress");
@@ -432,7 +434,7 @@ micro.UI = class extends HTMLBodyElement {
         } catch (e) {
             if (e instanceof micro.APIError &&
                     e.error.__type__ === "CommunicationError") {
-                ui.notify("Oops, there was a problem communicating with your device. Please try again in a few minutes.");
+                ui.notify("Oops, there was a problem communicating with your device. Please try again in a few moments.");
             } else {
                 ui.handleCallError(e);
             }
@@ -901,8 +903,13 @@ micro.OptionsElement = class extends HTMLElement {
                 this._data.generating = true;
                 this._job = setTimeout(
                     () => {
-                        this._updateOptions().catch(micro.util.catch);
                         this._job = null;
+                        (async() => {
+                            await this._updateOptions();
+                            if (this._job) {
+                                this._data.generating = true;
+                            }
+                        })().catch(micro.util.catch);
                     },
                     this.delay
                 );
@@ -982,6 +989,102 @@ micro.OptionsElement = class extends HTMLElement {
     }
 };
 document.registerElement("micro-options", micro.OptionsElement);
+
+/**
+ * Input for entering a location, e.g. an address or POI.
+ *
+ * Mapbox is used for geocoding. :attr:`micro.UI.mapServiceKey` must be set.
+ *
+ * .. attribute:: nativeInput
+ *
+ *    Wrapped :class:`HTMLInputElement`. It has an additional property *wrapper* pointing back to
+ *    this element.
+ */
+micro.LocationInputElement = class extends HTMLElement {
+    createdCallback() {
+        this._value = null;
+
+        this.appendChild(
+            document.importNode(
+                document.querySelector("#micro-location-input-template").content, true
+            )
+        );
+        this._data = new micro.bind.Watchable({
+            async queryLocations(query, limit) {
+                if (!query) {
+                    return [];
+                }
+                // Semicolon is interpreted as separator for batch geocoding
+                query = encodeURIComponent(query.slice(0, 256).replace(";", ","));
+                let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?limit=${limit}&access_token=${ui.mapServiceKey}`;
+                try {
+                    let result = await micro.call("GET", url);
+                    return result.features.map(
+                        feature => ({
+                            name: feature.matching_place_name || feature.place_name,
+                            coords: [
+                                feature.geometry.coordinates[1], feature.geometry.coordinates[0]
+                            ]
+                        })
+                    );
+                } catch (e) {
+                    if (e instanceof micro.NetworkError || e instanceof micro.APIError) {
+                        ui.notify("Oops, there was a problem communicating with Mapbox. Please try again in a few moments.");
+                        return [];
+                    }
+                    throw e;
+                }
+            },
+
+            locationToText(loc) {
+                return loc.name;
+            },
+
+            onSelect: event => {
+                this._value = event.detail.option;
+            }
+        });
+        micro.bind.bind(this.children, this._data);
+
+        this.nativeInput = this.querySelector("input");
+        this.nativeInput.wrapper = this;
+        this.nativeInput.name = this.getAttribute("name") || "";
+        this.nativeInput.placeholder = this.getAttribute("placeholder") || "";
+        this.nativeInput.addEventListener("input", () => {
+            this._value =
+                this.nativeInput.value ? {name: this.nativeInput.value, coords: null} : null;
+        });
+    }
+
+    /** Current value as :ref:`Location`. May be ``null``. */
+    get value() {
+        return this._value;
+    }
+
+    set value(value) {
+        this._value = value;
+        this.nativeInput.value = value ? value.name : "";
+    }
+
+    /** See :attr:`HTMLInputElement.name`. */
+    get name() {
+        return this.nativeInput.name;
+    }
+
+    set name(value) {
+        this.nativeInput.name = value;
+    }
+
+    /** See :attr:`HTMLInputElement.placeholder`. */
+    get placeholder() {
+        return this.nativeInput.placeholder;
+    }
+
+    set placeholder(value) {
+        this.nativeInput.placeholder = value;
+    }
+};
+document.registerElement("micro-location-input", micro.LocationInputElement);
 
 /**
  * User element.

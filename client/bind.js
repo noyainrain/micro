@@ -516,7 +516,7 @@ micro.bind.transforms = {
         }
 
         if (cases.length === 0) {
-            cases = [true];
+            cases = [value ? value : Symbol("unmatchable")];
         }
         if (!(ctx.elem.__templates__.length >= cases.length &&
               ctx.elem.__templates__.length <= cases.length + 1)) {

@@ -22,7 +22,7 @@ from redis import RedisError
 from tornado.testing import AsyncTestCase
 
 import micro
-from micro import Activity, Event
+from micro import Activity, Event, Location
 from micro.test import CatApp, Cat
 
 SETUP_DB_SCRIPT = """\
@@ -238,3 +238,9 @@ class ActivityTest(MicroTestCase):
         activity.subscribe()
         activity.unsubscribe()
         self.assertNotIn(self.user, activity.subscribers)
+
+class LocationTest(MicroTestCase):
+    def test_parse(self):
+        location = Location.parse({'name': 'Berlin', 'coords': [52.504043, 13.393236]})
+        self.assertEqual(location.name, 'Berlin')
+        self.assertEqual(location.coords, (52.504043, 13.393236))

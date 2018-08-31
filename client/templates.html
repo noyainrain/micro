@@ -173,6 +173,39 @@
     }
 </style>
 
+<template id="micro-location-input-template">
+    <input />
+    <micro-options
+        data-options="queryLocations" data-delay="500" data-to-text="locationToText"
+        data-onselect="onSelect"
+    >
+        <template name="footer">
+            <p class="micro-location-input-footer">
+                <small>
+                    Location data by ©
+                    <a class="link" href="https://www.mapbox.com/about/maps/" target="_blank">
+                        <img
+                            src="{{ static_url('{}/@noyainrain/micro/images/mapbox.svg'.format(modules_path)) }}"
+                            alt="Mapbox"
+                        />
+                    </a>
+                </small>
+            </p>
+        </template>
+    </micro-options>
+</template>
+<style>
+    micro-location-input input {
+        display: block;
+        width: 100%;
+    }
+
+    .micro-location-input-footer img {
+        height: 1.5em;
+        vertical-align: bottom;
+    }
+</style>
+
 <template class="micro-user-template">
     <i class="fa fa-user"></i><span></span>
 </template>

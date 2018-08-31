@@ -59,7 +59,7 @@ micro.APIError = class extends Error {
  *    :class:`TypeError` for IO related errors. Check for :class:`micro.NetworkError` instead.
  */
 micro.call = async function(method, url, args) {
-    let options = {method, credentials: "include"};
+    let options = {method, credentials: "same-origin"};
     if (args) {
         options.headers = {"Content-Type": "application/json"};
         options.body = JSON.stringify(args);

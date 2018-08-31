@@ -84,15 +84,24 @@ class Server:
 
        Location of client service worker script. Defaults to the included micro service worker.
 
+    .. attribute:: client_map_service_key
+
+       See ``--client-map-service-key`` command line option.
+
     .. attribute:: debug
 
        See ``--debug`` command line option.
+
+    .. deprecated:: 0.21.0
+
+       Constructor options as positional arguments. Use keyword arguments instead.
     """
 
     def __init__(
             self, app: micro.Application, handlers: Sequence[Handler], port: int = 8080,
             url: str = None, client_path: str = 'client', client_modules_path: str = '.',
-            client_service_path: str = None, debug: bool = False) -> None:
+            client_service_path: str = None, debug: bool = False, *,
+            client_map_service_key: str = None) -> None:
         url = url or 'http://localhost:{}'.format(port)
         try:
             urlparts = urlparse(url)
@@ -111,6 +120,7 @@ class Server:
         self.client_service_path = (
             client_service_path or
             os.path.join(client_modules_path, '@noyainrain/micro/service.js'))
+        self.client_map_service_key = client_map_service_key
         self.debug = debug
 
         self.app.email = 'bot@' + urlparts.hostname
@@ -330,12 +340,22 @@ class _Static(StaticFileHandler):
             self.set_header('Service-Worker-Allowed', '/')
 
 class _UI(RequestHandler):
-    def initialize(self):
-        self._server = self.application.settings['server']
+    def initialize(self) -> None:
+        server = self.application.settings['server']
+        assert isinstance(server, Server)
+        self._server = server
         # pylint: disable=protected-access; Server is a friend
         self._templates = self._server._micro_templates
         if self._server.debug:
             self._templates.reset()
+
+    def get_template_namespace(self) -> Dict[str, object]:
+        return {
+            **super().get_template_namespace(),
+            'modules_path': self._server.client_modules_path,
+            'service_path': self._server.client_service_path,
+            'map_service_key': self._server.client_map_service_key
+        }
 
     def get(self):
         self.set_header('Cache-Control', 'no-cache')
@@ -343,16 +363,14 @@ class _UI(RequestHandler):
             'index.html', micro_dependencies=self._render_micro_dependencies,
             micro_boot=self._render_micro_boot, micro_templates=self._render_micro_templates)
 
-    def _render_micro_dependencies(self):
-        return self._templates.load('dependencies.html').generate(
-            static_url=self.static_url, modules_path=self._server.client_modules_path,
-            service_path=self._server.client_service_path)
+    def _render_micro_dependencies(self) -> str:
+        return self._templates.load('dependencies.html').generate(**self.get_template_namespace())
 
-    def _render_micro_boot(self):
-        return self._templates.load('boot.html').generate()
+    def _render_micro_boot(self) -> str:
+        return self._templates.load('boot.html').generate(**self.get_template_namespace())
 
-    def _render_micro_templates(self):
-        return self._templates.load('templates.html').generate()
+    def _render_micro_templates(self) -> str:
+        return self._templates.load('templates.html').generate(**self.get_template_namespace())
 
 class _LogClientErrorEndpoint(Endpoint):
     def post(self):

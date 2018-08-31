@@ -111,3 +111,29 @@ describe("OptionsElement", function() {
         });
     });
 });
+
+describe("LocationInputElement", function() {
+    async function setupDOM() {
+        let main = document.querySelector("main");
+        main.innerHTML = "<micro-location-input></micro-location-input>";
+        await new Promise(resolve => setTimeout(resolve, 0));
+        return main.firstElementChild;
+    }
+
+    describe("on set value", function() {
+        it("should set native input value", async function() {
+            let input = await setupDOM();
+            input.value = {name: "Berlin", coords: [52.504043, 13.393236]};
+            expect(input.nativeInput.value).to.equal("Berlin");
+        });
+    });
+
+    describe("on input", function() {
+        it("should set value", async function() {
+            let input = await setupDOM();
+            input.nativeInput.value = "Berlin";
+            input.nativeInput.dispatchEvent(new Event("input"));
+            expect(input.value).to.deep.equal({name: "Berlin", coords: null});
+        });
+    });
+});
