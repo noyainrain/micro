@@ -26,6 +26,10 @@ micro.ListInputElement = class extends HTMLElement {
                 this.nativeInput.focus();
             },
 
+            onClick: event => {
+                this.nativeInput.focus();
+            },
+
             onKeyPress: event => {
                 switch(event.key) {
                 case "Enter":
@@ -77,6 +81,14 @@ micro.ListInputElement = class extends HTMLElement {
         // this._compileOptions();
     }
 
+    get order() {
+        return this._data.order;
+    }
+
+    set order(value) {
+        this._data.order = value;
+    }
+
     /*get options() {
         return this.data._options;
     }
@@ -99,21 +111,22 @@ document.registerElement("micro-list-input", micro.ListInputElement);
 </script>
 
 <template id="micro-list-input-template">
-    <div class="micro-input-wrapper" data-class-micro-list-input-order="order" data-class-focus-within="focus">
+    <div class="micro-input-wrapper" data-class-micro-list-input-order="order" data-class-focus-within="focus" data-onclick="onClick">
         <ol is="micro-ol" data-content="list value 'item'">
             <template>
-                <li>
+                <li class="micro-panel">
                     <span data-class-micro-ol-handle="order">
-                        <i class="fa fa-grip-vertical micro-list-input-grip"></i><!--
-                     --><span data-content="render template">
-                            <template><span data-content="item"></span></template>
-                        </span><!--
-                 --></span><!--
-                 --><button
+                        <i class="fa fa-grip-vertical micro-list-input-grip"></i>
+                    </span>
+                    <span class="micro-list-input-item" data-content="render template">
+                        <template><span data-content="item"></span></template>
+                    </span>
+                    <button
                         is="micro-button" type="button" class="action action-subtle" tabindex="-1"
                         data-run="bind remove item"
                     >
-                        <i class="fa fa-minus-circle"></i>
+                        <!--<i class="far fa-times-circle"></i>-->
+                        <i class="fa fa-times"></i>
                     </button><!--
              --></li>
             </template>
@@ -134,7 +147,7 @@ document.registerElement("micro-list-input", micro.ListInputElement);
         color: inherit;
         /*margin-left: 1ch;*/
         /*font-size: var(--micro-size-text-s);*/
-        margin-left: 1px;
+        /*margin-left: 1px;*/
     }
 
     micro-list-input .action > i {
@@ -150,9 +163,25 @@ document.registerElement("micro-list-input", micro.ListInputElement);
     }
 
     micro-list-input .micro-input-wrapper > ol > li {
-        margin-right: var(--micro-size-xs);
-        margin-right: 1ch;
-        /*border-bottom: 1px solid var(--micro-color-delimiter);*/
+        margin-bottom: 0.25em;
+        margin-right: 0.25em;
+        /*margin-right: 1ch;*/
+        border: 1px solid var(--micro-color-delimiter);
+        border-radius: 0.25em;
+        /*padding: 0 0.25em 1px 0.25em;*/
+        /*padding: 1px 0.25em;*/
+        /*background: var(--micro-color-delimiter);*/
+        display: flex;
+    }
+
+    .micro-list-input-item {
+        align-self: center;
+        padding: 1px;
+        padding: 1px 1px 1px 0.25em;
+    }
+
+    .micro-list-input-item > * {
+        display: block !important;
     }
 
     micro-list-input .micro-input-wrapper > ol > li:not(:last-child)::after {
@@ -161,9 +190,38 @@ document.registerElement("micro-list-input", micro.ListInputElement);
         /*color: var(--micro-color-text-subtle);*/
     }
 
+    /*micro-list-input .micro-ol-handle > span {
+        vertical-align: middle;
+    }
+
+    micro-list-input .micro-ol-handle::after {
+        content: '.';
+        display: inline-block;
+        height: 100%;
+        background: red;
+        vertical-align: middle;
+    }*/
+
+    micro-list-input .action.action-subtle:hover {
+        background: var(--micro-color-delimiter);
+    }
+
+    micro-list-input .action.action-subtle i {
+        padding: 0 0.25em;
+        color: var(--micro-color-text-subtle);
+    }
+
+    micro-list-input .micro-ol-handle {
+        padding: 0 0.25em;
+    }
+
+    micro-list-input .micro-ol-handle:hover {
+        background: var(--micro-color-delimiter);
+    }
+
     .micro-list-input-grip {
         color: var(--micro-color-text-subtle);
-        margin-right: 1px;
+        /*margin-right: 1px;*/
     }
 
     micro-list-input .micro-input-wrapper:not(.micro-list-input-order) .micro-list-input-grip {

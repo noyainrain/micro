@@ -335,6 +335,7 @@ legend::after {
     padding: var(--micro-size-xs);
     border: 1px solid var(--micro-color-border);
     margin: var(--micro-size-m) 0;
+    cursor: text;
 }
 
 /* TODO */
