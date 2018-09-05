@@ -25,7 +25,7 @@ from logging import getLogger
 import os
 import re
 from smtplib import SMTP
-from typing import Callable, Dict, List, Optional, Type, Union, overload
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union, cast, overload
 from urllib.parse import urlparse
 from warnings import catch_warnings
 
@@ -948,6 +948,34 @@ class AuthRequest(Object):
             **super().json(restricted, include),
             **({} if restricted else {'email': self._email, 'code': self._code})
         }
+
+class Location:
+    """See :ref:`Location`."""
+
+    def __init__(self, name: str, coords: Tuple[float, float] = None) -> None:
+        if str_or_none(name) is None:
+            raise ValueError('empty_name')
+        if coords and not (-90 <= coords[0] <= 90 and -180 <= coords[1] <= 180):
+            raise ValueError('out_of_range_coords')
+        self.name = name
+        self.coords = coords
+
+    @staticmethod
+    def parse(data: Dict[str, object]) -> 'Location':
+        """Parse the given location JSON *data* into a :class:`Location`."""
+        name, coords = data.get('name'), data.get('coords')
+        if not isinstance(name, str):
+            raise TypeError()
+        if coords is not None:
+            if not (isinstance(coords, Sequence) and len(coords) == 2 and
+                    all(isinstance(value, float) for value in coords)):
+                raise TypeError()
+            coords = cast(Tuple[float, float], tuple(coords))
+        return Location(name, coords)
+
+    def json(self) -> Dict[str, object]:
+        """Return a JSON representation of the location."""
+        return {'name': self.name, 'coords': list(self.coords) if self.coords else None}
 
 class ValueError(builtins.ValueError):
     """See :ref:`ValueError`.

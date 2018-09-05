@@ -81,12 +81,13 @@ class Greeting(Object, Editable):
         json.update({'text': self.text})
         return json
 
-def make_server(port=8080, url=None, client_path='.', debug=False, redis_url='', smtp_url=''):
+def make_server(port=8080, url=None, client_path='.', debug=False, redis_url='', smtp_url='',
+                client_map_service_key=None):
     """Create a Hello server."""
     app = Hello(redis_url, smtp_url=smtp_url)
     handlers = [(r'/api/greetings$', _GreetingsEndpoint)]
     return Server(app, handlers, port, url, client_path, client_modules_path='node_modules',
-                  debug=debug)
+                  debug=debug, client_map_service_key=client_map_service_key)
 
 class _GreetingsEndpoint(Endpoint):
     # pylint: disable=abstract-method; Tornado handlers define a semi-abstract data_received()

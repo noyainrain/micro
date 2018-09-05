@@ -137,9 +137,9 @@ describe("bind()", function() {
             </p>
             <template><span data-content="value"></span></template>
         `;
-        let p = main.querySelector("p");
-        let template = main.querySelector("p + template");
-        return [p, template];
+        let elem = main.firstElementChild;
+        let template = main.lastElementChild;
+        return [elem, template];
     }
 
     it("should update DOM", function() {
@@ -241,15 +241,15 @@ describe("bind()", function() {
     });
 
     it("should update DOM with render", function() {
-        let [p, template] = setupDOMWithRender();
-        micro.bind.bind(p, {template, value: "Purr"});
-        expect(p.textContent).to.equal("Purr");
+        let [elem, template] = setupDOMWithRender();
+        micro.bind.bind(elem, {template, value: "Purr"});
+        expect(elem.textContent).to.equal("Purr");
     });
 
     it("should update DOM with render for null template", function() {
-        let [p] = setupDOMWithRender();
-        micro.bind.bind(p, {template: null, value: "Purr"});
-        expect(p.textContent).to.equal("Purr (fallback)");
+        let [elem] = setupDOMWithRender();
+        micro.bind.bind(elem, {template: null, value: "Purr"});
+        expect(elem.textContent).to.equal("Purr (fallback)");
     });
 
     it("should update DOM with nested binding", function() {

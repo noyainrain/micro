@@ -32,3 +32,16 @@ describe("dispatchEvent()", function() {
         expect(calls).to.deep.equal([["listener", "poke"], ["on", "poke"]]);
     });
 });
+
+describe("makeOnEvent()", function() {
+    describe("on event", function() {
+        it("should call handler", function() {
+            let calls = [];
+            let elem = document.createElement("span");
+            Object.defineProperty(elem, "onmeow", micro.util.makeOnEvent("meow"));
+            elem.onmeow = () => calls.push("onmeow");
+            elem.dispatchEvent(new CustomEvent("meow"));
+            expect(calls).to.deep.equal(["onmeow"]);
+        });
+    });
+});

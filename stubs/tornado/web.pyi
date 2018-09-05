@@ -6,6 +6,8 @@ class RequestHandler:
 
     def write(self, chunk: Union[bytes, str, Dict[str, object]]) -> None: ...
 
+    def get_template_namespace(self) -> Dict[str, object]: ...
+
 class Application:
     settings: Dict[str, object]
 

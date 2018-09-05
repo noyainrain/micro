@@ -59,7 +59,7 @@ micro.APIError = class extends Error {
  *    :class:`TypeError` for IO related errors. Check for :class:`micro.NetworkError` instead.
  */
 micro.call = async function(method, url, args) {
-    let options = {method, credentials: "include"};
+    let options = {method, credentials: "same-origin"};
     if (args) {
         options.headers = {"Content-Type": "application/json"};
         options.body = JSON.stringify(args);
@@ -119,9 +119,13 @@ micro.util.dispatchEvent = function(target, event) {
 };
 
 /**
- * TODO
+ * Create an on-event handler property for the given event *type*.
+ *
+ * The returned property can be assigned to an object, for example::
+ *
+ *    Object.defineProperty(elem, "onmeow", micro.util.makeOnEvent("meow"));
  */
-micro.util.makeEventHandler = function(type) {
+micro.util.makeOnEvent = function(type) {
     let listener = null;
     return {
         get() {
@@ -133,8 +137,8 @@ micro.util.makeEventHandler = function(type) {
                 this.removeEventListener(type, listener);
             }
             listener = value;
-            if (value) {
-                this.addEventListener(type, value);
+            if (listener) {
+                this.addEventListener(type, listener);
             }
         }
     };

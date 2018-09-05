@@ -23,11 +23,10 @@
 window.expect = window.expect || chai.expect;
 
 before(async function() {
+    let templates = document.createElement("div");
     let response = await fetch("/base/templates.html");
-    let html = await response.text();
-    let templatesNode = document.createElement("div");
-    templatesNode.innerHTML = html;
-    document.body.appendChild(templatesNode);
+    templates.innerHTML = await response.text();
+    document.body.appendChild(templates);
 });
 
 beforeEach(function() {
@@ -39,24 +38,19 @@ afterEach(function() {
 });
 
 describe("OptionsElement", function() {
-    async function setupDOM({options = ["Long", "Happy", "Grumpy"], template = false} = {}) {
+    async function setupDOM({options = ["Long", "Happy", "Grumpy"], templateHTML = ""} = {}) {
         let main = document.querySelector("main");
-        let templateHTML = `
-            <template>
-                <p><span data-content="option.name"></span> Cat</p>
-            </template>
-        `;
         main.innerHTML = `
             <input />
             <micro-options>
-                ${template ? templateHTML : ""}
+                ${templateHTML}
             </micro-options>
         `;
         // Custom elements are upgraded in the next iteration
         await new Promise(resolve => setTimeout(resolve, 0));
-        let elem = main.querySelector("micro-options");
+        let elem = main.lastElementChild;
         elem.options = options;
-        return [elem, main.querySelector("input")];
+        return [elem, main.firstElementChild];
     }
 
     function getPresentedOptions(elem) {
@@ -72,7 +66,7 @@ describe("OptionsElement", function() {
             expect(getPresentedOptions(elem)).to.deep.equal(["Long", "Happy"]);
         });
 
-        it("should present options for function", async function() {
+        it("should present options for dynamic options", async function() {
             let [elem] = await setupDOM({options: () => ["Long", "Happy"]});
             elem.activate();
             await new Promise(resolve => setTimeout(resolve, 0));
@@ -80,9 +74,16 @@ describe("OptionsElement", function() {
         });
 
         it("should present options for template", async function() {
-            let [elem] = await setupDOM(
-                {options: [{name: "Long"}, {name: "Happy"}], template: true}
-            );
+            let [elem] = await setupDOM({
+                options: [{name: "Long"}, {name: "Happy"}],
+                templateHTML: `
+                    <template>
+                        <p>
+                            <span data-content="option.name"></span> Cat
+                        </p>
+                    </template>
+                `
+            });
             elem.toText = option => option.name;
             elem.activate();
             await new Promise(resolve => setTimeout(resolve, 0));
@@ -93,20 +94,46 @@ describe("OptionsElement", function() {
     describe("on input", function() {
         it("should present matching options", async function() {
             let [elem, input] = await setupDOM();
-            input.value = "py";
-            input.dispatchEvent(new InputEvent("input"));
+            input.value = "pY";
+            input.dispatchEvent(new Event("input"));
             await new Promise(resolve => setTimeout(resolve, 0));
             expect(getPresentedOptions(elem)).to.deep.equal(["Happy", "Grumpy"]);
         });
     });
 
-    describe("on select", function() {
+    describe("on option click", function() {
         it("should set input value", async function() {
             let [elem, input] = await setupDOM();
             elem.activate();
             await new Promise(resolve => setTimeout(resolve, 0));
             elem.querySelector("li").dispatchEvent(new MouseEvent("click"));
             expect(input.value).to.equal("Long");
+        });
+    });
+});
+
+describe("LocationInputElement", function() {
+    async function setupDOM() {
+        let main = document.querySelector("main");
+        main.innerHTML = "<micro-location-input></micro-location-input>";
+        await new Promise(resolve => setTimeout(resolve, 0));
+        return main.firstElementChild;
+    }
+
+    describe("on set value", function() {
+        it("should set native input value", async function() {
+            let input = await setupDOM();
+            input.value = {name: "Berlin", coords: [52.504043, 13.393236]};
+            expect(input.nativeInput.value).to.equal("Berlin");
+        });
+    });
+
+    describe("on input", function() {
+        it("should set value", async function() {
+            let input = await setupDOM();
+            input.nativeInput.value = "Berlin";
+            input.nativeInput.dispatchEvent(new Event("input"));
+            expect(input.value).to.deep.equal({name: "Berlin", coords: null});
         });
     });
 });

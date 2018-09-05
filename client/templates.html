@@ -120,7 +120,10 @@
     <div class="micro-entity-list">
         <ul data-content="list options 'option'">
             <template>
-                <li data-onclick="bind select option" data-content="render template">
+                <li
+                    class="micro-panel" data-onclick="bind onClick option"
+                    data-content="render template"
+                >
                     <template>
                         <p data-content="toText option"></p>
                     </template>
@@ -128,7 +131,7 @@
             </template>
         </ul>
     </div>
-    <footer>
+    <footer class="micro-panel">
         <p class="micro-progress"><i class="fa fa-spinner fa-spin"></i></p>
         <div class="micro-options-footer-content" data-content="render footerTemplate"></div>
     </footer>
@@ -137,8 +140,12 @@
     micro-options {
         position: absolute;
         z-index: 1;
-        box-shadow: 0 2px 2px rgba(0, 0, 0, 0.33);
         background: white;
+        box-shadow: var(--micro-shadow);
+    }
+
+    micro-options > .micro-entity-list {
+        margin: 0;
     }
 
     micro-options > .micro-entity-list > ul > li {
@@ -154,46 +161,52 @@
         border-top: 1px solid var(--micro-color-delimiter);
     }
 
-    micro-options > footer > .micro-progress {
-        padding: var(--micro-size-xs);
-        margin: 0;
-    }
-
     .micro-options-footer-content {
         flex: auto;
-    }
-
-    .micro-options-footer-content > p {
-        padding: var(--micro-size-xs);
-        margin: 0;
         text-align: right;
     }
 
     micro-options:not(.micro-options-active),
-    micro-options:not(.micro-options-has-footer):not(.micro-options-generating) > footer,
+    micro-options:not(.micro-options-has-footer) > footer,
     micro-options:not(.micro-options-generating) > footer > .micro-progress {
         display: none;
     }
 </style>
 
+{% include 'components/list_input.html' %}
+
+<template id="micro-location-input-template">
+    <input />
+    <micro-options
+        data-options="queryLocations" data-delay="500" data-to-text="locationToText"
+        data-onselect="onSelect"
+    >
+        <template name="footer">
+            <p class="micro-location-input-footer">
+                <small>
+                    Location data by ©
+                    <a class="link" href="https://www.mapbox.com/about/maps/" target="_blank">
+                        <img
+                            src="{{ static_url('{}/@noyainrain/micro/images/mapbox.svg'.format(modules_path)) }}"
+                            alt="Mapbox"
+                        />
+                    </a>
+                </small>
+            </p>
+        </template>
+    </micro-options>
+</template>
 <style>
-    .micro-entity-list > ul {
-        padding: 0;
-        margin: 0;
-        list-style: none;
+    micro-location-input input {
+        display: block;
+        width: 100%;
     }
 
-    .micro-entity-list > ul > li:not(:first-child) {
-        border-top: 1px solid var(--micro-color-delimiter);
-    }
-
-    .micro-entity-list > ul > li > p {
-        padding: var(--micro-size-xs);
-        margin: 0;
+    .micro-location-input-footer img {
+        height: 1.5em;
+        vertical-align: bottom;
     }
 </style>
-
-{% include 'components/list_input.html' %}
 
 <template class="micro-user-template">
     <i class="fa fa-user"></i><span></span>

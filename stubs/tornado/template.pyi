@@ -1,9 +1,17 @@
 from typing import Dict
 
-class Loader:
+class Template:
+    def generate(self, **kwargs: object) -> str: ...
+
+class BaseLoader:
+    def reset(self) -> None: ...
+
+    def load(self, name: str, parent_path: str = None) -> Template: ...
+
+class Loader(BaseLoader):
     def __init__(self, root_directory: str, **kwargs: object) -> None: ...
 
-class DictLoader:
+class DictLoader(BaseLoader):
     def __init__(self, dict: Dict[str, str], **kwargs: object) -> None: ...
 
 def filter_whitespace(mode: str, text: str) -> str: ...

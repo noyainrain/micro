@@ -88,7 +88,7 @@ def check_email(email: str) -> None:
     if len(email.splitlines()) > 1:
         raise ValueError('email_newline')
 
-def make_command_line_parser():
+def make_command_line_parser() -> ArgumentParser:
     """Create a :class:`argparse.ArgumentParser` handy for micro apps.
 
     The parser is preconfigured to handle common command line arguments.
@@ -107,6 +107,9 @@ def make_command_line_parser():
     parser.add_argument(
         '--smtp-url',
         help='URL of the SMTP server to use for outgoing email. Only host and port are considered, which default to localhost and 25 respectively.')
+    parser.add_argument(
+        '--client-map-service-key',
+        help='Public Mapbox access token, required for location related features. Can be retrieved from https://www.mapbox.com/account/access-tokens.')
     return parser
 
 def setup_logging(debug=False):

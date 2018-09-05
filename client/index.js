@@ -85,6 +85,8 @@ micro.findAncestor = micro.keyboard.findAncestor;
  */
 micro.UI = class extends HTMLBodyElement {
     createdCallback() {
+        this.mapServiceKey =
+            document.querySelector("meta[itemprop=map-service-key]").content || null;
         this._url = null;
         this._page = null;
         this._progressElem = this.querySelector(".micro-ui-progress");
@@ -432,7 +434,7 @@ micro.UI = class extends HTMLBodyElement {
         } catch (e) {
             if (e instanceof micro.APIError &&
                     e.error.__type__ === "CommunicationError") {
-                ui.notify("Oops, there was a problem communicating with your device. Please try again in a few minutes.");
+                ui.notify("Oops, there was a problem communicating with your device. Please try again in a few moments.");
             } else {
                 ui.handleCallError(e);
             }
@@ -825,16 +827,21 @@ micro.Menu = class extends HTMLUListElement {
 /**
  * Options for an `input` field.
  *
- * Attaches itself to the preceding sibling `input` and presents options based on the user input.
+ * Attaches itself to the preceding sibling `input` and presents a list of options to the user,
+ * based on their input.
  *
  * Content may include a `template` that is used to render an individual option, bound as *option*.
- * By default an option is displayed as simple text. Arbitrary content can be placed in the `footer`
+ * By default an option is shown as simple text. Arbitrary content can be placed in the `footer`
  * slot.
  *
  * .. attribute: delay
  *
- *    Time to wait in milliseconds after user input before updating the presented options. Defaults
- *    to `0`.
+ *    Time to wait in milliseconds after user input before generating the selection of options.
+ *    Defaults to `0`.
+ *
+ * .. describe:: select
+ *
+ *    Fired when the user selects an *option*.
  */
 micro.OptionsElement = class extends HTMLElement {
     createdCallback() {
@@ -844,7 +851,7 @@ micro.OptionsElement = class extends HTMLElement {
         this._limit = 5;
         this._toText = null;
         this._job = null;
-        Object.defineProperty(this, "onselect", micro.util.makeEventHandler("select"));
+        Object.defineProperty(this, "onselect", micro.util.makeOnEvent("select"));
 
         let template = this.querySelector("template:not([name])");
         let footerTemplate = this.querySelector("template[name=footer]");
@@ -858,10 +865,10 @@ micro.OptionsElement = class extends HTMLElement {
             footerTemplate,
             active: false,
             generating: false,
-            toText: (ctx, option) => this._toText ? this._toText(option) : option,
+            toText: (ctx, option) => typeof option === "string" ? option : this._toText(option),
 
-            select: (option, event) => {
-                this._input.value = typeof option === "string" ? option : this._toText(option);
+            onClick: option => {
+                this._input.value = this._data.toText(null, option);
                 this.deactivate();
                 this.dispatchEvent(new CustomEvent("select", {detail: {option}}));
             }
@@ -869,12 +876,16 @@ micro.OptionsElement = class extends HTMLElement {
         micro.bind.bind(this.children, this._data);
 
         let update = () => {
-            this.classList.toggle("micro-options-has-footer", this._data.footerTemplate);
+            this.classList.toggle(
+                "micro-options-has-footer", this._data.footerTemplate || this._data.generating
+            );
             this.classList.toggle("micro-options-active", this._data.active);
             this.classList.toggle("micro-options-generating", this._data.generating);
         };
         ["footerTemplate", "active", "generating"].forEach(prop => this._data.watch(prop, update));
         update();
+
+        // The input should not loose focus when interacting with the options
         this.addEventListener("mousedown", event => event.preventDefault());
     }
 
@@ -884,24 +895,39 @@ micro.OptionsElement = class extends HTMLElement {
         this._input.addEventListener(
             "input", () => {
                 if (!this._data.active) {
-                    this.activate();
+                    this._data.active = true;
+                }
+                if (this._job) {
                     return;
                 }
-                this._updateOptions(this.delay);
+                this._data.generating = true;
+                this._job = setTimeout(
+                    () => {
+                        this._job = null;
+                        (async() => {
+                            await this._updateOptions();
+                            if (this._job) {
+                                this._data.generating = true;
+                            }
+                        })().catch(micro.util.catch);
+                    },
+                    this.delay
+                );
             }
         );
         this._input.addEventListener("blur", () => this.deactivate());
     }
 
     /**
-     * Pool of available options. Only options which (partially) match the user input are presented.
+     * Pool of predefined options. Only options which (partially) match the user input are
+     * presented.
      *
      * Alternatively, may be a function of the form `options(query, limit)` that dynamically
      * generates a list of options to present from the user input *query*. *limit* is the maximum
      * number of results. May be async.
      *
-     * An option may either be a string or an arbitrary object. In the latter case, :attr:`toText`
-     * must be set and is used when a text representation is needed.
+     * An option may either be a string or an arbitrary object, in which case :attr:`toText` must be
+     * set.
      */
     get options() {
         return this._options;
@@ -909,23 +935,17 @@ micro.OptionsElement = class extends HTMLElement {
 
     set options(value) {
         this._options = value;
-        if (this._data.active) {
-            this._updateOptions();
-        }
+        this._updateOptions().catch(micro.util.catch);
     }
 
-    /**
-     * Maximum number of options to display. Defaults to `5`.
-     */
+    /** Maximum number of presented options. Defaults to `5`. */
     get limit() {
         return this._limit;
     }
 
     set limit(value) {
         this._limit = value;
-        if (this._data.active) {
-            this._updateOptions();
-        }
+        this._updateOptions().catch(micro.util.catch);
     }
 
     /**
@@ -938,15 +958,13 @@ micro.OptionsElement = class extends HTMLElement {
 
     set toText(value) {
         this._toText = value;
-        if (this._data.active) {
-            this._updateOptions();
-        }
+        this._updateOptions().catch(micro.util.catch);
     }
 
     /** Activate, i.e. show the element. */
     activate() {
         this._data.active = true;
-        this._updateOptions();
+        this._updateOptions().catch(micro.util.catch);
     }
 
     /** Deactivate, i.e. hide the element. */
@@ -954,43 +972,119 @@ micro.OptionsElement = class extends HTMLElement {
         this._data.active = false;
     }
 
-    _updateOptions(delay = 0) {
-        if (this._job) {
+    async _updateOptions() {
+        if (!this._data.active) {
             return;
         }
-
-        let update = async() => {
-            this._data.options = await this._generateOptions(this._input.value, this._limit);
-            if (!this._job) {
-                this._data.generating = false;
-            }
-        };
-
         this._data.generating = true;
-        if (delay) {
-            this._job = setTimeout(
-                () => {
-                    this._job = null;
-                    update().catch(micro.bind.catch);
-                },
-                delay
-            );
-        } else {
-            update().catch(micro.bind.catch);
-        }
-    }
-
-    async _generateOptions(query, limit) {
-        if (this._options instanceof Function) {
-            return await Promise.resolve(this._options(query, limit));
-        }
-        return this._options.filter(
-            option =>
-                (typeof option === "string" ? option : this._toText(option)).includes(query.trim())
+        let generate = (query, limit) => this.options.filter(
+            option => this._data.toText(null, option).toLowerCase()
+                .includes(query.trim().toLowerCase())
         ).slice(0, limit);
+        if (this.options instanceof Function) {
+            generate = this.options;
+        }
+        this._data.options = await Promise.resolve(generate(this._input.value, this._limit));
+        this._data.generating = false;
     }
 };
 document.registerElement("micro-options", micro.OptionsElement);
+
+/**
+ * Input for entering a location, e.g. an address or POI.
+ *
+ * Mapbox is used for geocoding. :attr:`micro.UI.mapServiceKey` must be set.
+ *
+ * .. attribute:: nativeInput
+ *
+ *    Wrapped :class:`HTMLInputElement`. It has an additional property *wrapper* pointing back to
+ *    this element.
+ */
+micro.LocationInputElement = class extends HTMLElement {
+    createdCallback() {
+        this._value = null;
+
+        this.appendChild(
+            document.importNode(
+                document.querySelector("#micro-location-input-template").content, true
+            )
+        );
+        this._data = new micro.bind.Watchable({
+            async queryLocations(query, limit) {
+                if (!query) {
+                    return [];
+                }
+                // Semicolon is interpreted as separator for batch geocoding
+                query = encodeURIComponent(query.slice(0, 256).replace(";", ","));
+                let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?limit=${limit}&access_token=${ui.mapServiceKey}`;
+                try {
+                    let result = await micro.call("GET", url);
+                    return result.features.map(
+                        feature => ({
+                            name: feature.matching_place_name || feature.place_name,
+                            coords: [
+                                feature.geometry.coordinates[1], feature.geometry.coordinates[0]
+                            ]
+                        })
+                    );
+                } catch (e) {
+                    if (e instanceof micro.NetworkError || e instanceof micro.APIError) {
+                        ui.notify("Oops, there was a problem communicating with Mapbox. Please try again in a few moments.");
+                        return [];
+                    }
+                    throw e;
+                }
+            },
+
+            locationToText(loc) {
+                return loc.name;
+            },
+
+            onSelect: event => {
+                this._value = event.detail.option;
+            }
+        });
+        micro.bind.bind(this.children, this._data);
+
+        this.nativeInput = this.querySelector("input");
+        this.nativeInput.wrapper = this;
+        this.nativeInput.name = this.getAttribute("name") || "";
+        this.nativeInput.placeholder = this.getAttribute("placeholder") || "";
+        this.nativeInput.addEventListener("input", () => {
+            this._value =
+                this.nativeInput.value ? {name: this.nativeInput.value, coords: null} : null;
+        });
+    }
+
+    /** Current value as :ref:`Location`. May be ``null``. */
+    get value() {
+        return this._value;
+    }
+
+    set value(value) {
+        this._value = value;
+        this.nativeInput.value = value ? value.name : "";
+    }
+
+    /** See :attr:`HTMLInputElement.name`. */
+    get name() {
+        return this.nativeInput.name;
+    }
+
+    set name(value) {
+        this.nativeInput.name = value;
+    }
+
+    /** See :attr:`HTMLInputElement.placeholder`. */
+    get placeholder() {
+        return this.nativeInput.placeholder;
+    }
+
+    set placeholder(value) {
+        this.nativeInput.placeholder = value;
+    }
+};
+document.registerElement("micro-location-input", micro.LocationInputElement);
 
 /**
  * User element.

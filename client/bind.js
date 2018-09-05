@@ -521,7 +521,7 @@ micro.bind.transforms = {
         }
 
         if (cases.length === 0) {
-            cases = [true];
+            cases = [value ? value : Symbol("unmatchable")];
         }
         if (!(ctx.elem.__templates__.length >= cases.length &&
               ctx.elem.__templates__.length <= cases.length + 1)) {
@@ -539,13 +539,16 @@ micro.bind.transforms = {
     },
 
     /**
-     * TODO
+     * Render a given *template*.
+     *
+     * The context element may contain a fallback `template`. If *template* is ``null``, the
+     * fallback template is rendered, or nothing if there is no fallback.
      */
     render(ctx, template) {
         if (!ctx.elem.__templates__) {
             ctx.elem.__templates__ = Array.from(ctx.elem.querySelectorAll("template"));
         }
-        template = template || ctx.elem.__templates__[0] || null;
+        template = template || ctx.elem.__templates__[0];
         if (!template) {
             return document.createDocumentFragment();
         }
