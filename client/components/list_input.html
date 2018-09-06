@@ -122,11 +122,12 @@ document.registerElement("micro-list-input", micro.ListInputElement);
                         <template><span data-content="item"></span></template>
                     </span>
                     <button
-                        is="micro-button" type="button" class="action action-subtle" tabindex="-1"
+                        is="micro-button" type="button" class="action" tabindex="-1"
                         data-run="bind remove item"
                     >
                         <!--<i class="far fa-times-circle"></i>-->
-                        <i class="fa fa-times"></i>
+                        <!--<i class="fa fa-times"></i>-->
+                        <i class="far fa-times-circle"></i>
                     </button><!--
              --></li>
             </template>
@@ -143,35 +144,45 @@ document.registerElement("micro-list-input", micro.ListInputElement);
 </template>
 
 <style>
+    micro-list-input .micro-panel .action {
+        padding: 1px 0.25em;
+        color: var(--micro-color-text-subtle);
+    }
+
+    micro-list-input .micro-input-wrapper > ol {
+        display: flex;
+        padding: 0;
+        margin: 0;
+        list-style: none;
+        flex-flow: row wrap;
+    }
+
+    micro-list-input .micro-input-wrapper > ol > li {
+        display: flex;
+        border: 1px solid var(--micro-color-delimiter);
+        border-radius: 0.25em;
+        margin: 0 0.25em 0.25em 0;
+        align-items: flex-start;
+    }
+
+    /* exp */
+
     micro-list-input .action {
-        color: inherit;
+        /*color: inherit;*/
         /*margin-left: 1ch;*/
         /*font-size: var(--micro-size-text-s);*/
         /*margin-left: 1px;*/
     }
 
     micro-list-input .action > i {
-        color: var(--micro-color-primary);
-    }
-
-    micro-list-input .micro-input-wrapper > ol {
-        display: flex;
-        margin: 0;
-        padding: 0;
-        list-style: none;
-        flex-flow: row wrap;
+        /*color: var(--micro-color-primary);*/
     }
 
     micro-list-input .micro-input-wrapper > ol > li {
-        margin-bottom: 0.25em;
-        margin-right: 0.25em;
         /*margin-right: 1ch;*/
-        border: 1px solid var(--micro-color-delimiter);
-        border-radius: 0.25em;
         /*padding: 0 0.25em 1px 0.25em;*/
         /*padding: 1px 0.25em;*/
         /*background: var(--micro-color-delimiter);*/
-        display: flex;
     }
 
     .micro-list-input-item {
@@ -202,14 +213,14 @@ document.registerElement("micro-list-input", micro.ListInputElement);
         vertical-align: middle;
     }*/
 
-    micro-list-input .action.action-subtle:hover {
+    /*micro-list-input .action.action-subtle:hover {
         background: var(--micro-color-delimiter);
     }
 
     micro-list-input .action.action-subtle i {
         padding: 0 0.25em;
         color: var(--micro-color-text-subtle);
-    }
+    }*/
 
     micro-list-input .micro-ol-handle {
         padding: 0 0.25em;

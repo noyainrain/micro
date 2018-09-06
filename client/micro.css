@@ -246,6 +246,18 @@ h1 .link {
     cursor: pointer;
 }
 
+.micro-panel .action {
+    border: none;
+    border-radius: 0;
+    color: var(--micro-color-primary);
+    background: transparent;
+    line-height: 1.5;
+}
+
+.micro-panel .action:hover {
+    background: var(--micro-color-delimiter);
+}
+
 .action:focus {
     box-shadow: inset 0 0 0 1px var(--micro-color-primary), inset 0 0 0 2px white;
 }
