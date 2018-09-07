@@ -15,6 +15,7 @@ micro.ListInputElement = class extends HTMLElement {
                 }
             }
             this._data.value.push(item);
+            this._data.optionsValue = this._data.value; // XXX
         };
 
         this.appendChild(
@@ -25,10 +26,13 @@ micro.ListInputElement = class extends HTMLElement {
             value: new micro.bind.Watchable([]),
             template: this.querySelector("micro-list-input > template"),
             focus: false,
-            order: true, //false,
+            order: false,
+            options: new micro.bind.Watchable(["Tomato", "Orange", "Black"]), // TODO nah, must not be watchable
+            optionsValue: [], // XXX
 
             remove: item => {
                 this._data.value.splice(this._data.value.indexOf(item), 1);
+                this._data.optionsValue = this._data.value; // XXX
                 this.nativeInput.focus();
             },
 
@@ -49,6 +53,7 @@ micro.ListInputElement = class extends HTMLElement {
                     if (event.target.selectionStart === 0) {
                         event.preventDefault();
                         let item = this._data.value.pop();
+                        this._data.optionsValue = this._data.value; // XXX
                         if (item) {
                             this.nativeInput.value = item;
                         }
@@ -66,6 +71,11 @@ micro.ListInputElement = class extends HTMLElement {
                 /*if (this.nativeInput.value) {
                     add(this.nativeInput.value);
                 }*/
+            },
+
+            onSelect: event => {
+                console.log("SELECT", event.detail.option);
+                add(event.detail.option);
             }
 
             /*options: null,
@@ -75,7 +85,7 @@ micro.ListInputElement = class extends HTMLElement {
                 // TODO implement
             }*/
         });
-        micro.bind.bind(this.children, this._data);
+        micro.bind.bind(this.children, this._data, null, {v: 2});
 
         this._set = false;
         this._equals = (a, b) => a === b;
@@ -109,6 +119,15 @@ micro.ListInputElement = class extends HTMLElement {
         this._data.order = value;
     }
 
+    /** TODO. */
+    get options() {
+        return this._data.options;
+    }
+
+    set options(value) {
+        this._data.options = value;
+    }
+
     /*get options() {
         return this.data._options;
     }
@@ -132,7 +151,7 @@ document.registerElement("micro-list-input", micro.ListInputElement);
 
 <template id="micro-list-input-template">
     <div class="micro-input-wrapper" data-class-micro-list-input-order="order" data-class-focus-within="focus" data-onclick="onClick">
-        <ol is="micro-ol" data-content="list value 'item'">
+        <ol is="micro-ol" data-content="list ctx value 'item'">
             <template>
                 <li class="micro-panel">
                     <span data-class-micro-ol-handle="order">
@@ -153,13 +172,11 @@ document.registerElement("micro-list-input", micro.ListInputElement);
             </template>
         </ol>
         <input data-onkeydown="onKeyPress" data-onfocus="onFocus" data-onblur="onBlur" />
-        <!--
         <micro-options
-            data-options="compileOptions options values" data-to-text="toText" data-onselect="onSelect"
-            data-content="template"
+            data-options="difference options optionsValue" data-onselect="onSelect"
+            data-xcontent="template"
         >
         </micro-options>
-        -->
     </div>
 </template>
 

@@ -151,7 +151,7 @@ micro.bind.Watchable = function(target = {}) {
  *
  *    *template* is deprecated.
  **/
-micro.bind.bind = function(elem, data, template = null) {
+micro.bind.bind = function(elem, data, template = null, {v = 1} = {}) {
     // Compatibility for template (deprecated since 0.9.0)
     if (template) {
         if (typeof template === "string") {
@@ -214,7 +214,11 @@ micro.bind.bind = function(elem, data, template = null) {
                 // Apply transform
                 if (values.length > 1) {
                     try {
-                        value = value({elem, data}, ...values.slice(1));
+                        if (v === 2) {
+                            value = value(...values.slice(1));
+                        } else {
+                            value = value({elem, data}, ...values.slice(1));
+                        }
                     } catch (e) {
                         e.message = `${e.message} (in ${loc})`;
                         throw e;
@@ -243,6 +247,9 @@ micro.bind.bind = function(elem, data, template = null) {
             // Resolve scope of and bind property to references
             for (let ref of args.filter(a => a instanceof Object)) {
                 ref.scope = stack.find(scope => ref.tokens[0] in scope);
+                if (!ref.scope && ref.tokens[0] === "ctx") {
+                    ref.scope = {ctx: {elem, data}};
+                }
                 if (!ref.scope) {
                     throw new ReferenceError(`${ref.name} is not defined (in ${loc})`);
                 }
@@ -333,7 +340,9 @@ micro.bind.filter = function(arr, callback, thisArg = null) {
 
     arr.watch(Symbol.for("*"), (prop, value) => {
         let i = parseInt(prop);
-        let [prior] = cache.splice(i, 1, callback.call(thisArg, value, i, arr));
+        //let [prior] = cache.splice(i, 1, callback.call(thisArg, value, i, arr));
+        let prior = cache[i];
+        cache[i] = callback.call(thisArg, value, i, arr);
         if (prior && cache[i]) {
             update(i, value);
         } else if (!prior && cache[i]) {
@@ -363,6 +372,16 @@ micro.bind.filter = function(arr, callback, thisArg = null) {
 };
 
 /**
+ * TODO.
+ */
+micro.bind.difference = function(arr, other, equals = (a, b) => a === b) {
+    //return micro.bind.filter(arr, a => !other.find(b => equals(a, b)));
+    let x = arr.filter(a => !other.find(b => equals(a, b)));
+    console.log("DIFFERENCE", arr, other, "=>", x);
+    return arr.filter(a => !other.find(b => equals(a, b)));
+};
+
+/**
  * Default transforms available in bind expressions.
  */
 micro.bind.transforms = {
@@ -372,7 +391,7 @@ micro.bind.transforms = {
     },
 
     /** Test if *a* and *b* are (strictly) equal. */
-    eq(ctx, a, b) {
+    eq(a, b) {
         return a === b;
     },
 
@@ -391,7 +410,7 @@ micro.bind.transforms = {
      *
      * The returned function will call *func* with *args* prepended. ``this`` is set to ``null``.
      */
-    bind(ctx, func, ...args) {
+    bind(func, ...args) {
         return func.bind(null, ...args);
     },
 
@@ -422,6 +441,7 @@ micro.bind.transforms = {
      * ``transform(arr, ...args)``. *args* are passed through.
      */
     list(ctx, arr, itemName, transform, ...args) {
+        console.log("LIST CTX", ctx);
         let scopes = new Map();
 
         function create(item) {
@@ -498,6 +518,7 @@ micro.bind.transforms = {
     },
 
     filter: micro.bind.filter,
+    difference: micro.bind.difference,
 
     /**
      * Test if the array *arr* includes a certain item.
@@ -557,6 +578,19 @@ micro.bind.transforms = {
         return elem;
     }
 };
+
+micro.bind.skipCtx = function(f) {
+    return function(...args) {
+        if (typeof args[0] === "object" && "data" in args[0] && "elem" in args[0]) {
+            return f(...args.slice(1));
+        } else {
+            return f(...args);
+        }
+    };
+};
+
+micro.bind.transforms.eq = micro.bind.skipCtx(micro.bind.transforms.eq);
+micro.bind.transforms.bind = micro.bind.skipCtx(micro.bind.transforms.bind);
 
 /**
  * Project the :class:`Watchable` array :class:*arr* into a live DOM fragment.
