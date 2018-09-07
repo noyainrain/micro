@@ -8,6 +8,12 @@ micro.ListInputElement = class extends HTMLElement {
     createdCallback() {
         let add = item => {
             this.nativeInput.value = "";
+            if (this._set) {
+                let i = this._data.value.findIndex(v => this._equals(v, item));
+                if (i !== -1) {
+                    this._data.value.splice(i, 1);
+                }
+            }
             this._data.value.push(item);
         };
 
@@ -41,6 +47,7 @@ micro.ListInputElement = class extends HTMLElement {
                     break;
                 case "Backspace":
                     if (event.target.selectionStart === 0) {
+                        event.preventDefault();
                         let item = this._data.value.pop();
                         if (item) {
                             this.nativeInput.value = item;
@@ -56,6 +63,9 @@ micro.ListInputElement = class extends HTMLElement {
 
             onBlur: () => {
                 this._data.focus = false;
+                /*if (this.nativeInput.value) {
+                    add(this.nativeInput.value);
+                }*/
             }
 
             /*options: null,
@@ -67,6 +77,8 @@ micro.ListInputElement = class extends HTMLElement {
         });
         micro.bind.bind(this.children, this._data);
 
+        this._set = false;
+        this._equals = (a, b) => a === b;
         // XXX
         //this.options = ["Hallo", "Lustig", "Ja"];
     }
@@ -79,6 +91,14 @@ micro.ListInputElement = class extends HTMLElement {
     set value(value) {
         this._data.value = new micro.bind.Watchable(value.slice());
         // this._compileOptions();
+    }
+
+    get set() {
+        return this._set;
+    }
+
+    set set(value) {
+        this._set = value;
     }
 
     get order() {
