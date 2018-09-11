@@ -991,6 +991,167 @@ micro.OptionsElement = class extends HTMLElement {
 document.registerElement("micro-options", micro.OptionsElement);
 
 /**
+ * Simple map for visualizing locations.
+ *
+ * Map data is provided by Mapbox. :attr:`micro.UI.mapServiceKey` must be set.
+ *
+ * .. attribute:: ready
+ *
+ *    Promise that resolves once the map is ready.
+ */
+micro.MapElement = class extends HTMLElement {
+    createdCallback() {
+        this.ready = new micro.util.PromiseWhen();
+        this._map = null;
+        this._locations = null;
+        this._markers = [];
+        this._iconDim = null;
+        this._leaflet = null;
+
+        this._onNavigate = () => {
+            (async () => {
+                await this.ready;
+                if (this._locations) {
+                    let loc = this._locations.find(item => item.hash === location.hash.slice(1));
+                    if (loc) {
+                        this._updateView();
+                        this.querySelector(`#${loc.hash}`).focus();
+                    }
+                }
+            })().catch(micro.util.catch);
+        };
+
+        this.appendChild(
+            document.importNode(document.querySelector("#micro-map-template").content, true)
+        );
+    }
+
+    attachedCallback() {
+        let height = parseInt(getComputedStyle(this).fontSize) * 2;
+        let width = height * 3 / 4;
+        this._iconDim = {
+            size: [width, height],
+            anchor: [width / 2, height]
+        };
+
+        ui.addEventListener("navigate", this._onNavigate);
+
+        this.ready.when((async() => {
+            micro.util.importCSS(document.head.querySelector("link[rel=leaflet-stylesheet]").href)
+                .catch(micro.util.catch);
+            this._leaflet = await micro.util.import(
+                document.head.querySelector("link[rel=leaflet-script]").href, "L"
+            );
+
+            this._map = this._leaflet.map(
+                this.querySelector("div"),
+                {
+                    attributionControl: false,
+                    zoomControl: false,
+                    boxZoom: false,
+                    inertia: false,
+                    maxBounds: [[-90, -180], [90, 180]]
+                }
+            );
+            this._leaflet.control.attribution({prefix: false, position: "bottomright"})
+                .addTo(this._map);
+
+            let url = `https://api.mapbox.com/v4/mapbox.light/{z}/{x}/{y}.png?access_token=${ui.mapServiceKey}`;
+            let attribution = document.importNode(
+                ui.querySelector("#micro-map-attribution-template").content, true
+            ).firstElementChild.innerHTML;
+            this._leaflet.tileLayer(url, {attribution, noWrap: true}).addTo(this._map);
+
+            this._updateView();
+        })().catch(micro.util.catch));
+    }
+
+    detachedCallback() {
+        ui.removeEventListener("navigate", this._onNavigate);
+    }
+
+    /**
+     * List of locations shown on the map.
+     *
+     * A location here is a :ref:`Location` with two additional properties: *url* is the URL the
+     * associated marker links to and *hash* is the marker's :attr:`Element.id` (may be `null`).
+     *
+     * If :class:`Watchable`, the map will be updated live whenever the array changes.
+     */
+    get locations() {
+        return this._locations;
+    }
+
+    set locations(value) {
+        let add = (i, loc) => {
+            if (!loc.coords) {
+                throw new Error("missing-coords-in-locations");
+            }
+            let a = document.importNode(
+                document.querySelector("#micro-map-marker-template").content, true
+            ).firstElementChild;
+            micro.bind.bind(a, {location: loc});
+            let icon = this._leaflet.divIcon({
+                html: a.innerHTML,
+                iconSize: this._iconDim.size,
+                iconAnchor: this._iconDim.anchor
+            });
+            let marker = this._leaflet.marker(loc.coords, {icon, keyboard: false})
+                .addTo(this._map);
+            this._markers.splice(i, 0, marker);
+            this._updateView();
+        };
+
+        let remove = i => {
+            this._markers.splice(i, 1)[0].remove();
+            this._updateView();
+        };
+
+        this._locations = value;
+
+        (async() => {
+            await this.ready;
+            this._markers.forEach(marker => marker.remove());
+            this._markers = [];
+
+            if (value) {
+                if (value.watch) {
+                    value.watch(Symbol.for("*"), (prop, loc) => {
+                        let i = parseInt(prop);
+                        remove(i);
+                        add(i, loc);
+                    });
+                    value.watch(Symbol.for("+"), (prop, loc) => add(parseInt(prop), loc));
+                    value.watch(Symbol.for("-"), prop => remove(parseInt(prop)));
+                }
+                Array.from(value.entries()).forEach(([i, loc]) => add(i, loc));
+            }
+
+            this._updateView();
+        })().catch(micro.util.catch);
+    }
+
+    _updateView() {
+        if (this._locations && this._locations.length > 1) {
+            let padding = parseInt(getComputedStyle(this).fontSize) * 0.375;
+            this._map.fitBounds(
+                this._locations.map(loc => loc.coords),
+                {
+                    paddingTopLeft:
+                        [this._iconDim.anchor[0] + padding, this._iconDim.anchor[1] + padding],
+                    paddingBottomRight: [this._iconDim.anchor[0] + padding, padding],
+                    animate: false
+                }
+            );
+        } else {
+            this._map.fitWorld({animate: false});
+            this._map.zoomIn(1, {animate: false});
+        }
+    }
+};
+document.registerElement("micro-map", micro.MapElement);
+
+/**
  * Input for entering a location, e.g. an address or POI.
  *
  * Mapbox is used for geocoding. :attr:`micro.UI.mapServiceKey` must be set.

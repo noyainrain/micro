@@ -6,6 +6,13 @@
 />
 <link rel="stylesheet"
       href="{{ static_url('{}/@noyainrain/micro/micro.css'.format(modules_path)) }}" />
+<link
+    rel="leaflet-stylesheet"
+    href="{{ static_url('{}/leaflet/dist/leaflet.css'.format(modules_path)) }}"
+/>
+<link
+    rel="leaflet-script" href="{{ static_url('{}/leaflet/dist/leaflet.js'.format(modules_path)) }}"
+/>
 <link rel="service" href="{{ static_url(service_path, include_version=False) }}" />
 
 <script src="{{ static_url('{}/whatwg-fetch/fetch.js'.format(modules_path)) }}" defer="defer">

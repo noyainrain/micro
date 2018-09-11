@@ -358,6 +358,25 @@ micro.bind.filter = function(arr, callback, thisArg = null) {
 };
 
 /**
+ * Create a new :class:`Watchable` live array from *arr*, applying a function to every item.
+ *
+ * *arr* is a :class:`Watchable` array. *callback* and *thisArg* are equivalent to
+ * :func:`Array.map`.
+ */
+micro.bind.map = function(arr, callback, thisArg = null) {
+    let mapped = new micro.bind.Watchable(arr.map(callback, thisArg));
+    arr.watch(Symbol.for("*"), (prop, value) => {
+        mapped[prop] = callback.call(thisArg, value);
+    });
+    arr.watch(
+        Symbol.for("+"),
+        (prop, value) => mapped.splice(parseInt(prop), 0, callback.call(thisArg, value))
+    );
+    arr.watch(Symbol.for("-"), prop => mapped.splice(parseInt(prop), 1));
+    return mapped;
+};
+
+/**
  * Default transforms available in bind expressions.
  */
 micro.bind.transforms = {
@@ -493,6 +512,7 @@ micro.bind.transforms = {
     },
 
     filter: micro.bind.filter,
+    map: micro.bind.map,
 
     /**
      * Test if the array *arr* includes a certain item.

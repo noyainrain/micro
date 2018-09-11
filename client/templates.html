@@ -173,6 +173,82 @@
     }
 </style>
 
+<template id="micro-map-template">
+    <div></div>
+</template>
+<style>
+    micro-map {
+        display: block;
+        margin: 1.5rem 0;
+    }
+
+    .leaflet-container {
+        z-index: 0;
+        height: calc(70ch * 9 / 16);
+        font: inherit;
+        background: #d1d1d1; /* Map tile background */
+    }
+
+    .leaflet-container:focus {
+        box-shadow: 0 0 0 1px var(--micro-color-primary-tint);
+    }
+
+    .leaflet-container .link {
+        color: var(--micro-color-secondary);
+    }
+</style>
+
+<template id="micro-map-marker-template">
+    <div>
+        <a data-id="or location.hash ''" class="link" data-href="location.url">
+            <i class="fa fa-map-marker-alt"></i>
+        </a>
+    </div>
+</template>
+<style>
+    .leaflet-div-icon {
+        border: none;
+        background: none;
+    }
+
+    .leaflet-div-icon .link {
+        display: block;
+        font-size: 2em;
+        line-height: 1;
+        color: var(--micro-color-primary);
+        text-shadow: 0 -1px white, 1px 0 white, 0 1px white, -1px 0 white;
+    }
+</style>
+
+<template id="micro-map-attribution-template">
+    <span>
+        Map data by ©
+        <a class="link" href="https://www.mapbox.com/about/maps/" target="_blank">
+            <img
+                src="{{ static_url('{}/@noyainrain/micro/images/mapbox.svg'.format(modules_path)) }}"
+                alt="Mapbox"
+            />
+        </a>
+        ©
+        <a class="link" href="https://www.openstreetmap.org/copyright" target="_blank">
+            OpenStreetMap
+        </a>
+    </span>
+</template>
+<style>
+    .leaflet-container .leaflet-control-attribution {
+        padding: var(--micro-size-xs);
+        font-size: 0.875em;
+        color: var(--micro-color-text-subtle);
+        background: rgba(255, 255, 255, 0.66);
+    }
+
+    .leaflet-control-attribution img {
+        height: 1.5em;
+        vertical-align: bottom;
+    }
+</style>
+
 <template id="micro-location-input-template">
     <input />
     <micro-options

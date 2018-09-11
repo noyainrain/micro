@@ -90,6 +90,30 @@ describe("filter()", function() {
     });
 });
 
+describe("map()", function() {
+    function makeArray() {
+        let arr = new micro.bind.Watchable(["a", "b", "c"]);
+        let mapped = micro.bind.map(arr, item => item + item);
+        return [arr, mapped];
+    }
+
+    describe("on arr set", function() {
+        it("should update mapped array", function() {
+            let [arr, mapped] = makeArray();
+            arr[1] = "x";
+            expect(mapped).to.deep.equal(["aa", "xx", "cc"]);
+        });
+    });
+
+    describe("on arr splice", function() {
+        it("should update mapped array", function() {
+            let [arr, mapped] = makeArray();
+            arr.splice(1, 1, "x");
+            expect(mapped).to.deep.equal(["aa", "xx", "cc"]);
+        });
+    });
+});
+
 describe("bind()", function() {
     function setupDOM(expr, data = {}) {
         let main = document.querySelector("main");

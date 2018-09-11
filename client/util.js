@@ -213,6 +213,46 @@ micro.util.formatFragment = function(str, args) {
 };
 
 /**
+ * Import the script located at *url*.
+ *
+ * *namespace* is the identifier of the namespace (i.e. global variable) created by the imported
+ * script, if any. If given, the namespace is returned.
+ */
+micro.util.import = function(url, namespace = null) {
+    return new Promise((resolve, reject) => {
+        let script = document.head.querySelector(`script[src='${url}']`);
+        if (script) {
+            resolve(window[namespace]);
+            return;
+        }
+        script = document.createElement("script");
+        script.src = url;
+        script.addEventListener("load", () => resolve(window[namespace]));
+        script.addEventListener("error", reject);
+        document.head.appendChild(script);
+    });
+};
+
+/**
+ * Import the stylesheet located at *url*.
+ */
+micro.util.importCSS = function(url) {
+    return new Promise((resolve, reject) => {
+        let link = document.head.querySelector(`link[rel='stylesheet'][src='${url}']`);
+        if (link) {
+            resolve();
+            return;
+        }
+        link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = url;
+        link.addEventListener("load", resolve);
+        link.addEventListener("error", reject);
+        document.head.appendChild(link);
+    });
+};
+
+/**
  * Watch for unhandled exceptions and report them.
  */
 micro.util.watchErrors = function() {
