@@ -243,8 +243,6 @@ Event about an action on an *object* by an *user*.
 
    Dictionary with additonal details about the event. The contents depend on the event *type*.
 
-.. _ValueError:
-
 .. _Location:
 
 Location
@@ -259,6 +257,8 @@ Location.
 .. describe:: coords
 
    Coordinates as latitude-longitude pair. May be ``null``.
+
+.. _ValueError:
 
 ValueError
 ----------

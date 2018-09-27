@@ -14,8 +14,9 @@ Also includes :class:`JSONRedisMapping`, an utility map interface for JSON objec
 """
 
 import json
-from typing import (Callable, Dict, Generic, List, Mapping, Optional, Sequence, Type, TypeVar,
-                    Union, cast, overload)
+import sys
+from typing import (Callable, Dict, Generic, Iterator, List, Mapping, Optional, Sequence, Set,
+                    Tuple, Type, TypeVar, Union, cast, overload)
 from weakref import WeakValueDictionary
 
 from redis import StrictRedis
@@ -164,6 +165,117 @@ class JSONRedis(Generic[T]):
         # proxy
         return getattr(self.r, name)
 
+class RedisSequence(Sequence[bytes]):
+    """Read-Only sequence interface for Redis collections.
+
+    .. attribute:: key
+
+       Key of the Redis collection.
+
+    .. attribute:: r
+
+       Underlying Redis client.
+    """
+
+    def __init__(self, key: str, r: StrictRedis) -> None:
+        self.key = key
+        self.r = r
+
+class RedisList(RedisSequence):
+    """Read-Only sequence interface for Redis lists.
+
+    Redis operations:
+
+    * index(): 1 full query
+    * count(): 1 full query
+    * len(l): 1
+    * l[k]: 1
+    * iter(l): 1 full query
+    * k in l: 1 full query
+    """
+
+    def index(self, x: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
+        # pylint: disable=missing-docstring; inherited
+        # Optimized
+        return self[:].index(x, start, stop)
+
+    def __len__(self) -> int:
+        return self.r.llen(self.key)
+
+    @overload
+    def __getitem__(self, key: int) -> bytes:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def __getitem__(self, key: slice) -> List[bytes]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    def __getitem__(self, key: Union[int, slice]) -> Union[bytes, List[bytes]]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        if isinstance(key, slice):
+            if key.step:
+                raise NotImplementedError()
+            return self.r.lrange(self.key, *redis_range(key))
+        id = self.r.lindex(self.key, key)
+        if not id:
+            raise IndexError()
+        return id
+
+    def __iter__(self) -> Iterator[bytes]:
+        # Optimized and used by count() and k in l
+        return iter(self[:])
+
+class RedisSortedSet(RedisSequence, Set[bytes]):
+    """Read-Only set / sequence interface for Redis sorted sets.
+
+    Redis operations:
+
+    * index(): 1
+    * count(): 1 full query
+    * len(s): 1
+    * s[k]: 1
+    * iter(s): 1 full query
+    * k in s: 1
+    """
+
+    def index(self, x: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
+        # pylint: disable=missing-docstring; inherited
+        # Optimized
+        if start < 0 or stop < 0:
+            raise NotImplementedError()
+        rank = self.r.zrank(self.key, x)
+        if rank is None or not start <= rank < stop:
+            raise ValueError()
+        return rank
+
+    def __len__(self) -> int:
+        return self.r.zcard(self.key)
+
+    @overload
+    def __getitem__(self, key: int) -> bytes:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def __getitem__(self, key: slice) -> List[bytes]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    def __getitem__(self, key: Union[int, slice]) -> Union[bytes, List[bytes]]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        if isinstance(key, slice):
+            if key.step:
+                raise NotImplementedError()
+            return self.r.zrange(self.key, *redis_range(key))
+        # Raises IndexError for empty range
+        return self.r.zrange(self.key, key, key)[0]
+
+    def __iter__(self) -> Iterator[bytes]:
+        # Optimized and used by count()
+        return iter(self[:])
+
+    def __contains__(self, item: object) -> bool:
+        # Optimized
+        return isinstance(item, bytes) and self.r.zscore(self.key, item) is not None
+
 class JSONRedisSequence(Sequence[T]):
     """Read-Only list interface for JSON objects stored in Redis.
 
@@ -185,27 +297,26 @@ class JSONRedisSequence(Sequence[T]):
         self.r = r
         self.list_key = list_key
         self.pre = pre
+        self._ids = RedisList(self.list_key, self.r.r)
 
-    def __getitem__(self, key):
+    @overload
+    def __getitem__(self, key: int) -> T:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def __getitem__(self, key: slice) -> List[T]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    def __getitem__(self, key: Union[int, slice]) -> Union[T, List[T]]:
+        # pylint: disable=function-redefined,missing-docstring; overload
         if self.pre:
             self.pre()
-
         if isinstance(key, slice):
-            if key.step:
-                raise NotImplementedError()
-            if key.stop == 0:
-                return []
-            start = 0 if key.start is None else key.start
-            stop = -1 if key.stop is None else key.stop - 1
-            return self.r.omget(k.decode() for k in self.r.lrange(self.list_key, start, stop))
+            return self.r.omget([id.decode() for id in self._ids[key]], default=ReferenceError)
+        return self.r.oget(self._ids[key].decode(), default=ReferenceError)
 
-        id = self.r.lindex(self.list_key, key)
-        if not id:
-            raise IndexError()
-        return self.r.oget(id.decode())
-
-    def __len__(self):
-        return self.r.llen(self.list_key)
+    def __len__(self) -> int:
+        return len(self._ids)
 
 class JSONRedisMapping(Generic[T, U], Mapping[str, T]):
     """Simple, read-only map interface for JSON objects stored in Redis.
@@ -230,31 +341,27 @@ class JSONRedisMapping(Generic[T, U], Mapping[str, T]):
         self.r = r
         self.map_key = map_key
         self.expect = expect
+        self._ids = RedisList(self.map_key, self.r.r)
 
     def __getitem__(self, key: str) -> T:
-        # NOTE: with set:
-        #if key not in self:
-        if key not in iter(self):
+        if key.encode() not in self._ids:
             raise KeyError()
         return cast(T, self.r.oget(key, default=ReferenceError, expect=self.expect))
 
     def __iter__(self):
-        # NOTE: with set:
-        #return (k.decode() for k in self.r.smembers(self.map_key))
-        return (k.decode() for k in self.r.lrange(self.map_key, 0, -1))
+        return (id.decode() for id in self._ids)
 
-    def __len__(self):
-        # NOTE: with set:
-        #return self.r.scard(self.map_key)
-        return self.r.llen(self.map_key)
-
-     # NOTE: with set:
-     #def __contains__(self, key):
-     #    # optimized
-     #    return self.r.sismember(self.map_key, key)
+    def __len__(self) -> int:
+        return len(self._ids)
 
     def __repr__(self):
         return str(dict(self))
+
+def redis_range(slc: slice) -> Tuple[int, int]:
+    """Convert the slice *slc* to Redis range indices."""
+    if slc.stop == 0:
+        return (1, 0)
+    return (0 if slc.start is None else slc.start, -1 if slc.stop is None else slc.stop - 1)
 
 def expect_type(cls: Type[T]) -> ExpectFunc[object, T]:
     """Return a function which asserts that a given *obj* is an instance of *cls*."""

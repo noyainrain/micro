@@ -168,6 +168,7 @@ micro.UI = class extends HTMLBodyElement {
             ...Object.entries(this.features)
                 .filter(([, supported]) => supported)
                 .map(([feature]) => `micro-feature-${micro.bind.dash(feature)}`));
+        this.classList.toggle("micro-ui-map-service-enabled", this.mapServiceKey);
 
         this.service = null;
         if (this.features.push && this.features.serviceWorkers && this.features.es6TypedArray) {
