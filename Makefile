@@ -45,6 +45,9 @@ check: type test test-client test-ext test-ui lint
 .PHONY: deps
 deps:
 	$(PIP) install $(PIPFLAGS) -r requirements.txt
+	@# Work around npm refusing to update local path dependencies (see
+	@# https://npm.community/t/npm-update-for-local-modules-does-not-work-for-version-6-4-0/1725)
+	(cd hello; $(NPM) $(NPMFLAGS) install --only=prod)
 	@# Relative dependency paths do not take prefix into account
 	(cd hello; $(NPM) $(NPMFLAGS) update --only=prod)
 	$(NPM) $(NPMFLAGS) -C hello dedupe
@@ -70,6 +73,7 @@ release:
 
 .PHONY: clean
 clean:
+	rm -rf $(find . -name __pycache__) .mypy_cache
 	$(NPM) $(NPMFLAGS) -C client run clean
 	$(NPM) $(NPMFLAGS) -C hello run clean
 

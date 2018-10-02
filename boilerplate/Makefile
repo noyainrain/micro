@@ -65,7 +65,7 @@ micro-link:
 
 .PHONY: clean
 clean:
-	rm -rf doc/build
+	rm -rf $(find . -name __pycache__) doc/build doc/micro
 	$(NPM) $(NPMFLAGS) run clean
 
 .PHONY: help
