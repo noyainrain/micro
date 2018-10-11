@@ -16,13 +16,14 @@
 
 from subprocess import check_call
 from tempfile import mkdtemp
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from redis import RedisError
 from tornado.testing import AsyncTestCase
 
 import micro
-from micro import Activity, Event, Location
+from micro import Activity, Collection, Event, Location
+from micro.jsonredis import RedisList
 from micro.test import CatApp, Cat
 
 SETUP_DB_SCRIPT = """\
@@ -172,13 +173,63 @@ class TrashableTest(MicroTestCase):
         self.assertFalse(cat.trashed)
         self.assertEqual(cat.activity[0].type, 'trashable-restore')
 
+class CollectionTest(MicroTestCase):
+    def make_cats(self, *, check=None):
+        objects = [Cat.make(name='Happy', app=self.app), Cat.make(name='Grumpy', app=self.app),
+                   Cat.make(name='Long', app=self.app), Cat.make(name='Monorail', app=self.app)]
+        self.app.r.omset({cat.id: cat for cat in objects})
+        self.app.r.rpush('cats', *(cat.id for cat in objects))
+        cats = Collection(RedisList('cats', self.app.r.r), check=check, app=self.app)
+        return cats, objects
+
+    def test_index(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(cats.index(objects[2]), objects.index(objects[2]))
+
+    def test_len(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(len(cats), len(objects))
+
+    def test_getitem(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(cats[1], objects[1])
+
+    def test_getitem_slice(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(cats[1:3], objects[1:3])
+
+    def test_getitem_id(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(cats[objects[0].id], objects[0])
+
+    def test_getitem_missing_id(self):
+        cats, _ = self.make_cats()
+        with self.assertRaises(KeyError):
+            # pylint: disable=pointless-statement; error raised on access
+            cats['foo']
+
+    def test_getitem_check(self):
+        check = Mock()
+        cats, _ = self.make_cats(check=check)
+        # pylint: disable=pointless-statement; check called on access
+        cats[1]
+        check.assert_called_once_with(1)
+
+    def test_iter(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(list(iter(cats)), [obj.id for obj in objects])
+
+    def test_contains(self):
+        cats, objects = self.make_cats()
+        self.assertTrue(objects[1] in cats)
+
+    def test_contains_missing_item(self):
+        cats, _ = self.make_cats()
+        self.assertFalse(Cat.make(app=self.app) in cats)
+
 class OrderableTest(MicroTestCase):
     def make_cats(self):
         return [self.app.cats.create(), self.app.cats.create(), self.app.cats.create()]
-
-    def make_external_cat(self):
-        return Cat(id='Cat', app=self.app, authors=[], trashed=False, name=None,
-                   activity=Activity('Cat.activity', self.app, subscriber_ids=[]))
 
     def test_move(self):
         cats = self.make_cats()
@@ -197,13 +248,13 @@ class OrderableTest(MicroTestCase):
 
     def test_move_item_external(self):
         cats = self.make_cats()
-        external = self.make_external_cat()
+        external = Cat.make(app=self.app)
         with self.assertRaisesRegex(micro.ValueError, 'item_not_found'):
             self.app.cats.move(external, cats[0])
 
     def test_move_to_external(self):
         cats = self.make_cats()
-        external = self.make_external_cat()
+        external = Cat.make(app=self.app)
         with self.assertRaisesRegex(micro.ValueError, 'to_not_found'):
             self.app.cats.move(cats[0], external)
 

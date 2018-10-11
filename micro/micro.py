@@ -25,7 +25,9 @@ from logging import getLogger
 import os
 import re
 from smtplib import SMTP
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union, cast, overload
+import sys
+from typing import (Callable, Dict, Generic, Iterator, List, Optional, Sequence, Tuple, Type,
+                    TypeVar, Union, cast, overload)
 from urllib.parse import urlparse
 from warnings import catch_warnings
 
@@ -39,10 +41,13 @@ from tornado.simple_httpclient import HTTPStreamClosedError, HTTPTimeoutError
 from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
-from micro.jsonredis import JSONRedis, JSONRedisSequence, JSONRedisMapping, expect_type
+from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
+                             RedisSequence, expect_type)
 from .util import check_email, randstr, parse_isotime, str_or_none, version
 
 _PUSH_TTL = 24 * 60 * 60
+
+O = TypeVar('O', bound='Object')
 
 class JSONifiable(Protocol):
     """Object which can be encoded to and decoded from a JSON representation."""
@@ -72,7 +77,7 @@ class Application:
 
     .. attribute:: users
 
-       Map of all :class:`User` s.
+       Collection of all :class:`User`s.
 
     .. attribute:: redis_url
 
@@ -121,7 +126,7 @@ class Application:
             'AuthRequest': AuthRequest
         } # type: Dict[str, Type[JSONifiable]]
         self.user = None
-        self.users = JSONRedisMapping(self.r, 'users', expect_type(User))
+        self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)
 
         self.email = email
         self.smtp_url = smtp_url
@@ -394,7 +399,7 @@ class Trashable:
     """Mixin for :class:`Object` which can be trashed and restored."""
     # pylint: disable=no-member; mixin
 
-    def __init__(self, trashed, activity=None):
+    def __init__(self, trashed: bool, activity: 'Activity' = None) -> None:
         self.trashed = trashed
         self.__activity = activity
 
@@ -429,45 +434,184 @@ class Trashable:
         # pylint: disable=unused-argument; part of subclass API
         return {'trashed': self.trashed}
 
-class Collection(JSONRedisMapping):
-    """Collection of :class:`Object` s.
+class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
+    """See :ref:`Collection`.
+
+    All sequence operations but iteration are supported for now.
+
+    .. attribute:: ids
+
+       Redis sequence tracking the (IDs of) objects that the collection contains.
+
+    .. attribute:: check
+
+       Function of the form *check(key)*, which is called before an object is retrieved via *key*.
+       May be ``None``.
+
+    .. attribute:: expect
+
+       Function narrowing the type of a retrieved object.
+
+    .. attribute:: app
+
+       Context application.
 
     .. attribute:: host
 
        Tuple ``(object, attr)`` that specifies the attribute name *attr* on the host *object*
        (:class:`Object` or :class:`Application`) the collection is attached to.
 
-    .. attribute:: app
+       .. deprecated:: 0.24.0
 
-       Context :class:`Application`.
+          Extend :class:`Collection` to implement hosting manually.
+
+    .. describe:: c[key]
+
+       *key* may also be a string, in which case the object with the given ID is retrieved.
+
+       Redis operations: ``RedisSequence[k] + n``, where n is the number of retrieved items, or
+       ``i in RedisSequence + 1`` if *key* is a string.
+
+    .. describe:: item in c
+
+       *item* may also be a string, in which case the membership of the object with the given ID is
+       tested.
+
+    .. deprecated: 0.24.0
+
+       :class:`JSONRedisMapping` interface. Use :attr:`ids`, ``c[key]`` and ``item in c`` instead.
     """
 
-    def __init__(self, host):
+    @overload
+    def __init__(
+            self, ids: RedisSequence, *,
+            check: Callable[[Union[int, slice, str]], None] = None,
+            expect: ExpectFunc[JSONifiable, O] = cast(ExpectFunc[JSONifiable, O],
+                                                      expect_type(Object)),
+            app: Application) -> None:
+        # pylint: disable=function-redefined, super-init-not-called; overload
+        pass
+    @overload
+    def __init__(self, host: Tuple[Union[Object, Application], str]) -> None:
+        # pylint: disable=function-redefined, super-init-not-called; overload
+        pass
+    def __init__(
+            self, *args: object,
+            check: Callable[[Union[int, slice, str]], None] = None,
+            expect: ExpectFunc[JSONifiable, O] = cast(ExpectFunc[JSONifiable, O],
+                                                      expect_type(Object)),
+            **kwargs: object) -> None:
+        # pylint: disable=function-redefined, super-init-not-called; overload
+        # Compatibility for host (deprecated since 0.24.0)
+        ids = kwargs.get('ids') or kwargs.get('host') or args[0] if args else None
+        if isinstance(ids, tuple):
+            host = cast(Tuple[Union[Object, Application], str], ids)
+            app = host[0] if isinstance(host[0], Application) else host[0].app
+            ids = RedisList(
+                ('' if isinstance(host[0], Application) else host[0].id + '.') + host[1], app.r.r)
+        elif isinstance(ids, RedisSequence):
+            arg = kwargs.get('app')
+            assert isinstance(arg, Application)
+            app = arg
+            host = (app, '')
+        else:
+            raise TypeError()
+        JSONRedisMapping.__init__(self, app.r, ids.key, expect)
         self.host = host
-        self.app = host[0] if isinstance(host[0], Application) else host[0].app
-        super().__init__(
-            self.app.r,
-            ('' if isinstance(host[0], Application) else host[0].id + '.') + self.host[1])
+
+        self.ids = ids
+        self.check = check
+        self.app = app
+
+    def index(self, x: Union[O, str], start: int = 0, stop: int = sys.maxsize) -> int:
+        """See :meth:`Sequence.index`.
+
+        *x* may also be a string, in which case the index of the object with the given ID is
+        returned.
+        """
+        if isinstance(x, Object):
+            return self.index(x.id, start, stop)
+        return self.ids.index(x.encode(), start, stop)
+
+    def __len__(self) -> int:
+        return len(self.ids)
+
+    @overload
+    def __getitem__(self, key: Union[int, str]) -> O:
+        # pylint: disable=function-redefined; overload
+        pass
+    @overload
+    def __getitem__(self, key: slice) -> List[O]:
+        # pylint: disable=function-redefined; overload
+        pass
+    def __getitem__(self, key: Union[int, slice, str]) -> Union[O, List[O]]:
+        # pylint: disable=function-redefined; overload
+        # Compatibility with JSONRedisMapping (deprecated since 0.24.0)
+        assert self.expect
+
+        if self.check:
+            self.check(key)
+        if isinstance(key, str):
+            if key not in self:
+                raise KeyError()
+            return self.app.r.oget(key, default=ReferenceError, expect=self.expect)
+        if isinstance(key, slice):
+            return self.app.r.omget([id.decode() for id in self.ids[key]],
+                                    default=ReferenceError, expect=self.expect)
+        return self.app.r.oget(self.ids[key].decode(), default=ReferenceError,
+                               expect=self.expect)
+
+    def __iter__(self) -> Iterator[str]:
+        # Compatibility with JSONRedisMapping (deprecated since 0.24.0)
+        return (id.decode() for id in self.ids)
+
+    def __contains__(self, item: object) -> bool:
+        if isinstance(item, Object):
+            return item.id in self
+        return isinstance(item, str) and item.encode() in self.ids
+
+    def json(self, restricted: bool = False, include: bool = False, *,
+             slc: slice = None) -> Dict[str, object]:
+        """See :meth:`JSONifiable.json`.
+
+        *slc* is a slice of items to include, if any.
+        """
+        count = len(self)
+        if slc:
+            items = self[slc]
+            start = 0 if slc.start is None else slc.start
+            stop = start + len(items)
+        return {
+            'count': count,
+            **(
+                {'items': [item.json(restricted, include) for item in items],
+                 'slice': [start, stop]}
+                if slc else {})
+        }
 
 class Orderable:
-    """Mixin for :class:`Collection` whose items can be ordered."""
-    # pylint: disable=no-member; mixin
-    # pylint: disable=unsupported-membership-test; mixin
+    """Mixin for :class:`Collection` whose items can be ordered.
 
-    def move(self, item, to):
+    The underlying Redis collection must be a Redis list.
+    """
+
+    ids = None # type: RedisSequence
+    app = None # type: Application
+
+    def move(self, item: Object, to: Optional[Object]) -> None:
         """See :http:post:`/api/(collection-path)/move`."""
         if to:
-            if to.id not in self:
+            if to.id not in self: # type: ignore
                 raise ValueError('to_not_found')
             if to == item:
                 # No op
                 return
-        if not self.r.lrem(self.map_key, 1, item.id):
+        if not cast(int, self.app.r.lrem(self.ids.key, 1, item.id)):
             raise ValueError('item_not_found')
         if to:
-            self.r.linsert(self.map_key, 'after', to.id, item.id)
+            self.app.r.linsert(self.ids.key, 'after', to.id, item.id)
         else:
-            self.r.lpush(self.map_key, item.id)
+            self.app.r.lpush(self.ids.key, item.id)
 
 class User(Object, Editable):
     """See :ref:`User`."""
@@ -812,7 +956,7 @@ class Activity(Object, JSONRedisSequence):
                  pre: Callable[[], None] = None) -> None:
         super().__init__(id, app)
         JSONRedisSequence.__init__(self, app.r, '{}.items'.format(id), pre)
-        self.host = None
+        self.host = None # type: Optional[object]
         self._subscriber_ids = subscriber_ids
 
     @property

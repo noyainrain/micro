@@ -22,6 +22,7 @@ from logging import StreamHandler, getLogger
 import random
 import re
 import string
+import sys
 from typing import Optional
 
 from tornado.log import LogFormatter
@@ -33,7 +34,7 @@ def str_or_none(str: str) -> Optional[str]:
     """
     return str if str and str.strip() else None
 
-def randstr(length=16, charset=string.ascii_lowercase):
+def randstr(length: int = 16, charset: str = string.ascii_lowercase) -> str:
     """Generate a random string.
 
     The string will have the given *length* and consist of characters from *charset*.
@@ -55,7 +56,7 @@ def parse_isotime(isotime: str) -> datetime:
     except (TypeError, ValueError):
         raise ValueError('isotime_bad_format')
 
-def parse_slice(str, limit=None):
+def parse_slice(str: str, limit: int = None) -> slice:
     """Parse a slice string into a :class:`slice`.
 
     The slice string *str* has the format ``start:stop``. Negative values are not supported. The
@@ -65,11 +66,11 @@ def parse_slice(str, limit=None):
     if not match:
         raise ValueError('str_bad_format')
 
-    start, stop = match.group(1), match.group(2)
-    start, stop = int(start) if start else None, int(stop) if stop else None
+    start = int(match.group(1)) if match.group(1) else None
+    stop = int(match.group(2)) if match.group(2) else None
     if limit:
         if stop is None:
-            stop = float('inf')
+            stop = sys.maxsize
         stop = min(stop, (start or 0) + limit)
     return slice(start, stop)
 

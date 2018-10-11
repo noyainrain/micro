@@ -14,12 +14,13 @@
 
 """Test utilites."""
 
+from typing import List, Optional
 from urllib.parse import urljoin
 
 from tornado.httpclient import AsyncHTTPClient
 from tornado.testing import AsyncTestCase
 
-from .jsonredis import JSONRedis
+from .jsonredis import JSONRedis, RedisList, expect_type
 from .micro import (Activity, Application, Collection, Editable, Object, Orderable, Settings,
                     Trashable)
 from .util import randstr
@@ -57,17 +58,19 @@ class CatApp(Application):
 
     .. attribute:: cats
 
-       Map of all :class:`CatApp.Cats`.
+       See :class:`CatApp.Cats`.
     """
 
-    class Cats(Collection, Orderable):
-        """Map of all cats."""
+    class Cats(Collection['Cat'], Orderable):
+        """Collection of all :class:`Cat`s."""
 
-        def create(self, name=None):
-            """Create a :class:`Cat`."""
-            id = 'Cat:{}'.format(randstr())
-            cat = Cat(id, self.app, authors=[], trashed=False, name=name,
-                      activity=Activity('{}.activity'.format(id), self.app, subscriber_ids=[]))
+        def __init__(self, *, app: Application) -> None:
+            super().__init__(RedisList('cats', app.r.r), expect=expect_type(Cat), app=app)
+            Orderable.__init__(self)
+
+        def create(self, name: str = None) -> 'Cat':
+            """Create a cat."""
+            cat = Cat.make(name=name, app=self.app)
             self.app.r.oset(cat.id, cat)
             self.app.r.rpush('cats', cat.id)
             return cat
@@ -75,7 +78,7 @@ class CatApp(Application):
     def __init__(self, redis_url=''):
         super().__init__(redis_url=redis_url)
         self.types.update({'Cat': Cat})
-        self.cats = self.Cats((self, 'cats'))
+        self.cats = self.Cats(app=self)
 
     def do_update(self):
         r = JSONRedis(self.r.r)
@@ -105,7 +108,15 @@ class CatApp(Application):
 class Cat(Object, Editable, Trashable):
     """Cute cat."""
 
-    def __init__(self, id, app, authors, trashed, name, activity):
+    @staticmethod
+    def make(*, name: str = None, app: Application) -> 'Cat':
+        """Create a :class:`Cat` object."""
+        id = 'Cat:{}'.format(randstr())
+        return Cat(id=id, app=app, authors=[], trashed=False, name=name,
+                   activity=Activity(id='{}.activity'.format(id), app=app, subscriber_ids=[]))
+
+    def __init__(self, id: str, app: Application, authors: List[str], trashed: bool,
+                 name: Optional[str], activity: Activity) -> None:
         super().__init__(id, app)
         Editable.__init__(self, authors, activity)
         Trashable.__init__(self, trashed, activity)

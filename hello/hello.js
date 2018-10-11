@@ -76,7 +76,7 @@ hello.StartPage = class extends micro.Page {
         this.ready.when((async() => {
             try {
                 let greetings = await ui.call("GET", "/api/greetings");
-                this._data.greetings = new micro.bind.Watchable(greetings);
+                this._data.greetings = new micro.bind.Watchable(greetings.items);
             } catch (e) {
                 ui.handleCallError(e);
             }

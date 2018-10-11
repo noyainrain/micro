@@ -31,7 +31,8 @@ watch-test-client:
 
 .PHONY: type
 type:
-	mypy -m micro.micro -m micro.server -m micro.jsonredis
+	mypy -m micro -m micro.jsonredis -m micro.micro -m micro.server -m micro.templates \
+	     -m micro.test -m micro.util
 
 .PHONY: lint
 lint:

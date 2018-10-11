@@ -22,20 +22,15 @@ If user authentication with the given secret fails, an :ref:`AuthenticationError
 any endpoint, a :ref:`PermissionError` is returned if the current user is not allowed to perform the
 action.
 
-Lists
------
-
-For most API endpoints which return a list, a slice of the form ``/(start):(stop)`` may be appended
-to the URL, where *start* (inclusive) and *stop* (exclusive) are indices of the items to return.
-The maximum number of items is limited to a *limit* of ``100``. Both *start* and *stop* are optional
-and default to ``0`` and ``start + limit`` respectively.
-
-Example: ``/api/activity`` (which is equivalent to ``/api/activity/:`` or ``/api/activity/0:100``)
-returns the first hundred items (i.e. global events) and ``/api/activity/10:20`` returns the items
-from index 10 up to including 19.
-
 Additional types
 ----------------
+
+A *slice* represents a range of a list, as array ``[start, stop]``, from index *start* (inclusive)
+to *stop* (exclusive). Both *start* and *stop* may be ``null``, referring to the beginning (0) and
+end (list length) of the list respectively.
+
+A *slice string* has the form ``{start}:{stop}``. Both *start* and *stop* may be omitted, meaning
+``null``.
 
 A *polyglot string* is an :class:`Object` holding multiple translations of a string indexed by short
 language tag.
@@ -76,6 +71,17 @@ setting the email address::
         "email": "happy@example.org",
         ...
     }
+
+.. _Collection:
+
+Collection
+----------
+
+Collection of objects.
+
+.. include:: micro/collection-attributes.inc
+
+.. include:: micro/collection-endpoints.inc
 
 .. _AuthRequest:
 

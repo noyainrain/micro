@@ -33,7 +33,7 @@ from tornado.template import DictLoader, Loader, filter_whitespace
 from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
 
 from . import micro, templates
-from .micro import (Activity, AuthRequest, JSONifiable, Object, User, InputError,
+from .micro import (Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError,
                     AuthenticationError, CommunicationError, PermissionError)
 from .util import str_or_none, parse_slice, check_polyglot
 
@@ -189,7 +189,8 @@ class Endpoint(RequestHandler):
 
     current_user = None # type: Optional[User]
 
-    def initialize(self) -> None:
+    def initialize(self, **args: object) -> None:
+        # pylint: disable=unused-argument; part of subclass API
         server = self.application.settings['server']
         assert isinstance(server, Server)
         self.server = server
@@ -292,6 +293,30 @@ class Endpoint(RequestHandler):
         e.trigger()
 
         return args
+
+class CollectionEndpoint(Endpoint):
+    """API endpoint for a :class:`Collection`.
+
+    .. attribute:: get_collection
+
+       Function of the form *get_collection(*args: str) -> Collection*, responsible for retrieving
+       the underlying collection. *args* are the URL arguments.
+    """
+
+    def initialize(self, **args: object) -> None:
+        super().initialize(**args)
+        get_collection = args.get('get_collection')
+        if not callable(get_collection):
+            raise TypeError()
+        self.get_collection = get_collection # type: Callable[[VarArg(str)], Collection[Object]]
+
+    def get(self, *args: str) -> None:
+        collection = self.get_collection(*args)
+        try:
+            slc = parse_slice(self.get_query_argument('slice', ':'), limit=LIST_LIMIT)
+        except ValueError:
+            raise micro.ValueError('bad_slice_format')
+        self.write(collection.json(restricted=True, include=True, slc=slc))
 
 def make_list_endpoints(
         url: str, get_list: Callable[[VarArg(str)], Sequence[JSONifiable]]) -> List[Handler]:

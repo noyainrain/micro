@@ -20,7 +20,8 @@ import json
 from tornado.httpclient import HTTPClientError
 from tornado.testing import gen_test
 
-from micro.server import Server, make_orderable_endpoints, make_trashable_endpoints
+from micro.server import (CollectionEndpoint, Server, make_orderable_endpoints,
+                          make_trashable_endpoints)
 from micro.test import ServerTestCase, CatApp
 
 class ServerTest(ServerTestCase):
@@ -29,6 +30,7 @@ class ServerTest(ServerTestCase):
         self.app = CatApp(redis_url='15')
         self.app.r.flushdb()
         handlers = [
+            (r'/api/cats$', CollectionEndpoint, {'get_collection': lambda: self.app.cats}),
             *make_orderable_endpoints(r'/api/cats', lambda: self.app.cats),
             *make_trashable_endpoints(r'/api/cats/([^/]+)', lambda i: self.app.cats[i])
         ]
@@ -72,26 +74,27 @@ class ServerTest(ServerTestCase):
         await self.request('/api/activity/v2', method='PATCH', body='{"op": "unsubscribe"}')
 
     @gen_test
-    def test_get_user(self):
+    def test_endpoint_request(self):
         response = yield self.request('/api/users/' + self.user.id)
-        meeting = json.loads(response.body.decode())
-        self.assertEqual(meeting.get('__type__'), 'User')
+        user = json.loads(response.body.decode())
+        self.assertEqual(user.get('__type__'), 'User')
+        self.assertEqual(user.get('id'), self.user.id)
 
     @gen_test
-    def test_get_user_id_nonexistent(self):
-        with self.assertRaises(HTTPClientError) as cm:
-            yield self.request('/api/users/foo')
-        self.assertEqual(cm.exception.code, http.client.NOT_FOUND)
-
-    @gen_test
-    def test_post_user_body_invalid_json(self):
+    def test_endpoint_request_invalid_body(self):
         with self.assertRaises(HTTPClientError) as cm:
             yield self.request('/api/users/' + self.user.id, method='POST', body='foo')
         e = cm.exception
         self.assertEqual(e.code, http.client.BAD_REQUEST)
 
     @gen_test
-    def test_post_user_name_bad_type(self):
+    def test_endpoint_request_key_error(self):
+        with self.assertRaises(HTTPClientError) as cm:
+            yield self.request('/api/users/foo')
+        self.assertEqual(cm.exception.code, http.client.NOT_FOUND)
+
+    @gen_test
+    def test_endpoint_request_input_error(self):
         with self.assertRaises(HTTPClientError) as cm:
             yield self.request('/api/users/' + self.user.id, method='POST', body='{"name": 42}')
         self.assertEqual(cm.exception.code, http.client.BAD_REQUEST)
@@ -99,9 +102,20 @@ class ServerTest(ServerTestCase):
         self.assertEqual(error.get('__type__'), 'InputError')
 
     @gen_test
-    def test_post_settings_provider_description_bad_type(self):
+    def test_endpoint_request_value_error(self):
         with self.assertRaises(HTTPClientError) as cm:
             yield self.request('/api/settings', method='POST',
                                body='{"provider_description": {"en": " "}}')
         self.assertEqual(cm.exception.code, http.client.BAD_REQUEST)
         self.assertIn('provider_description_bad_type', cm.exception.response.body.decode())
+
+    @gen_test
+    async def test_collection_endpoint_get(self):
+        self.app.cats.create(name='Happy')
+        self.app.cats.create(name='Grumpy')
+        self.app.cats.create(name='Long')
+        response = await self.request('/api/cats?slice=1:')
+        cats = json.loads(response.body.decode())
+        self.assertEqual(cats.get('count'), 3)
+        self.assertEqual([cat.get('name') for cat in cats.get('items', [])], ['Grumpy', 'Long'])
+        self.assertEqual(cats.get('slice'), [1, 3])
