@@ -16,7 +16,6 @@
 """Core parts of micro."""
 
 import builtins
-from collections.abc import Mapping
 from datetime import datetime
 from email.message import EmailMessage
 import errno
@@ -151,69 +150,79 @@ class Application:
         nothing will be done. It is thus safe to call :meth:`update` without knowing if an update is
         necessary or not.
         """
-        v = self.r.get('micro_version')
+        vb = cast(Optional[bytes], self.r.get('micro_version'))
 
         # If fresh, initialize database
-        if not v:
+        if not vb:
             settings = self.create_settings()
             settings.push_vapid_private_key, settings.push_vapid_public_key = (
                 self._generate_push_vapid_keys())
             self.r.oset(settings.id, settings)
             activity = Activity(id='Activity', app=self, subscriber_ids=[])
             self.r.oset(activity.id, activity)
-            self.r.set('micro_version', 6)
+            self.r.set('micro_version', 7)
             self.do_update()
             return
 
-        v = int(v)
-        r = JSONRedis(self.r.r)
+        v = int(vb)
+        r = JSONRedis[Dict[str, object]](self.r.r)
         r.caching = False
+        expect_str = expect_type(str)
 
         # Deprecated since 0.15.0
         if v < 3:
-            settings = r.oget('Settings')
-            settings['provider_name'] = None
-            settings['provider_url'] = None
-            settings['provider_description'] = {}
-            r.oset(settings['id'], settings)
+            data = r.oget('Settings', default=AssertionError)
+            data['provider_name'] = None
+            data['provider_url'] = None
+            data['provider_description'] = {}
+            r.oset('Settings', data)
             r.set('micro_version', 3)
 
         # Deprecated since 0.6.0
         if v < 4:
             for obj in self._scan_objects(r):
-                if not issubclass(self.types[obj['__type__']], Trashable):
+                if not issubclass(self.types[expect_str(obj['__type__'])], Trashable):
                     del obj['trashed']
-                    r.oset(obj['id'], obj)
+                    r.oset(expect_str(obj['id']), obj)
             r.set('micro_version', 4)
 
         # Deprecated since 0.13.0
         if v < 5:
-            settings = r.oget('Settings')
-            settings['icon_small'] = settings['favicon']
-            del settings['favicon']
-            settings['icon_large'] = None
-            r.oset(settings['id'], settings)
+            data = r.oget('Settings', default=AssertionError)
+            data['icon_small'] = data['favicon']
+            del data['favicon']
+            data['icon_large'] = None
+            r.oset('Settings', data)
             r.set('micro_version', 5)
 
         # Deprecated since 0.14.0
         if v < 6:
-            settings = r.oget('Settings')
-            settings['push_vapid_private_key'], settings['push_vapid_public_key'] = (
-                self._generate_push_vapid_keys())
-            r.oset(settings['id'], settings)
-            activity = Activity(id='Activity', app=self, subscriber_ids=[]).json()
-            r.oset(activity['id'], activity)
+            data = r.oget('Settings', default=AssertionError)
+            data['push_vapid_private_key'], data['push_vapid_public_key'] = (
+                cast(Tuple[str, str], self._generate_push_vapid_keys())) # type: ignore
+            r.oset('Settings', data)
+            activity = Activity(id='Activity', app=self, subscriber_ids=[])
+            r.oset(activity.id, activity.json())
 
-            users = r.omget(r.lrange('users', 0, -1))
+            users = r.omget([id.decode() for id in cast(List[bytes], r.lrange('users', 0, -1))],
+                            default=AssertionError)
             for user in users:
                 user['device_notification_status'] = 'off'
                 user['push_subscription'] = None
-            r.omset({user['id']: user for user in users})
+            r.omset({expect_str(user['id']): user for user in users})
             r.set('micro_version', 6)
+
+        # Deprecated since 0.24.1
+        if v < 7:
+            ids = cast(List[bytes], r.lrange('activity', 0, -1))
+            if ids:
+                r.rpush('Activity.items', *ids)
+                r.delete('activity')
+            r.set('micro_version', 7)
 
         self.do_update()
 
-    def do_update(self):
+    def do_update(self) -> None:
         """Subclass API: Perform the database update.
 
         May be overridden by subclass. Called by :meth:`update`, which takes care of updating (or
@@ -221,7 +230,7 @@ class Application:
         """
         pass
 
-    def create_settings(self):
+    def create_settings(self) -> 'Settings':
         """Subclass API: Create and return the app :class:`Settings`.
 
         *id* must be set to ``Settings``.
@@ -306,14 +315,14 @@ class Application:
         return type(app=self, **json)
 
     @staticmethod
-    def _scan_objects(r):
-        for key in r.keys('*'):
+    def _scan_objects(r: JSONRedis[Dict[str, object]]) -> Iterator[Dict[str, object]]:
+        for key in cast(List[bytes], r.keys('*')):
             try:
-                obj = r.oget(key)
+                obj = r.oget(key.decode())
             except ResponseError:
                 pass
             else:
-                if isinstance(obj, Mapping) and '__type__' in obj:
+                if isinstance(obj, dict) and '__type__' in obj:
                     yield obj
 
     @staticmethod
@@ -949,7 +958,7 @@ class Settings(Object, Editable):
                {'push_vapid_private_key': self.push_vapid_private_key})
         }
 
-class Activity(Object, JSONRedisSequence):
+class Activity(Object, JSONRedisSequence[JSONifiable]):
     """See :ref:`Activity`."""
 
     def __init__(self, id: str, app: Application, subscriber_ids: List[str],
@@ -995,12 +1004,13 @@ class Activity(Object, JSONRedisSequence):
             pass
         self.app.r.oset(self.host.id if self.host else self.id, self.host or self)
 
-    def json(self, restricted=False, include=False, slice=None):
+    def json(self, restricted: bool = False, include: bool = False,
+             slice: 'slice' = None) -> Dict[str, object]:
         # pylint: disable=arguments-differ; extension
         return {
             **super().json(restricted, include),
-            **({'user_subscribed': self.app.user.id in self._subscriber_ids} if restricted else
-               {'subscriber_ids': self._subscriber_ids}),
+            **({'user_subscribed': self.app.user and self.app.user.id in self._subscriber_ids}
+               if restricted else {'subscriber_ids': self._subscriber_ids}),
             **({'items': event.json(True, True) for event in self[slice]} if slice else {})
         }
 

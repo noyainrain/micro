@@ -155,7 +155,7 @@ class JSONRedis(Generic[T]):
         objects = [self.oget(k, default=default, expect=expect) for k in keys]
         return cast(Union[List[Optional[T]], List[T], List[Optional[U]], List[U]], objects)
 
-    def omset(self, mapping):
+    def omset(self, mapping: Mapping[str, T]) -> None:
         """Set each key in *mapping* to its corresponding object."""
         # NOTE: Not atomic at the moment
         for key, object in mapping.items():

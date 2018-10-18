@@ -33,6 +33,19 @@ app.r.flushdb()
 app.update()
 app.sample()
 
+# Compatibility for unmigrated global activity data (deprecated since 0.24.1)
+from micro import Event
+event = Event.create('meow', None, app=app)
+if int(app.r.get('micro_version')) == 6:
+    app.r.oset(event.id, event)
+    app.r.lpush('activity', event.id)
+else:
+    app.activity.publish(event)
+
+# Events
+app.settings.edit(provider_name='Meow Inc.')
+app.settings.edit(provider_url='https://meow.example.com/')
+
 # Compatibility for sample data without a cat (deprecated since 0.6.0)
 if not hasattr(app, 'cats'):
     from micro.test import Cat
@@ -96,16 +109,13 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertEqual(app.settings.title, 'CatApp')
 
     def test_update_db_version_previous(self):
-        self.setup_db('0.13.0')
+        self.setup_db('0.24.0')
         app = CatApp(redis_url='15')
         app.update()
 
-        user = app.settings.staff[0]
-        self.assertTrue(app.settings.push_vapid_private_key)
-        self.assertTrue(app.settings.push_vapid_public_key)
-        self.assertIsNotNone(app.activity.subscribers)
-        self.assertEqual(user.device_notification_status, 'off')
-        self.assertIsNone(user.push_subscription)
+        app.user = app.settings.staff[0]
+        self.assertEqual([event.type for event in app.activity],
+                         ['editable-edit', 'editable-edit', 'meow'])
 
     def test_update_db_version_first(self):
         # NOTE: Tag tmp can be removed on next database update
@@ -129,6 +139,10 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertIsNotNone(app.activity.subscribers)
         self.assertEqual(user.device_notification_status, 'off')
         self.assertIsNone(user.push_subscription)
+        # Update to version 7
+        app.user = app.settings.staff[0]
+        self.assertEqual([event.type for event in app.activity],
+                         ['editable-edit', 'editable-edit', 'meow'])
 
 class EditableTest(MicroTestCase):
     def setUp(self):
