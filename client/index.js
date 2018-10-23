@@ -20,6 +20,8 @@
 
 "use strict";
 
+micro.util.watchErrors();
+
 micro.LIST_LIMIT = 100;
 micro.SHORT_DATE_TIME_FORMAT = {
     year: "2-digit",
@@ -27,58 +29,6 @@ micro.SHORT_DATE_TIME_FORMAT = {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit"
-};
-
-/**
- * Thrown for HTTP JSON REST API errors.
- *
- * .. attribute:: error
- *
- *    The error object.
- *
- * .. attribute:: status
- *
- *    The associated HTTP status code.
- */
-micro.APIError = class extends Error {
-    constructor(error, status) {
-        super();
-        this.error = error;
-        this.status = status;
-    }
-};
-
-/**
- * Call a *method* on the HTTP JSON REST API endpoint at *url*.
- *
- * *method* is a HTTP method (e.g. ``GET`` or ``POST``). Arguments are passed as JSON object *args*.
- * A promise is returned that resolves to the result as JSON value, once the call is complete.
- *
- * If an error occurs, the promise rejects with an :class:`APIError`. For any IO related errors, it
- * rejects with a :class:`TypeError`.
- */
-micro.call = function(method, url, args) {
-    let options = {method, credentials: "include"};
-    if (args) {
-        options.headers = {"Content-Type": "application/json"};
-        options.body = JSON.stringify(args);
-    }
-
-    return fetch(url, options).then(response => {
-        return response.json().then(result => {
-            if (!response.ok) {
-                throw new micro.APIError(result, response.status);
-            }
-            return result;
-        }, e => {
-            if (e instanceof SyntaxError) {
-                // Consider invalid JSON an IO error
-                throw new TypeError();
-            } else {
-                throw e;
-            }
-        });
-    });
 };
 
 /**
@@ -96,10 +46,6 @@ micro.findAncestor = micro.keyboard.findAncestor;
  * At the core of the UI are pages, where any page has a corresponding (shareable and bookmarkable)
  * URL. The UI takes care of user navigation.
  *
- * .. attribute:: page
- *
- *    The current :ref:`Page`. May be ``null``.
- *
  * .. attribute:: pages
  *
  *    Subclass API: Table of available pages.
@@ -108,25 +54,43 @@ micro.findAncestor = micro.keyboard.findAncestor;
  *    if the requested URL matches the regular expression pattern *url*.
  *
  *    *page* is either the tag of a :ref:`Page` or a function. If it is a tag, the element is
- *    created and used as page. If it is a function, it has the form *page(url)* and is responsible
- *    to prepare and return a :ref:`Page`. *url* is the requested URL. Groups captured from the URL
- *    pattern are passed as additional arguments. The function may return a promise.
+ *    created and used as page.
+ *
+ *    If *page* is a function, it has the form *page(url)* and is responsible to prepare and return
+ *    a :ref:`Page`. *url* is the requested URL. Groups captured from the URL pattern are passed as
+ *    additional arguments. The function may return a promise. For convenience, if one of the
+ *    following common call errors is thrown:
+ *
+ *    - `NetworkError`: The `micro-offline-page` is shown
+ *    - `NotFoundError`: The `micro-not-found-page` is shown
+ *    - `PermissionError`: The `micro-forbidden-page` is shown
  *
  *    May be set by subclass in :meth:`init`. Defaults to ``[]``.
+ *
+ * .. attribute:: service
+ *
+ *    Service worker of the app, more precisely a :class:`ServiceWorkerRegistration`.
  *
  * .. attribute:: renderEvent
  *
  *    Subclass API: Table of event rendering hooks by event type. Used by the activity page to
  *    visualize :ref:`Event` s. A hook has the form *renderEvent(event)* and is responsible to
  *    render the given *event* to a :class:`Node`.
+ *
+ * .. describe:: navigate
+ *
+ *    Fired when the user navigates around the UI (either via link, browser history,
+ *    :meth:`navigate` or initially on app launch). *oldURL* and *newURL* are the previous and now
+ *    current URL respectively.
  */
 micro.UI = class extends HTMLBodyElement {
     createdCallback() {
-        this.page = null;
+        this.mapServiceKey =
+            document.querySelector("meta[itemprop=map-service-key]").content || null;
+        this._url = null;
+        this._page = null;
         this._progressElem = this.querySelector(".micro-ui-progress");
         this._pageSpace = this.querySelector("main .micro-ui-inside");
-
-        this.settings = null;
 
         this.pages = [
             {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.EditUserPage.make},
@@ -148,8 +112,19 @@ micro.UI = class extends HTMLBodyElement {
         };
 
         window.addEventListener("error", this);
-        this.addEventListener("click", this);
-        window.addEventListener("popstate", this);
+        window.addEventListener("popstate", () => this._navigate().catch(micro.util.catch));
+        this.addEventListener("click", event => {
+            let a = micro.findAncestor(event.target, e => e instanceof HTMLAnchorElement, this);
+            if (a && a.origin === location.origin) {
+                event.preventDefault();
+                this.navigate(a.pathname + a.hash).catch(micro.util.catch);
+            }
+        });
+        this.addEventListener("focusin", event => {
+            if (event.target.id) {
+                this.url = `#${event.target.id}`;
+            }
+        });
         this.addEventListener("user-edit", this);
         this.addEventListener("settings-edit", this);
 
@@ -171,7 +146,37 @@ micro.UI = class extends HTMLBodyElement {
         this.insertBefore(
             document.importNode(this.querySelector(".micro-ui-template").content, true),
             this.querySelector("main"));
-        micro.bind.bind(this.children, {});
+        this._data = new micro.bind.Watchable({
+            settings: {title: document.title}
+        });
+        micro.bind.bind(this.children, this._data);
+
+        let update = () => {
+            document.querySelector('link[rel=icon][sizes="16x16"]').href =
+                this._data.settings.icon_small || "";
+            document.querySelector('link[rel=icon][sizes="192x192"]').href =
+                this._data.settings.icon_large || "";
+        };
+        this._data.watch("settings", update);
+
+        this.features = {
+            es6TypedArray: "ArrayBuffer" in window,
+            serviceWorkers: "serviceWorker" in navigator,
+            push: "PushManager" in window
+        };
+        this.classList.add(
+            ...Object.entries(this.features)
+                .filter(([, supported]) => supported)
+                .map(([feature]) => `micro-feature-${micro.bind.dash(feature)}`));
+        this.classList.toggle("micro-ui-map-service-enabled", this.mapServiceKey);
+
+        this.service = null;
+        if (this.features.push && this.features.serviceWorkers && this.features.es6TypedArray) {
+            let url = document.querySelector("link[rel=service]").href;
+            (async() => {
+                this.service = await navigator.serviceWorker.register(url, {scope: "/"});
+            })().catch(micro.util.catch);
+        }
 
         let version = localStorage.microVersion || null;
         if (!version) {
@@ -180,65 +185,112 @@ micro.UI = class extends HTMLBodyElement {
         }
 
         // Go!
-        this._progressElem.style.display = "block";
-        Promise.resolve(this.update()).then(() => {
-            this.user = JSON.parse(localStorage.microUser);
+        let go = async() => {
+            try {
+                this._progressElem.style.display = "block";
+                await Promise.resolve(this.update());
+                this.user = JSON.parse(localStorage.microUser);
 
-            // If requested, log in with code
-            let match = /^#login=(.+)$/.exec(location.hash);
-            if (match) {
-                history.replaceState(null, null, location.pathname);
-                return micro.call("POST", "/api/login", {
-                    code: match[1]
-                }).then(this._storeUser.bind(this), e => {
-                    // Ignore invalid login codes
-                    if (!(e instanceof micro.APIError)) {
-                        throw e;
+                // If requested, log in with code
+                let match = /^#login=(.+)$/u.exec(location.hash);
+                if (match) {
+                    history.replaceState(null, null, location.pathname);
+                    try {
+                        this._storeUser(await ui.call("POST", "/api/login", {code: match[1]}));
+                    } catch (e) {
+                        // Ignore invalid login codes
+                        if (!(e instanceof micro.APIError)) {
+                            throw e;
+                        }
                     }
-                });
+                }
+
+                // If not logged in (yet), log in as a new user
+                if (!this.user) {
+                    this._storeUser(await ui.call("POST", "/api/login"));
+                }
+
+                this._data.settings = await ui.call("GET", "/api/settings");
+                this._update();
+
+                // Update the user details
+                (async() => {
+                    try {
+                        let user = await ui.call("GET", `/api/users/${this.user.id}`);
+                        this.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
+                    } catch (e) {
+                        if (e instanceof micro.NetworkError || e instanceof micro.APIError &&
+                            e.error.__type__ === "AuthenticationError") {
+                            // Pass
+                        } else {
+                            throw e;
+                        }
+                    }
+                })().catch(micro.util.catch);
+
+                await this.init();
+
+                this.querySelector(".micro-ui-header").style.display = "block";
+                await this._navigate();
+
+            } catch (e) {
+                if (e instanceof micro.NetworkError) {
+                    this._progressElem.style.display = "none";
+                    this.page = document.createElement("micro-offline-page");
+                } else if (e instanceof micro.APIError &&
+                           e.error.__type__ === "AuthenticationError") {
+                    // Pass
+                } else {
+                    throw e;
+                }
             }
-            return null;
+        };
+        go().catch(micro.util.catch);
+    }
 
-        }).then(() => {
-            // If not logged in (yet), log in as a new user
-            if (!this.user) {
-                return micro.call("POST", "/api/login").then(this._storeUser.bind(this));
-            }
-            return null;
+    /** Current URL. Set to rewrite the browser URL. */
+    get url() {
+        return this._url;
+    }
 
-        }).then(() => micro.call("GET", "/api/settings")).then(settings => {
-            this.settings = settings;
-            this._update();
+    set url(value) {
+        value = new URL(value, location.href);
+        value = value.pathname + value.hash;
+        this._url = value;
+        history.replaceState(null, null, this._url);
+    }
 
-            // Update the user details
-            micro.call("GET", `/api/users/${this.user.id}`).then(user => {
-                this.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
-            });
+    /** Active :class:`micro.Page`. Set to open the given page. May be ``null``. */
+    get page() {
+        return this._page;
+    }
 
-        }).then(this.init.bind(this)).then(() => {
-            this.querySelector(".micro-ui-header").style.display = "block";
-            return this._route(location.pathname);
+    set page(value) {
+        if (this._page) {
+            this._page.remove();
+        }
+        this._page = value;
+        if (this._page) {
+            this._pageSpace.appendChild(this._page);
+            // Compatibility for overriding attachedCallback without chaining (deprecated since
+            // 0.19.0)
+            micro.Page.prototype.attachedCallback.call(this._page);
+            this._updateTitle();
+        }
+    }
 
-        }).catch(e => {
-            // Authentication errors are a corner case and happen only if a) the user has deleted
-            // their account on another device or b) the database has been reset (during
-            // development)
-            // NOTE: Should be moved to global error handling once unhandledrejection and
-            // ErrorEvent.error are available in supported browsers
-            if (e instanceof micro.APIError && e.error.__type__ === "AuthenticationError") {
-                this._storeUser(null);
-                location.reload();
-            } else {
-                throw e;
-            }
-        });
+    /**
+     * App settings.
+     */
+    get settings() {
+        return this._data.settings;
     }
 
     /**
      * Is the current :attr:`user` a staff member?
      */
     get staff() {
-        return this.settings.staff.map(s => s.id).indexOf(this.user.id) !== -1;
+        return this._data.settings.staff.map(s => s.id).indexOf(this.user.id) !== -1;
     }
 
     /**
@@ -265,11 +317,61 @@ micro.UI = class extends HTMLBodyElement {
     init() {}
 
     /**
+     * Call a *method* on the HTTP JSON REST API endpoint at *url*.
+     *
+     * This is a wrapper around :func:`micro.call` which takes responsibility of handling
+     * `AuthenticationError`s.
+     */
+    async call(method, url, args) {
+        try {
+            return await micro.call(method, url, args);
+        } catch (e) {
+            // Authentication errors are a corner case and happen only if a) the user has deleted
+            // their account on another device or b) the database has been reset (during
+            // development)
+            if (e instanceof micro.APIError && e.error.__type__ === "AuthenticationError") {
+                this._storeUser(null);
+                location.reload();
+                // Never return
+                await new Promise(() => {});
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Handle a common call error *e* with a default reaction:
+     *
+     * - `NetworkError`: Notify the user that they seem to be offline
+     * - `NotFoundError`: Notify the user that the current page has been deleted
+     * - `PermissionError`: Notify the user that their permissions for the current page have been
+     *   revoked
+     *
+     * Other errors are not handled and re-thrown.
+     */
+    handleCallError(e) {
+        if (e instanceof micro.NetworkError) {
+            this.notify(
+                "Oops, you seem to be offline! Please check your connection and try again.");
+        } else if (e instanceof micro.APIError && e.error.__type__ === "NotFoundError") {
+            this.notify("Oops, someone has just deleted this page!");
+        } else if (e instanceof micro.APIError && e.error.__type__ === "PermissionError") {
+            this.notify("Oops, someone has just revoked your permissions for this page!");
+        } else {
+            throw e;
+        }
+    }
+
+    /**
      * Navigate to the given *url*.
      */
-    navigate(url) {
-        history.pushState(null, null, url);
-        this._route(url);
+    async navigate(url) {
+        url = new URL(url, location.href);
+        url = url.pathname + url.hash;
+        if (url !== this._url) {
+            history.pushState(null, null, url);
+        }
+        await this._navigate();
     }
 
     /**
@@ -292,81 +394,137 @@ micro.UI = class extends HTMLBodyElement {
         space.appendChild(notification);
     }
 
-    _open(page) {
-        this._close();
-        this.page = page;
-        this._pageSpace.appendChild(page);
-        this._updateTitle();
-    }
+    /**
+     * Show a dialog about enabling device notifications to the user.
+     *
+     * The result of the dialog is returned:
+     *
+     * - ``ok``: Notifications have been enabled
+     * - ``cancel``: The user canceled the dialog
+     * - ``error``: A communication error occured
+     */
+    async enableDeviceNotifications() {
+        if (!(this.features.push && this.features.serviceWorkers && this.features.es6TypedArray)) {
+            throw new Error("features");
+        }
 
-    _close() {
-        if (this.page) {
-            this._pageSpace.removeChild(this.page);
-            this.page = null;
+        // Chrome does not yet support base64-encoded VAPID keys (see
+        // https://bugs.chromium.org/p/chromium/issues/detail?id=802280)
+        let applicationServerKey = Uint8Array.from(
+            atob(this.settings.push_vapid_public_key.replace(/-/ug, "+").replace(/_/ug, "/")),
+            c => c.codePointAt(0));
+
+        let subscription;
+        try {
+            subscription = await this.service.pushManager.subscribe(
+                {userVisibleOnly: true, applicationServerKey});
+        } catch (e) {
+            if (e instanceof DOMException && e.name === "NotAllowedError") {
+                return "cancel";
+            }
+            throw e;
+        }
+        subscription = JSON.stringify(subscription.toJSON());
+
+        let user;
+        try {
+            user = await ui.call("PATCH", `/api/users/${this.user.id}`,
+                                 {op: "enable_notifications", push_subscription: subscription});
+            micro.util.dispatchEvent(this, new CustomEvent("user-edit", {detail: {user}}));
+            return "ok";
+        } catch (e) {
+            if (e instanceof micro.APIError &&
+                    e.error.__type__ === "CommunicationError") {
+                ui.notify("Oops, there was a problem communicating with your device. Please try again in a few moments.");
+            } else {
+                ui.handleCallError(e);
+            }
+            return "error";
         }
     }
 
-    _route(url) {
-        this._close();
-        this._progressElem.style.display = "block";
+    async _navigate() {
+        let oldURL = this._url;
+        let oldLocation = oldURL ? new URL(oldURL, location.origin) : null;
+        this._url = location.pathname + location.hash;
 
+        if (oldLocation === null || location.pathname !== oldLocation.pathname) {
+            this._progressElem.style.display = "block";
+            this.page = null;
+            this.page = await this._route(location.pathname);
+            this._progressElem.style.display = "none";
+        }
+
+        if (location.hash) {
+            await this.page.ready;
+            try {
+                let elem = this.querySelector(location.hash);
+                if (elem) {
+                    elem.focus({preventScroll: true});
+                    elem.scrollIntoView();
+                }
+            } catch (e) {
+                // Ignore if hash is not a valid CSS selector
+                if (e instanceof DOMException && e.name === "SyntaxError") {
+                    return;
+                }
+                throw e;
+            }
+        }
+
+        this.dispatchEvent(new CustomEvent("navigate", {detail: {oldURL, newURL: this._url}}));
+    }
+
+    async _route(url) {
         let match = null;
         let route = null;
         for (route of this.pages) {
-            match = new RegExp(route.url).exec(url);
+            match = new RegExp(route.url, "u").exec(url);
             if (match) {
                 break;
             }
         }
 
-        return Promise.resolve().then(() => {
-            if (!match) {
+        if (!match) {
+            return document.createElement("micro-not-found-page");
+        }
+        if (typeof route.page === "string") {
+            return document.createElement(route.page);
+        }
+        let args = [url].concat(match.slice(1));
+        try {
+            return await Promise.resolve(route.page(...args));
+        } catch (e) {
+            if (e instanceof micro.NetworkError) {
+                return document.createElement("micro-offline-page");
+            } else if (e instanceof micro.APIError &&
+                       e.error.__type__ === "NotFoundError") {
                 return document.createElement("micro-not-found-page");
+            } else if (e instanceof micro.APIError &&
+                       e.error.__type__ === "PermissionError") {
+                return document.createElement("micro-forbidden-page");
             }
-
-            if (typeof route.page === "string") {
-                return document.createElement(route.page);
-            }
-
-            let args = [url].concat(match.slice(1));
-            return Promise.resolve(route.page(...args)).catch(e => {
-                if (e instanceof micro.APIError) {
-                    switch (e.error.__type__) {
-                    case "NotFoundError":
-                        return document.createElement("micro-not-found-page");
-                    case "PermissionError":
-                        return document.createElement("micro-forbidden-page");
-                    default:
-                        // Unreachable
-                        throw new Error();
-                    }
-                }
-                throw e;
-            });
-
-        }).then(page => {
-            this._progressElem.style.display = "none";
-            this._open(page);
-        });
+            throw e;
+        }
     }
 
     _updateTitle() {
-        document.title = [this.page.caption, this.settings.title].filter(p => p).join(" - ");
+        document.title = [this.page.caption, this._data.settings.title].filter(p => p).join(" - ");
     }
 
     _update() {
         this.classList.toggle("micro-ui-user-is-staff", this.staff);
-        this.classList.toggle("micro-ui-settings-have-feedback-url", this.settings.feedback_url);
-        this.querySelector(".micro-ui-logo-text").textContent = this.settings.title;
+        this.classList.toggle("micro-ui-settings-have-feedback-url",
+                              this._data.settings.feedback_url);
+        this.querySelector(".micro-ui-logo-text").textContent = this._data.settings.title;
         let img = this.querySelector(".micro-ui-logo img");
-        if (this.settings.favicon) {
-            document.querySelector("link[rel=icon]").href = this.settings.favicon;
-            img.src = this.settings.favicon;
+        if (this._data.settings.icon_small) {
+            img.src = this._data.settings.icon_small;
             img.style.display = "";
         } else {
             img.style.display = "none";
         }
-        this.querySelector(".micro-ui-feedback a").href = this.settings.feedback_url;
+        this.querySelector(".micro-ui-feedback a").href = this._data.settings.feedback_url;
 
         this.querySelector(".micro-ui-header micro-user").user = this.user;
         this.querySelector(".micro-ui-edit-settings").style.display = this.staff ? "" : "none";
@@ -388,43 +546,12 @@ micro.UI = class extends HTMLBodyElement {
         if (event.currentTarget === window && event.type === "error") {
             this.notify(document.createElement("micro-error-notification"));
 
-            let type = "Error";
-            let stack = `${event.filename}:${event.lineno}`;
-            let message = event.message;
-            // Get more detail out of ErrorEvent.error, if the browser supports it
-            if (event.error) {
-                type = event.error.name;
-                stack = event.error.stack;
-                message = event.error.message;
-            }
-
-            micro.call("POST", "/log-client-error", {
-                type,
-                stack,
-                url: location.pathname,
-                message
-            });
-
-        } else if (event.type === "click") {
-            let a = micro.findAncestor(event.target, e => e instanceof HTMLAnchorElement, this);
-            // NOTE: `a.origin === location.origin` would be more elegant, but Edge does not support
-            // HTMLHyperlinkElementUtils yet (see
-            // https://developer.microsoft.com/en-us/microsoft-edge/platform/documentation/apireference/interfaces/htmlanchorelement/
-            // ).
-            if (a && a.href.startsWith(location.origin)) {
-                event.preventDefault();
-                this.navigate(a.pathname);
-            }
-
-        } else if (event.target === window && event.type === "popstate") {
-            this._route(location.pathname);
-
         } else if (event.target === this && event.type === "user-edit") {
             this._storeUser(event.detail.user);
             this._update();
 
         } else if (event.target === this && event.type === "settings-edit") {
-            this.settings = event.detail.settings;
+            this._data.settings = event.detail.settings;
             this._update();
         }
     }
@@ -622,7 +749,7 @@ micro.Button = class extends HTMLButtonElement {
                     return;
                 }
             }
-            this.trigger();
+            this.trigger().catch(micro.util.catch);
         });
     }
 
@@ -632,36 +759,26 @@ micro.Button = class extends HTMLButtonElement {
      * The associated action is run and a promise is returned which resolves to the result of
      * :attr:`run`.
      */
-    trigger() {
+    async trigger() {
         if (!this.run) {
-            return Promise.resolve();
+            return undefined;
         }
 
         let i = this.querySelector("i");
-        let classes = i ? i.className : null;
-
-        let suspend = () => {
-            this.disabled = true;
-            if (i) {
-                i.className = "fa fa-spinner fa-spin";
-            }
-        };
-
-        let resume = () => {
+        let classes;
+        this.disabled = true;
+        if (i) {
+            classes = i.className;
+            i.className = "fa fa-spinner fa-spin";
+        }
+        try {
+            return await Promise.resolve(this.run());
+        } finally {
             this.disabled = false;
             if (i) {
                 i.className = classes;
             }
-        };
-
-        suspend();
-        return Promise.resolve(this.run()).then(result => {
-            resume();
-            return result;
-        }, e => {
-            resume();
-            throw e;
-        });
+        }
     }
 };
 
@@ -725,6 +842,429 @@ micro.bind.transforms.renderEntity = function(ctx, entity) {
 };
 
 /**
+ * Options for an `input` field.
+ *
+ * Attaches itself to the preceding sibling `input` and presents a list of options to the user,
+ * based on their input.
+ *
+ * Content may include a `template` that is used to render an individual option, bound as *option*.
+ * By default an option is shown as simple text. Arbitrary content can be placed in the `footer`
+ * slot.
+ *
+ * .. attribute: delay
+ *
+ *    Time to wait in milliseconds after user input before generating the selection of options.
+ *    Defaults to `0`.
+ *
+ * .. describe:: select
+ *
+ *    Fired when the user selects an *option*.
+ */
+micro.OptionsElement = class extends HTMLElement {
+    createdCallback() {
+        this.delay = 0;
+        this._input = null;
+        this._options = [];
+        this._limit = 5;
+        this._toText = null;
+        this._job = null;
+        Object.defineProperty(this, "onselect", micro.util.makeOnEvent("select"));
+
+        let template = this.querySelector("template:not([name])");
+        let footerTemplate = this.querySelector("template[name=footer]");
+
+        this.appendChild(
+            document.importNode(document.querySelector("#micro-options-template").content, true)
+        );
+        this._data = new micro.bind.Watchable({
+            options: [],
+            template,
+            footerTemplate,
+            active: false,
+            generating: false,
+            toText: (ctx, option) => typeof option === "string" ? option : this._toText(option),
+
+            onClick: option => {
+                this._input.value = this._data.toText(null, option);
+                this.deactivate();
+                this.dispatchEvent(new CustomEvent("select", {detail: {option}}));
+            }
+        });
+        micro.bind.bind(this.children, this._data);
+
+        let update = () => {
+            this.classList.toggle(
+                "micro-options-has-footer", this._data.footerTemplate || this._data.generating
+            );
+            this.classList.toggle("micro-options-active", this._data.active);
+            this.classList.toggle("micro-options-generating", this._data.generating);
+        };
+        ["footerTemplate", "active", "generating"].forEach(prop => this._data.watch(prop, update));
+        update();
+
+        // The input should not loose focus when interacting with the options
+        this.addEventListener("mousedown", event => event.preventDefault());
+    }
+
+    attachedCallback() {
+        this._input = this.previousElementSibling;
+        this._input.autocomplete = "off";
+        this._input.addEventListener(
+            "input", () => {
+                if (!this._data.active) {
+                    this._data.active = true;
+                }
+                if (this._job) {
+                    return;
+                }
+                this._data.generating = true;
+                this._job = setTimeout(
+                    () => {
+                        this._job = null;
+                        (async() => {
+                            await this._updateOptions();
+                            if (this._job) {
+                                this._data.generating = true;
+                            }
+                        })().catch(micro.util.catch);
+                    },
+                    this.delay
+                );
+            }
+        );
+        this._input.addEventListener("blur", () => this.deactivate());
+    }
+
+    /**
+     * Pool of predefined options. Only options which (partially) match the user input are
+     * presented.
+     *
+     * Alternatively, may be a function of the form `options(query, limit)` that dynamically
+     * generates a list of options to present from the user input *query*. *limit* is the maximum
+     * number of results. May be async.
+     *
+     * An option may either be a string or an arbitrary object, in which case :attr:`toText` must be
+     * set.
+     */
+    get options() {
+        return this._options;
+    }
+
+    set options(value) {
+        this._options = value;
+        this._updateOptions().catch(micro.util.catch);
+    }
+
+    /** Maximum number of presented options. Defaults to `5`. */
+    get limit() {
+        return this._limit;
+    }
+
+    set limit(value) {
+        this._limit = value;
+        this._updateOptions().catch(micro.util.catch);
+    }
+
+    /**
+     * Function of the form *toText(option)* that returns a text representation of *option*. May be
+     * ``null``.
+     */
+    get toText() {
+        return this._toText;
+    }
+
+    set toText(value) {
+        this._toText = value;
+        this._updateOptions().catch(micro.util.catch);
+    }
+
+    /** Activate, i.e. show the element. */
+    activate() {
+        this._data.active = true;
+        this._updateOptions().catch(micro.util.catch);
+    }
+
+    /** Deactivate, i.e. hide the element. */
+    deactivate() {
+        this._data.active = false;
+    }
+
+    async _updateOptions() {
+        if (!this._data.active) {
+            return;
+        }
+        this._data.generating = true;
+        let generate = (query, limit) => this.options.filter(
+            option => this._data.toText(null, option).toLowerCase()
+                .includes(query.trim().toLowerCase())
+        ).slice(0, limit);
+        if (this.options instanceof Function) {
+            generate = this.options;
+        }
+        this._data.options = await Promise.resolve(generate(this._input.value, this._limit));
+        this._data.generating = false;
+    }
+};
+document.registerElement("micro-options", micro.OptionsElement);
+
+/**
+ * Simple map for visualizing locations.
+ *
+ * Map data is provided by Mapbox. :attr:`micro.UI.mapServiceKey` must be set.
+ *
+ * .. attribute:: ready
+ *
+ *    Promise that resolves once the map is ready.
+ */
+micro.MapElement = class extends HTMLElement {
+    createdCallback() {
+        this.ready = new micro.util.PromiseWhen();
+        this._map = null;
+        this._locations = null;
+        this._markers = [];
+        this._iconDim = null;
+        this._leaflet = null;
+
+        this._onNavigate = () => {
+            (async () => {
+                await this.ready;
+                if (this._locations) {
+                    let loc = this._locations.find(item => item.hash === location.hash.slice(1));
+                    if (loc) {
+                        this._updateView();
+                        this.querySelector(`#${loc.hash}`).focus();
+                    }
+                }
+            })().catch(micro.util.catch);
+        };
+
+        this.appendChild(
+            document.importNode(document.querySelector("#micro-map-template").content, true)
+        );
+    }
+
+    attachedCallback() {
+        let height = parseInt(getComputedStyle(this).fontSize) * 2;
+        let width = height * 3 / 4;
+        this._iconDim = {
+            size: [width, height],
+            anchor: [width / 2, height]
+        };
+
+        ui.addEventListener("navigate", this._onNavigate);
+
+        this.ready.when((async() => {
+            micro.util.importCSS(document.head.querySelector("link[rel=leaflet-stylesheet]").href)
+                .catch(micro.util.catch);
+            this._leaflet = await micro.util.import(
+                document.head.querySelector("link[rel=leaflet-script]").href, "L"
+            );
+
+            this._map = this._leaflet.map(
+                this.querySelector("div"),
+                {
+                    attributionControl: false,
+                    zoomControl: false,
+                    boxZoom: false,
+                    inertia: false,
+                    maxBounds: [[-90, -180], [90, 180]]
+                }
+            );
+            this._leaflet.control.attribution({prefix: false, position: "bottomright"})
+                .addTo(this._map);
+
+            let url = `https://api.mapbox.com/v4/mapbox.light/{z}/{x}/{y}.png?access_token=${ui.mapServiceKey}`;
+            let attribution = document.importNode(
+                ui.querySelector("#micro-map-attribution-template").content, true
+            ).firstElementChild.innerHTML;
+            this._leaflet.tileLayer(url, {attribution, noWrap: true}).addTo(this._map);
+
+            this._updateView();
+        })().catch(micro.util.catch));
+    }
+
+    detachedCallback() {
+        ui.removeEventListener("navigate", this._onNavigate);
+    }
+
+    /**
+     * List of locations shown on the map.
+     *
+     * A location here is a :ref:`Location` with two additional properties: *url* is the URL the
+     * associated marker links to and *hash* is the marker's :attr:`Element.id` (may be `null`).
+     *
+     * If :class:`Watchable`, the map will be updated live whenever the array changes.
+     */
+    get locations() {
+        return this._locations;
+    }
+
+    set locations(value) {
+        let add = (i, loc) => {
+            if (!loc.coords) {
+                throw new Error("missing-coords-in-locations");
+            }
+            let a = document.importNode(
+                document.querySelector("#micro-map-marker-template").content, true
+            ).firstElementChild;
+            micro.bind.bind(a, {location: loc});
+            let icon = this._leaflet.divIcon({
+                html: a.innerHTML,
+                iconSize: this._iconDim.size,
+                iconAnchor: this._iconDim.anchor
+            });
+            let marker = this._leaflet.marker(loc.coords, {icon, keyboard: false})
+                .addTo(this._map);
+            this._markers.splice(i, 0, marker);
+            this._updateView();
+        };
+
+        let remove = i => {
+            this._markers.splice(i, 1)[0].remove();
+            this._updateView();
+        };
+
+        this._locations = value;
+
+        (async() => {
+            await this.ready;
+            this._markers.forEach(marker => marker.remove());
+            this._markers = [];
+
+            if (value) {
+                if (value.watch) {
+                    value.watch(Symbol.for("*"), (prop, loc) => {
+                        let i = parseInt(prop);
+                        remove(i);
+                        add(i, loc);
+                    });
+                    value.watch(Symbol.for("+"), (prop, loc) => add(parseInt(prop), loc));
+                    value.watch(Symbol.for("-"), prop => remove(parseInt(prop)));
+                }
+                Array.from(value.entries()).forEach(([i, loc]) => add(i, loc));
+            }
+
+            this._updateView();
+        })().catch(micro.util.catch);
+    }
+
+    _updateView() {
+        if (this._locations && this._locations.length > 1) {
+            let padding = parseInt(getComputedStyle(this).fontSize) * 0.375;
+            this._map.fitBounds(
+                this._locations.map(loc => loc.coords),
+                {
+                    paddingTopLeft:
+                        [this._iconDim.anchor[0] + padding, this._iconDim.anchor[1] + padding],
+                    paddingBottomRight: [this._iconDim.anchor[0] + padding, padding],
+                    animate: false
+                }
+            );
+        } else {
+            this._map.fitWorld({animate: false});
+            this._map.zoomIn(1, {animate: false});
+        }
+    }
+};
+document.registerElement("micro-map", micro.MapElement);
+
+/**
+ * Input for entering a location, e.g. an address or POI.
+ *
+ * Mapbox is used for geocoding. :attr:`micro.UI.mapServiceKey` must be set.
+ *
+ * .. attribute:: nativeInput
+ *
+ *    Wrapped :class:`HTMLInputElement`. It has an additional property *wrapper* pointing back to
+ *    this element.
+ */
+micro.LocationInputElement = class extends HTMLElement {
+    createdCallback() {
+        this._value = null;
+
+        this.appendChild(
+            document.importNode(
+                document.querySelector("#micro-location-input-template").content, true
+            )
+        );
+        this._data = new micro.bind.Watchable({
+            async queryLocations(query, limit) {
+                if (!query) {
+                    return [];
+                }
+                // Semicolon is interpreted as separator for batch geocoding
+                query = encodeURIComponent(query.slice(0, 256).replace(";", ","));
+                let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?limit=${limit}&access_token=${ui.mapServiceKey}`;
+                try {
+                    let result = await micro.call("GET", url);
+                    return result.features.map(
+                        feature => ({
+                            name: feature.matching_place_name || feature.place_name,
+                            coords: [
+                                feature.geometry.coordinates[1], feature.geometry.coordinates[0]
+                            ]
+                        })
+                    );
+                } catch (e) {
+                    if (e instanceof micro.NetworkError || e instanceof micro.APIError) {
+                        ui.notify("Oops, there was a problem communicating with Mapbox. Please try again in a few moments.");
+                        return [];
+                    }
+                    throw e;
+                }
+            },
+
+            locationToText(loc) {
+                return loc.name;
+            },
+
+            onSelect: event => {
+                this._value = event.detail.option;
+            }
+        });
+        micro.bind.bind(this.children, this._data);
+
+        this.nativeInput = this.querySelector("input");
+        this.nativeInput.wrapper = this;
+        this.nativeInput.name = this.getAttribute("name") || "";
+        this.nativeInput.placeholder = this.getAttribute("placeholder") || "";
+        this.nativeInput.addEventListener("input", () => {
+            this._value =
+                this.nativeInput.value ? {name: this.nativeInput.value, coords: null} : null;
+        });
+    }
+
+    /** Current value as :ref:`Location`. May be ``null``. */
+    get value() {
+        return this._value;
+    }
+
+    set value(value) {
+        this._value = value;
+        this.nativeInput.value = value ? value.name : "";
+    }
+
+    /** See :attr:`HTMLInputElement.name`. */
+    get name() {
+        return this.nativeInput.name;
+    }
+
+    set name(value) {
+        this.nativeInput.name = value;
+    }
+
+    /** See :attr:`HTMLInputElement.placeholder`. */
+    get placeholder() {
+        return this.nativeInput.placeholder;
+    }
+
+    set placeholder(value) {
+        this.nativeInput.placeholder = value;
+    }
+};
+document.registerElement("micro-location-input", micro.LocationInputElement);
+
+/**
  * User element.
  *
  * .. attribute:: user
@@ -755,10 +1295,40 @@ micro.UserElement = class extends HTMLElement {
 
 /**
  * Page.
+ *
+ * .. attribute:: ready
+ *
+ *    Promise that resolves once the page is ready.
+ *
+ *    Subclass API: :meth:`micro.util.PromiseWhen.when` may be used to signal when the page will be
+ *    ready. By default, the page is considered all set after it has been attached to the DOM.
  */
 micro.Page = class extends HTMLElement {
     createdCallback() {
+        this.ready = new micro.util.PromiseWhen();
         this._caption = null;
+    }
+
+    /**
+     * .. deprecated:: 0.19.0
+     *
+     *    Overriding without chaining.
+     */
+    attachedCallback() {
+        setTimeout(
+            () => {
+                try {
+                    this.ready.when(Promise.resolve());
+                } catch (e) {
+                    // The subclass may call when
+                    if (e.message === "already-called-when") {
+                        return;
+                    }
+                    throw e;
+                }
+            },
+            0
+        );
     }
 
     /**
@@ -776,6 +1346,17 @@ micro.Page = class extends HTMLElement {
         }
     }
 };
+
+/** Offline page. */
+micro.OfflinePage = class extends micro.Page {
+    createdCallback() {
+        super.createdCallback();
+        this.caption = "Offline";
+        this.appendChild(
+            document.importNode(ui.querySelector("#micro-offline-page-template").content, true));
+    }
+};
+document.registerElement("micro-offline-page", micro.OfflinePage);
 
 /**
  * Not found page.
@@ -855,16 +1436,15 @@ micro.AboutPage = class extends micro.Page {
  * Edit user page.
  */
 micro.EditUserPage = class extends micro.Page {
-    static make(url, id) {
+    static async make(url, id) {
         id = id || ui.user.id;
-        return micro.call("GET", `/api/users/${id}`).then(user => {
-            if (!(ui.user.id === user.id)) {
-                return document.createElement("micro-forbidden-page");
-            }
-            let page = document.createElement("micro-edit-user-page");
-            page.user = user;
-            return page;
-        });
+        let user = await ui.call("GET", `/api/users/${id}`);
+        if (!(ui.user.id === user.id)) {
+            return document.createElement("micro-forbidden-page");
+        }
+        let page = document.createElement("micro-edit-user-page");
+        page.user = user;
+        return page;
     }
 
     createdCallback() {
@@ -890,40 +1470,49 @@ micro.EditUserPage = class extends micro.Page {
     }
 
     attachedCallback() {
-        let match = /^#set-email=([^:]+):([^:]+)$/.exec(location.hash);
-        if (match) {
-            history.replaceState(null, null, location.pathname);
-            let authRequestID = `AuthRequest:${match[1]}`;
-            let authRequest = JSON.parse(localStorage.authRequest || null);
-            if (!authRequest || authRequestID !== authRequest.id) {
-                ui.notify(
-                    "The email link was not opened on the same browser/device on which the email address was entered (or the email link is outdated).");
-                return;
-            }
+        super.attachedCallback();
+        this.ready.when((async() => {
+            let match = /^#set-email=([^:]+):([^:]+)$/u.exec(location.hash);
+            if (match) {
+                history.replaceState(null, null, location.pathname);
+                let authRequestID = `AuthRequest:${match[1]}`;
+                let authRequest = JSON.parse(localStorage.authRequest || null);
+                if (!authRequest || authRequestID !== authRequest.id) {
+                    ui.notify(
+                        "The email link was not opened on the same browser/device on which the email address was entered (or the email link is outdated).");
+                    return;
+                }
 
-            this._showSetEmailPanel2(true);
-            micro.call("POST", `/api/users/${this._user.id}/finish-set-email`, {
-                auth_request_id: authRequest.id,
-                auth: match[2]
-            }).then(user => {
-                delete localStorage.authRequest;
-                this.user = user;
-                this._hideSetEmailPanel2();
-            }, e => {
-                if (e.error.code === "auth_invalid") {
-                    this._showSetEmailPanel2();
-                    ui.notify("The email link was modified. Please try again.");
-                } else {
+                this._showSetEmailPanel2(true);
+                try {
+                    this.user = await ui.call(
+                        "POST", `/api/users/${this._user.id}/finish-set-email`, {
+                            auth_request_id: authRequest.id,
+                            auth: match[2]
+                        });
                     delete localStorage.authRequest;
                     this._hideSetEmailPanel2();
-                    ui.notify({
-                        auth_request_not_found: "The email link is expired. Please try again.",
-                        email_duplicate:
-                            "The given email address is already in use by another user."
-                    }[e.error.code]);
+                } catch (e) {
+                    if (e instanceof micro.APIError && e.__type__ === "ValueError") {
+                        if (e.error.code === "auth_invalid") {
+                            this._showSetEmailPanel2();
+                            ui.notify("The email link was modified. Please try again.");
+                        } else {
+                            delete localStorage.authRequest;
+                            this._hideSetEmailPanel2();
+                            ui.notify({
+                                auth_request_not_found:
+                                    "The email link is expired. Please try again.",
+                                email_duplicate:
+                                    "The given email address is already in use by another user."
+                            }[e.error.code]);
+                        }
+                    } else {
+                        ui.handleCallError(e);
+                    }
                 }
-            });
-        }
+            }
+        })().catch(micro.util.catch));
     }
 
     /**
@@ -940,32 +1529,39 @@ micro.EditUserPage = class extends micro.Page {
         this._emailP.textContent = this._user.email;
     }
 
-    _setEmail() {
+    async _setEmail() {
         if (!this._setEmailForm.checkValidity()) {
             return;
         }
 
-        micro.call("POST", `/api/users/${this.user.id}/set-email`, {
-            email: this._setEmailForm.elements.email.value
-        }).then(authRequest => {
+        try {
+            let authRequest = await ui.call("POST", `/api/users/${this.user.id}/set-email`, {
+                email: this._setEmailForm.elements.email.value
+            });
             localStorage.authRequest = JSON.stringify(authRequest);
             this._setEmailForm.reset();
             this._showSetEmailPanel2();
-        });
+        } catch (e) {
+            ui.handleCallError(e);
+        }
     }
 
     _cancelSetEmail() {
         this._hideSetEmailPanel2();
     }
 
-    _removeEmail() {
-        micro.call("POST", `/api/users/${this.user.id}/remove-email`).then(user => {
-            this.user = user;
-        }, () => {
-            // If the email address has already been removed, we just update the UI
-            this.user.email = null;
-            this.user = this.user;
-        });
+    async _removeEmail() {
+        try {
+            this.user = await ui.call("POST", `/api/users/${this.user.id}/remove-email`);
+        } catch (e) {
+            if (e instanceof micro.APIError && e.__type__ === "ValueError") {
+                // If the email address has already been removed, we just update the UI
+                this.user.email = null;
+                this.user = this.user;
+            } else {
+                ui.handleCallError(e);
+            }
+        }
     }
 
     _showSetEmailPanel2(progress) {
@@ -993,24 +1589,27 @@ micro.EditUserPage = class extends micro.Page {
     handleEvent(event) {
         if (event.currentTarget === this._form) {
             event.preventDefault();
-            micro.call("POST", `/api/users/${this._user.id}`, {
-                name: this._form.elements.name.value
-            }).then(user => {
-                ui.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
-            }, e => {
-                if (e instanceof micro.APIError) {
-                    ui.notify("The name is missing.");
-                } else {
-                    throw e;
+            (async() => {
+                try {
+                    let user = await ui.call("POST", `/api/users/${this._user.id}`, {
+                        name: this._form.elements.name.value
+                    });
+                    ui.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
+                } catch (e) {
+                    if (e instanceof micro.APIError && e.error.__type__ === "InputError") {
+                        ui.notify("The name is missing.");
+                    } else {
+                        ui.handleCallError(e);
+                    }
                 }
-            });
+            })().catch(micro.util.catch);
 
         } else if (event.currentTarget === this._setEmailAction && event.type === "click") {
-            this._setEmail();
+            this._setEmail().catch(micro.util.catch);
         } else if (event.currentTarget === this._cancelSetEmailAction && event.type === "click") {
             this._cancelSetEmail();
         } else if (event.currentTarget === this._removeEmailAction && event.type === "click") {
-            this._removeEmail();
+            this._removeEmail().catch(micro.util.catch);
         }
     }
 };
@@ -1029,47 +1628,41 @@ micro.EditSettingsPage = class extends micro.Page {
     createdCallback() {
         super.createdCallback();
         this.caption = "Edit site settings";
-        this.appendChild(document.importNode(
-            ui.querySelector(".micro-edit-settings-page-template").content, true));
-        this._form = this.querySelector("form");
-        this._form.elements.title.value = ui.settings.title;
-        this._form.elements.icon.value = ui.settings.icon || "";
-        this._form.elements.favicon.value = ui.settings.favicon || "";
-        this._form.elements.provider_name.value = ui.settings.provider_name || "";
-        this._form.elements.provider_url.value = ui.settings.provider_url || "";
-        this._form.elements.provider_description.value = ui.settings.provider_description.en || "";
-        this._form.elements.feedback_url.value = ui.settings.feedback_url || "";
-        this.querySelector(".micro-edit-settings-edit").addEventListener("submit", this);
-    }
+        this.appendChild(
+            document.importNode(ui.querySelector(".micro-edit-settings-page-template").content,
+                                true));
+        this._data = {
+            settings: ui.settings,
 
-    handleEvent(event) {
-        function toStringOrNull(str) {
-            return str.trim() ? str : null;
-        }
+            edit: async() => {
+                function toStringOrNull(str) {
+                    return str.trim() ? str : null;
+                }
 
-        if (event.currentTarget === this._form) {
-            event.preventDefault();
-            // Cancel submit if validation fails (not all browsers do this automatically)
-            if (!this._form.checkValidity()) {
-                return;
+                let form = this.querySelector("form");
+                let description = toStringOrNull(form.elements.provider_description.value);
+                description = description ? {en: description} : {};
+
+                try {
+                    let settings = await ui.call("POST", "/api/settings", {
+                        title: form.elements.title.value,
+                        icon: form.elements.icon.value,
+                        icon_small: form.elements.icon_small.value,
+                        icon_large: form.elements.icon_large.value,
+                        provider_name: form.elements.provider_name.value,
+                        provider_url: form.elements.provider_url.value,
+                        provider_description: description,
+                        feedback_url: form.elements.feedback_url.value
+                    });
+                    ui.navigate("/").catch(micro.util.catch);
+                    micro.util.dispatchEvent(ui,
+                                             new CustomEvent("settings-edit", {detail: {settings}}));
+                } catch (e) {
+                    ui.handleCallError(e);
+                }
             }
-
-            let description = toStringOrNull(this._form.elements.provider_description.value);
-            description = description ? {en: description} : {};
-
-            micro.call("POST", "/api/settings", {
-                title: this._form.elements.title.value,
-                icon: this._form.elements.icon.value,
-                favicon: this._form.elements.favicon.value,
-                provider_name: this._form.elements.provider_name.value,
-                provider_url: this._form.elements.provider_url.value,
-                provider_description: description,
-                feedback_url: this._form.elements.feedback_url.value
-            }).then(settings => {
-                ui.navigate("/");
-                ui.dispatchEvent(new CustomEvent("settings-edit", {detail: {settings}}));
-            });
-        }
+        };
+        micro.bind.bind(this.children, this._data);
     }
 };
 
@@ -1092,25 +1685,32 @@ micro.ActivityPage = class extends micro.Page {
     }
 
     attachedCallback() {
-        this._showMoreButton.trigger();
+        super.attachedCallback();
+        this.ready.when(this._showMoreButton.trigger().catch(micro.util.catch));
     }
 
-    _showMore() {
-        return micro.call("GET", `/api/activity/${this._start}:`).then(events => {
-            let ul = this.querySelector(".micro-timeline");
-            for (let event of events) {
-                let li = document.createElement("li");
-                let time = document.createElement("time");
-                time.dateTime = event.time;
-                time.textContent =
-                    new Date(event.time).toLocaleString("en", micro.SHORT_DATE_TIME_FORMAT);
-                li.appendChild(time);
-                li.appendChild(ui.renderEvent[event.type](event));
-                ul.appendChild(li);
-            }
-            this.classList.toggle("micro-activity-all", events.length < micro.LIST_LIMIT);
-            this._start += micro.LIST_LIMIT;
-        });
+    async _showMore() {
+        let events;
+        try {
+            events = await ui.call("GET", `/api/activity/${this._start}:`);
+        } catch (e) {
+            ui.handleCallError(e);
+            return;
+        }
+
+        let ul = this.querySelector(".micro-timeline");
+        for (let event of events) {
+            let li = document.createElement("li");
+            let time = document.createElement("time");
+            time.dateTime = event.time;
+            time.textContent =
+                new Date(event.time).toLocaleString("en", micro.SHORT_DATE_TIME_FORMAT);
+            li.appendChild(time);
+            li.appendChild(ui.renderEvent[event.type](event));
+            ul.appendChild(li);
+        }
+        this.classList.toggle("micro-activity-all", events.length < micro.LIST_LIMIT);
+        this._start += micro.LIST_LIMIT;
     }
 };
 

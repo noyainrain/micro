@@ -47,24 +47,40 @@ hello.StartPage = class extends micro.Page {
         super.createdCallback();
         this.appendChild(
             document.importNode(ui.querySelector(".hello-start-page-template").content, true));
+
         this._data = new micro.bind.Watchable({
             settings: ui.settings,
             greetings: null,
 
             createGreeting: async() => {
-                let form = this.querySelector("form");
-                let greeting = await micro.call("POST", "/api/greetings",
-                                                {text: form.elements.text.value});
-                form.reset();
-                this._data.greetings.unshift(greeting);
+                try {
+                    let form = this.querySelector("form");
+                    let greeting = await ui.call("POST", "/api/greetings",
+                                                 {text: form.elements.text.value});
+                    this._data.greetings.unshift(greeting);
+                    form.reset();
+                } catch (e) {
+                    ui.handleCallError(e);
+                }
+            },
+
+            makeGreetingHash(ctx, greeting) {
+                return `greetings-${greeting.id.split(":")[1]}`;
             }
         });
         micro.bind.bind(this.children, this._data);
     }
 
-    async attachedCallback() {
-        let greetings = await micro.call("GET", "/api/greetings");
-        this._data.greetings = new micro.bind.Watchable(greetings);
+    attachedCallback() {
+        super.attachedCallback();
+        this.ready.when((async() => {
+            try {
+                let greetings = await ui.call("GET", "/api/greetings");
+                this._data.greetings = new micro.bind.Watchable(greetings.items);
+            } catch (e) {
+                ui.handleCallError(e);
+            }
+        })().catch(micro.util.catch));
     }
 };
 

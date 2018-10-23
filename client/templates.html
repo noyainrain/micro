@@ -47,7 +47,7 @@
                             </a>
                         </li>
                         <li class="micro-ui-keyboard compact" tabindex="0">
-                            <p><i class="fa fa-fw fa-keyboard-o"></i> Keyboard navigation</p>
+                            <p><i class="fa fa-fw fa-keyboard"></i> Keyboard navigation</p>
                             <ul>
                                 <li><strong>Tab / Shift + Tab</strong>: Cycle through buttons</li>
                                 <li><strong>J / K</strong>: Navigate lists</li>
@@ -116,20 +116,198 @@
     <button class="micro-menu-toggle-secondary action action-subtle"><i class="fa"></i></button>
 </template>
 
+<template id="micro-options-template">
+    <div class="micro-entity-list">
+        <ul data-content="list options 'option'">
+            <template>
+                <li
+                    class="micro-panel" data-onclick="bind onClick option"
+                    data-content="render template"
+                >
+                    <template>
+                        <p data-content="toText option"></p>
+                    </template>
+                </li>
+            </template>
+        </ul>
+    </div>
+    <footer class="micro-panel">
+        <p class="micro-progress"><i class="fa fa-spinner fa-spin"></i></p>
+        <div class="micro-options-footer-content" data-content="render footerTemplate"></div>
+    </footer>
+</template>
+<style>
+    micro-options {
+        position: absolute;
+        z-index: 1;
+        background: white;
+        box-shadow: var(--micro-shadow);
+    }
+
+    micro-options > .micro-entity-list {
+        margin: 0;
+    }
+
+    micro-options > .micro-entity-list > ul > li {
+        cursor: pointer;
+    }
+
+    micro-options > .micro-entity-list > ul > li:hover {
+        background: var(--micro-color-delimiter);
+    }
+
+    micro-options > footer {
+        display: flex;
+        border-top: 1px solid var(--micro-color-delimiter);
+    }
+
+    .micro-options-footer-content {
+        flex: auto;
+        text-align: right;
+    }
+
+    micro-options:not(.micro-options-active),
+    micro-options:not(.micro-options-has-footer) > footer,
+    micro-options:not(.micro-options-generating) > footer > .micro-progress {
+        display: none;
+    }
+</style>
+
+<template id="micro-map-template">
+    <div></div>
+</template>
+<style>
+    micro-map {
+        display: block;
+        margin: 1.5rem 0;
+    }
+
+    .leaflet-container {
+        z-index: 0;
+        height: calc(70ch * 9 / 16);
+        font: inherit;
+        background: #d1d1d1; /* Map tile background */
+    }
+
+    .leaflet-container:focus {
+        box-shadow: 0 0 0 1px var(--micro-color-primary-tint);
+    }
+
+    .leaflet-container .link {
+        color: var(--micro-color-secondary);
+    }
+</style>
+
+<template id="micro-map-marker-template">
+    <div>
+        <a data-id="or location.hash ''" class="link" data-href="location.url">
+            <i class="fa fa-map-marker-alt"></i>
+        </a>
+    </div>
+</template>
+<style>
+    .leaflet-div-icon {
+        border: none;
+        background: none;
+    }
+
+    .leaflet-div-icon .link {
+        display: block;
+        font-size: 2em;
+        line-height: 1;
+        color: var(--micro-color-primary);
+        text-shadow: 0 -1px white, 1px 0 white, 0 1px white, -1px 0 white;
+    }
+</style>
+
+<template id="micro-map-attribution-template">
+    <span>
+        Map data by ©
+        <a class="link" href="https://www.mapbox.com/about/maps/" target="_blank">
+            <img
+                src="{{ static_url('{}/@noyainrain/micro/images/mapbox.svg'.format(modules_path)) }}"
+                alt="Mapbox"
+            />
+        </a>
+        ©
+        <a class="link" href="https://www.openstreetmap.org/copyright" target="_blank">
+            OpenStreetMap
+        </a>
+    </span>
+</template>
+<style>
+    .leaflet-container .leaflet-control-attribution {
+        padding: var(--micro-size-xs);
+        font-size: 0.875em;
+        color: var(--micro-color-text-subtle);
+        background: rgba(255, 255, 255, 0.66);
+        text-align: right;
+    }
+
+    .leaflet-control-attribution img {
+        height: 1.5em;
+        vertical-align: bottom;
+    }
+</style>
+
+<template id="micro-location-input-template">
+    <input />
+    <micro-options
+        data-options="queryLocations" data-delay="500" data-to-text="locationToText"
+        data-onselect="onSelect"
+    >
+        <template name="footer">
+            <p class="micro-location-input-footer">
+                <small>
+                    Location data by ©
+                    <a class="link" href="https://www.mapbox.com/about/maps/" target="_blank">
+                        <img
+                            src="{{ static_url('{}/@noyainrain/micro/images/mapbox.svg'.format(modules_path)) }}"
+                            alt="Mapbox"
+                        />
+                    </a>
+                </small>
+            </p>
+        </template>
+    </micro-options>
+</template>
+<style>
+    micro-location-input input {
+        display: block;
+        width: 100%;
+    }
+
+    .micro-location-input-footer img {
+        height: 1.5em;
+        vertical-align: bottom;
+    }
+</style>
+
 <template class="micro-user-template">
     <i class="fa fa-user"></i><span></span>
 </template>
 
+<template id="micro-offline-page-template">
+    <h1 class="micro-icon-title"><i class="fa fa-wifi"></i></h1>
+    <p>Oops, you seem to be offline!</p>
+    <p><small>Please check your connection and try again.</small></p>
+</template>
+<style>
+    micro-offline-page {
+        text-align: center;
+    }
+</style>
+
 <template class="micro-not-found-page-template">
     <h1 class="micro-icon-title"><i class="fa fa-map-signs"></i></h1>
     <p>Oops, we have not found the page you are looking for!</p>
-    <p><small>If you've been here before, someone has deleted what was here.</small></p>
+    <p><small>If you've been here before, someone has deleted it.</small></p>
 </template>
 
 <template class="micro-forbidden-page-template">
     <h1 class="micro-icon-title"><i class="fa fa-lock"></i></h1>
     <p>Oops, you are not allowed to view this page!<p>
-    <p><small>If you've been here before, someone has revoked your permission.</small></p>
+    <p><small>If you've been here before, someone has revoked your permissions.</small></p>
 </template>
 
 <template class="micro-about-page-template">
@@ -166,7 +344,7 @@
         <header class="group">
             <h1>Email</h1>
             <div class="micro-edit-user-remove-email">
-                <button class="action"><i class="fa fa-trash-o"></i> Remove</button>
+                <button class="action"><i class="fa fa-trash"></i> Remove</button>
             </div>
         </header>
 
@@ -204,40 +382,54 @@
     <h1>Edit site settings</h1>
     <form class="micro-edit-settings-edit">
         <label>
-            <input name="title" required="required" />
+            <input name="title" required="required" data-value="settings.title" />
             <small>Title</small>
         </label>
         <label>
-            <input name="icon" />
+            <input name="icon" data-value="or settings.icon ''" />
             <small>Icon (optional)</small>
             <small>URL of the site icon.</small>
         </label>
         <label>
-            <input name="favicon" />
-            <small>Favicon (optional)</small>
-            <small>URL of the site icon optimized for a small size.</small>
+            <input name="icon_small" data-value="or settings.icon_small ''" />
+            <small>Icon small (optional)</small>
+            <small>
+                URL of the site icon optimized for small scale. Should be 16 pixels square.
+            </small>
         </label>
         <label>
-            <input name="provider_name" />
+            <input name="icon_large" data-value="or settings.icon_large ''" />
+            <small>Icon large (optional)</small>
+            <small>
+                URL of the site icon optimized for large scale. Should be 192 pixels square.
+            </small>
+        </label>
+        <label>
+            <input name="provider_name" data-value="or settings.provider_name ''" />
             <small>Service provider name (optional)</small>
         </label>
         <label>
-            <input name="provider_url" />
+            <input name="provider_url" data-value="or settings.provider_url ''" />
             <small>Service provider website (optional)</small>
             <small>URL of the website of the service provider.</small>
         </label>
         <label>
-            <input name="provider_description" />
+            <input name="provider_description"
+                   data-value="or settings.provider_description.en ''" />
             <small>Service provider description (optional)</small>
             <small>“The service is provided by Provider, …”</small>
         </label>
         <label>
-            <input name="feedback_url" />
+            <input name="feedback_url" data-value="or settings.feedback_url ''" />
             <small>Feedback &amp; help site (optional)</small>
             <small>URL of the feedback site / help desk.</small>
         </label>
         <ul is="micro-menu">
-            <li><button class="action"><span class="fa fa-check-circle"></span> Done</button></li>
+            <li>
+                <button is="micro-button" class="action" data-run="edit">
+                    <i class="fa fa-check-circle"></i> Done
+                </button>
+            </li>
             <li><a class="link action-cancel" href="/">Cancel</a></li>
         </ul>
     </form>

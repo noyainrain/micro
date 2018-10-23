@@ -6,13 +6,19 @@
 html {
     --micro-color-text: #333;
     --micro-color-text-subtle: #888;
+    --micro-color-text-title: #19354d; /* Hue: primary, saturation: primary 50% */
     --micro-color-delimiter: #ddd;
     --micro-color-border: #bbb;
     --micro-color-primary: #08f;
-    --micro-color-primary-shade: #005aa8; /* Lightness: 66% */
+    --micro-color-primary-shade: #005aa8; /* Lightness: primary 66% */
     --micro-color-primary-tint: #77c0ff; /* Lightness: border */
     --micro-color-secondary: #f80;
     --micro-color-mono-shade: #545454; /* Lightness: primary-shade */
+    --micro-size-m: 1.5em;
+    --micro-size-s: 0.75em;
+    --micro-size-xs: 0.375em;
+    --micro-size-rm: 1.5rem;
+    --micro-shadow: 0 2px 2px rgba(0, 0, 0, 0.33);
     --micro-focus-shadow: inset 0 0 0 1px var(--micro-color-primary-tint);
 }
 
@@ -42,6 +48,7 @@ h1,
 p,
 ul,
 ol,
+dl,
 pre {
     display: block;
     margin: 1.5rem 0;
@@ -64,6 +71,7 @@ header > h1 {
 h1 {
     border-bottom: 1px solid var(--micro-color-delimiter);
     font-size: 2rem;
+    color: var(--micro-color-text-title);
 }
 
 section h1 { font-size: 1.66rem; }
@@ -78,14 +86,25 @@ ol {
     padding-left: 1.5em;
 }
 
+dl {
+    display: grid;
+    grid: auto-flow / max-content 1fr;
+    column-gap: var(--micro-size-xs);
+}
+
+dt {
+    align-self: center;
+    color: var(--micro-color-text-subtle);
+}
+
+dd {
+    margin: 0;
+}
+
 pre {
     /* Prevent browsers from manipulating the font size if the font family equals "monospace" */
     font: 0.875em / 1.5 monospace, monospace;
     white-space: pre-wrap;
-}
-
-.fa {
-    font-size: 0.875em;
 }
 
 .micro-small, small {
@@ -136,6 +155,11 @@ pre {
 .micro-lgroup > ul,
 .micro-lgroup > ol {
     padding: 0;
+    margin: 0;
+}
+
+.micro-panel p {
+    padding: var(--micro-size-xs);
     margin: 0;
 }
 
@@ -324,6 +348,22 @@ legend::after {
     content: ':';
 }
 
+/* ---- Entity list ---- */
+
+.micro-entity-list {
+    margin: var(--micro-size-rm) 0;
+}
+
+.micro-entity-list > ul {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+
+.micro-entity-list > ul > li:not(:first-child) {
+    border-top: 1px solid var(--micro-color-delimiter);
+}
+
 /* ---- Logo ---- */
 
 .micro-logo {
@@ -488,7 +528,7 @@ legend::after {
     z-index: 1;
     right: 0;
     margin: -2px 0 0 0;
-    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.33);
+    box-shadow: var(--micro-shadow);
     background: white;
 }
 
@@ -566,7 +606,7 @@ legend::after {
     left: 0;
     right: 0;
     margin: 0;
-    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.33);
+    box-shadow: var(--micro-shadow);
     background: #fff;
 }
 

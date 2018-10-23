@@ -14,11 +14,13 @@
 
 """Test utilites."""
 
+from typing import List, Optional
 from urllib.parse import urljoin
 
 from tornado.httpclient import AsyncHTTPClient
 from tornado.testing import AsyncTestCase
 
+from .jsonredis import JSONRedis, RedisList, expect_type
 from .micro import (Activity, Application, Collection, Editable, Object, Orderable, Settings,
                     Trashable)
 from .util import randstr
@@ -56,16 +58,19 @@ class CatApp(Application):
 
     .. attribute:: cats
 
-       Map of all :class:`CatApp.Cats`.
+       See :class:`CatApp.Cats`.
     """
 
-    class Cats(Collection, Orderable):
-        """Map of all cats."""
+    class Cats(Collection['Cat'], Orderable):
+        """Collection of all :class:`Cat`s."""
 
-        def create(self, name=None):
-            """Create a :class:`Cat`."""
-            cat = Cat(id='Cat:{}'.format(randstr()), app=self.app, authors=[], trashed=False,
-                      name=name)
+        def __init__(self, *, app: Application) -> None:
+            super().__init__(RedisList('cats', app.r.r), expect=expect_type(Cat), app=app)
+            Orderable.__init__(self)
+
+        def create(self, name: str = None) -> 'Cat':
+            """Create a cat."""
+            cat = Cat.make(name=name, app=self.app)
             self.app.r.oset(cat.id, cat)
             self.app.r.rpush('cats', cat.id)
             return cat
@@ -73,13 +78,25 @@ class CatApp(Application):
     def __init__(self, redis_url=''):
         super().__init__(redis_url=redis_url)
         self.types.update({'Cat': Cat})
-        self.cats = self.Cats((self, 'cats'))
+        self.cats = self.Cats(app=self)
+
+    def do_update(self):
+        r = JSONRedis(self.r.r)
+        r.caching = False
+
+        # Deprecated since 0.14.0
+        cat = r.oget('Cat')
+        if cat and 'activity' not in cat:
+            cat['activity'] = Activity('Cat.activity', app=self, subscriber_ids=[]).json()
+            r.oset(cat['id'], cat)
 
     def create_settings(self):
+        # pylint: disable=unexpected-keyword-arg; decorated
         return Settings(
-            id='Settings', app=self, authors=[], title='CatApp', icon=None, favicon=None,
-            provider_name=None, provider_url=None, provider_description={}, feedback_url=None,
-            staff=[])
+            id='Settings', app=self, authors=[], title='CatApp', icon=None, icon_small=None,
+            icon_large=None, provider_name=None, provider_url=None, provider_description={},
+            feedback_url=None, staff=[], push_vapid_private_key=None, push_vapid_public_key=None,
+            v=2)
 
     def sample(self):
         """Set up some sample data."""
@@ -91,17 +108,31 @@ class CatApp(Application):
 class Cat(Object, Editable, Trashable):
     """Cute cat."""
 
-    def __init__(self, id, app, authors, trashed, name):
+    @staticmethod
+    def make(*, name: str = None, app: Application) -> 'Cat':
+        """Create a :class:`Cat` object."""
+        id = 'Cat:{}'.format(randstr())
+        return Cat(id=id, app=app, authors=[], trashed=False, name=name,
+                   activity=Activity(id='{}.activity'.format(id), app=app, subscriber_ids=[]))
+
+    def __init__(self, id: str, app: Application, authors: List[str], trashed: bool,
+                 name: Optional[str], activity: Activity) -> None:
         super().__init__(id, app)
-        self.activity = Activity('{}.activity'.format(id), app=app)
-        Editable.__init__(self, authors, self.activity)
-        Trashable.__init__(self, trashed, self.activity)
+        Editable.__init__(self, authors, activity)
+        Trashable.__init__(self, trashed, activity)
         self.name = name
+        self.activity = activity
+        self.activity.host = self
 
     def do_edit(self, **attrs):
         if 'name' in attrs:
             self.name = attrs['name']
 
     def json(self, restricted=False, include=False):
-        return {**super().json(restricted, include), **Editable.json(self, restricted, include),
-                **Trashable.json(self, restricted, include), 'name': self.name}
+        return {
+            **super().json(restricted, include),
+            **Editable.json(self, restricted, include),
+            **Trashable.json(self, restricted, include),
+            'name': self.name,
+            'activity': self.activity.json(restricted)
+        }

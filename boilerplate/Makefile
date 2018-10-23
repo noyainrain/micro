@@ -3,7 +3,7 @@ PIP=pip3
 NPM=npm
 
 PIPFLAGS=$$([ -z "$$VIRTUAL_ENV" ] && echo --user) -U
-NPMFLAGS=-C client
+NPMFLAGS=-C client --no-save --no-optional
 
 .PHONY: test
 test:
@@ -32,12 +32,12 @@ check: test test-ext test-ui lint
 .PHONY: deps
 deps:
 	$(PIP) install $(PIPFLAGS) -r requirements.txt
-	$(NPM) $(NPMFLAGS) update --only=prod --no-optional --no-save
+	$(NPM) $(NPMFLAGS) update --only=prod
 
 .PHONY: deps-dev
 deps-dev:
 	$(PIP) install $(PIPFLAGS) -r requirements-dev.txt
-	$(NPM) $(NPMFLAGS) update --only=dev --no-optional --no-save
+	$(NPM) $(NPMFLAGS) update --only=dev
 
 .PHONY: doc
 doc:
@@ -57,9 +57,15 @@ release:
 	scripts/release.sh
 	{REPO=repo} {BRANCH=branch} scripts/publish-doc.sh
 
+.PHONY: micro-link
+micro-link:
+	$(PIP) install $(PIPFLAGS) -e "$(MICROPATH)"
+	$(NPM) $(NPMFLAGS) install "file:$(MICROPATH)/client"
+	$(NPM) $(NPMFLAGS) dedupe
+
 .PHONY: clean
 clean:
-	rm -rf doc/build
+	rm -rf $(find . -name __pycache__) doc/build doc/micro
 	$(NPM) $(NPMFLAGS) run clean
 
 .PHONY: help
@@ -90,4 +96,7 @@ help:
 	@echo "release:         Make a new release"
 	@echo "                 FEATURE: Corresponding feature branch"
 	@echo "                 VERSION: Version number"
+	@echo "micro-link:      Link micro from a local repository. Useful when simultaneously"
+	@echo "                 editing micro."
+	@echo "                 MICROPATH: Location of local micro repository"
 	@echo "clean:           Remove temporary files"

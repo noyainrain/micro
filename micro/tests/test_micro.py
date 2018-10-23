@@ -16,12 +16,14 @@
 
 from subprocess import check_call
 from tempfile import mkdtemp
+from unittest.mock import Mock, patch
 
 from redis import RedisError
 from tornado.testing import AsyncTestCase
 
 import micro
-from micro import Activity, Event
+from micro import Activity, Collection, Event, Location
+from micro.jsonredis import RedisList
 from micro.test import CatApp, Cat
 
 SETUP_DB_SCRIPT = """\
@@ -30,6 +32,19 @@ app = CatApp(redis_url='15')
 app.r.flushdb()
 app.update()
 app.sample()
+
+# Compatibility for unmigrated global activity data (deprecated since 0.24.1)
+from micro import Event
+event = Event.create('meow', None, app=app)
+if int(app.r.get('micro_version')) == 6:
+    app.r.oset(event.id, event)
+    app.r.lpush('activity', event.id)
+else:
+    app.activity.publish(event)
+
+# Events
+app.settings.edit(provider_name='Meow Inc.')
+app.settings.edit(provider_url='https://meow.example.com/')
 
 # Compatibility for sample data without a cat (deprecated since 0.6.0)
 if not hasattr(app, 'cats'):
@@ -94,12 +109,13 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertEqual(app.settings.title, 'CatApp')
 
     def test_update_db_version_previous(self):
-        self.setup_db('0.5.0')
+        self.setup_db('0.24.0')
         app = CatApp(redis_url='15')
         app.update()
 
-        self.assertFalse(hasattr(app.settings, 'trashed'))
-        self.assertFalse(app.r.oget('Cat').trashed)
+        app.user = app.settings.staff[0]
+        self.assertEqual([event.type for event in app.activity],
+                         ['editable-edit', 'editable-edit', 'meow'])
 
     def test_update_db_version_first(self):
         # NOTE: Tag tmp can be removed on next database update
@@ -110,13 +126,28 @@ class ApplicationUpdateTest(AsyncTestCase):
         # Update to version 3
         self.assertFalse(app.settings.provider_description)
         # Update to version 4
-        self.assertFalse(hasattr(app.settings, 'trashed'))
+        self.assertNotIn('trashed', app.settings.json())
         self.assertFalse(app.r.oget('Cat').trashed)
+        # Update to version 5
+        self.assertFalse(hasattr(app.settings, 'favicon'))
+        self.assertIsNone(app.settings.icon_small)
+        self.assertIsNone(app.settings.icon_large)
+        # Update to version 6
+        user = app.settings.staff[0]
+        self.assertTrue(app.settings.push_vapid_private_key)
+        self.assertTrue(app.settings.push_vapid_public_key)
+        self.assertIsNotNone(app.activity.subscribers)
+        self.assertEqual(user.device_notification_status, 'off')
+        self.assertIsNone(user.push_subscription)
+        # Update to version 7
+        app.user = app.settings.staff[0]
+        self.assertEqual([event.type for event in app.activity],
+                         ['editable-edit', 'editable-edit', 'meow'])
 
 class EditableTest(MicroTestCase):
     def setUp(self):
         super().setUp()
-        self.cat = Cat(id='Cat', trashed=False, app=self.app, authors=[], name=None)
+        self.cat = self.app.cats.create()
 
     def test_edit(self):
         self.cat.edit(name='Happy')
@@ -156,12 +187,63 @@ class TrashableTest(MicroTestCase):
         self.assertFalse(cat.trashed)
         self.assertEqual(cat.activity[0].type, 'trashable-restore')
 
+class CollectionTest(MicroTestCase):
+    def make_cats(self, *, check=None):
+        objects = [Cat.make(name='Happy', app=self.app), Cat.make(name='Grumpy', app=self.app),
+                   Cat.make(name='Long', app=self.app), Cat.make(name='Monorail', app=self.app)]
+        self.app.r.omset({cat.id: cat for cat in objects})
+        self.app.r.rpush('cats', *(cat.id for cat in objects))
+        cats = Collection(RedisList('cats', self.app.r.r), check=check, app=self.app)
+        return cats, objects
+
+    def test_index(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(cats.index(objects[2]), objects.index(objects[2]))
+
+    def test_len(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(len(cats), len(objects))
+
+    def test_getitem(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(cats[1], objects[1])
+
+    def test_getitem_slice(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(cats[1:3], objects[1:3])
+
+    def test_getitem_id(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(cats[objects[0].id], objects[0])
+
+    def test_getitem_missing_id(self):
+        cats, _ = self.make_cats()
+        with self.assertRaises(KeyError):
+            # pylint: disable=pointless-statement; error raised on access
+            cats['foo']
+
+    def test_getitem_check(self):
+        check = Mock()
+        cats, _ = self.make_cats(check=check)
+        # pylint: disable=pointless-statement; check called on access
+        cats[1]
+        check.assert_called_once_with(1)
+
+    def test_iter(self):
+        cats, objects = self.make_cats()
+        self.assertEqual(list(iter(cats)), [obj.id for obj in objects])
+
+    def test_contains(self):
+        cats, objects = self.make_cats()
+        self.assertTrue(objects[1] in cats)
+
+    def test_contains_missing_item(self):
+        cats, _ = self.make_cats()
+        self.assertFalse(Cat.make(app=self.app) in cats)
+
 class OrderableTest(MicroTestCase):
     def make_cats(self):
         return [self.app.cats.create(), self.app.cats.create(), self.app.cats.create()]
-
-    def make_external_cat(self):
-        return Cat(id='Cat', app=self.app, authors=[], trashed=False, name=None)
 
     def test_move(self):
         cats = self.make_cats()
@@ -180,13 +262,13 @@ class OrderableTest(MicroTestCase):
 
     def test_move_item_external(self):
         cats = self.make_cats()
-        external = self.make_external_cat()
+        external = Cat.make(app=self.app)
         with self.assertRaisesRegex(micro.ValueError, 'item_not_found'):
             self.app.cats.move(external, cats[0])
 
     def test_move_to_external(self):
         cats = self.make_cats()
-        external = self.make_external_cat()
+        external = Cat.make(app=self.app)
         with self.assertRaisesRegex(micro.ValueError, 'to_not_found'):
             self.app.cats.move(cats[0], external)
 
@@ -196,8 +278,34 @@ class UserTest(MicroTestCase):
         self.assertEqual(self.user.name, 'Happy')
 
 class ActivityTest(MicroTestCase):
-    def test_publish(self):
-        activity = Activity('more_activity', app=self.app)
+    def make_activity(self):
+        return Activity('Activity:more', self.app, subscriber_ids=[])
+
+    @patch('micro.User.notify', autospec=True)
+    def test_publish(self, notify):
+        activity = self.make_activity()
+        activity.subscribe()
+        self.app.login()
+        activity.subscribe()
+
         event = Event.create('meow', None, app=self.app)
         activity.publish(event)
         self.assertIn(event, activity)
+        notify.assert_called_once_with(self.user, event)
+
+    def test_subscribe(self):
+        activity = self.make_activity()
+        activity.subscribe()
+        self.assertIn(self.user, activity.subscribers)
+
+    def test_unsubscribe(self):
+        activity = self.make_activity()
+        activity.subscribe()
+        activity.unsubscribe()
+        self.assertNotIn(self.user, activity.subscribers)
+
+class LocationTest(MicroTestCase):
+    def test_parse(self):
+        location = Location.parse({'name': 'Berlin', 'coords': [52.504043, 13.393236]})
+        self.assertEqual(location.name, 'Berlin')
+        self.assertEqual(location.coords, (52.504043, 13.393236))

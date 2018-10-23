@@ -172,7 +172,7 @@ micro.bind.bind = function(elem, data, template = null) {
     }
 
     function compact(str) {
-        str = str.replace(/\n/g, "\\n");
+        str = str.replace(/\n/ug, "\\n");
         return str.length > 32 ? `${str.slice(0, 31)}…` : str;
     }
     if (micro.bind.trace) {
@@ -204,7 +204,7 @@ micro.bind.bind = function(elem, data, template = null) {
                     }
                     return arg;
                 });
-                let value = values[0];
+                let [value] = values;
 
                 // Apply transform
                 if (values.length > 1) {
@@ -229,8 +229,7 @@ micro.bind.bind = function(elem, data, template = null) {
                         elem.textContent = value;
                     }
                 } else if (prop.startsWith("class") && prop !== "className") {
-                    elem.classList.toggle(
-                        prop.slice(5).replace(/(.)([A-Z])/g, "$1-$2").toLowerCase(), value);
+                    elem.classList.toggle(micro.bind.dash(prop.slice(5)), value);
                 } else {
                     elem[prop] = value;
                 }
@@ -286,12 +285,12 @@ micro.bind.parse = function(expr) {
     };
 
     // NOTE: For escaped quote characters we could use the pattern ('(\\'|[^'])*'|\S)+
-    return (expr.match(/('[^']*'|\S)+/g) || []).map(arg => {
+    return (expr.match(/('[^']*'|\S)+/ug) || []).map(arg => {
         if (arg in KEYWORDS) {
             return KEYWORDS[arg];
         } else if (arg.startsWith("'")) {
             return arg.slice(1, -1);
-        } else if (/^[-+]?[0-9]/.test(arg)) {
+        } else if (/^[-+]?[0-9]/u.test(arg)) {
             return parseFloat(arg);
         }
         return {name: arg, tokens: arg.split(".")};
@@ -359,6 +358,25 @@ micro.bind.filter = function(arr, callback, thisArg = null) {
 };
 
 /**
+ * Create a new :class:`Watchable` live array from *arr*, applying a function to every item.
+ *
+ * *arr* is a :class:`Watchable` array. *callback* and *thisArg* are equivalent to
+ * :func:`Array.map`.
+ */
+micro.bind.map = function(arr, callback, thisArg = null) {
+    let mapped = new micro.bind.Watchable(arr.map(callback, thisArg));
+    arr.watch(Symbol.for("*"), (prop, value) => {
+        mapped[prop] = callback.call(thisArg, value);
+    });
+    arr.watch(
+        Symbol.for("+"),
+        (prop, value) => mapped.splice(parseInt(prop), 0, callback.call(thisArg, value))
+    );
+    arr.watch(Symbol.for("-"), prop => mapped.splice(parseInt(prop), 1));
+    return mapped;
+};
+
+/**
  * Default transforms available in bind expressions.
  */
 micro.bind.transforms = {
@@ -399,7 +417,7 @@ micro.bind.transforms = {
      */
     format(ctx, str, ...args) {
         args = new Map(micro.bind.chunk(args, 2));
-        return str.replace(/{([^}\s]+)}/g, (match, key) => args.get(key));
+        return str.replace(/\{([^}\s]+)\}/ug, (match, key) => args.get(key));
     },
 
     /** Format a string with support for pluralization. */
@@ -494,6 +512,7 @@ micro.bind.transforms = {
     },
 
     filter: micro.bind.filter,
+    map: micro.bind.map,
 
     /**
      * Test if the array *arr* includes a certain item.
@@ -517,7 +536,7 @@ micro.bind.transforms = {
         }
 
         if (cases.length === 0) {
-            cases = [true];
+            cases = [value ? value : Symbol("unmatchable")];
         }
         if (!(ctx.elem.__templates__.length >= cases.length &&
               ctx.elem.__templates__.length <= cases.length + 1)) {
@@ -532,6 +551,25 @@ micro.bind.transforms = {
         let node = document.importNode(template.content, true);
         micro.bind.bind(node, ctx.data);
         return node;
+    },
+
+    /**
+     * Render a given *template*.
+     *
+     * The context element may contain a fallback `template`. If *template* is ``null``, the
+     * fallback template is rendered, or nothing if there is no fallback.
+     */
+    render(ctx, template) {
+        if (!ctx.elem.__templates__) {
+            ctx.elem.__templates__ = Array.from(ctx.elem.querySelectorAll("template"));
+        }
+        template = template || ctx.elem.__templates__[0];
+        if (!template) {
+            return document.createDocumentFragment();
+        }
+        let elem = document.importNode(template.content, true);
+        micro.bind.bind(elem, ctx.data);
+        return elem;
     }
 };
 
@@ -609,6 +647,11 @@ micro.bind.join = function(elem, arr, itemName, separator = ", ", transform, ...
     }
 
     return fragment;
+};
+
+/** Convert a camel case *str* to dashed style. */
+micro.bind.dash = function(str) {
+    return str.replace(/(?!^)([A-Z])/ug, "-$1").toLowerCase();
 };
 
 /** Split *arr* into chunks of the given *size*. */

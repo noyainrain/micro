@@ -1,1 +1,4 @@
 __pycache__
+/test.cfg
+/micro.egg-info/
+/.mypy_cache/

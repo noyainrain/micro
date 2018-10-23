@@ -16,30 +16,32 @@
 
 import argparse
 from argparse import ArgumentParser
+from datetime import datetime
 import logging
 from logging import StreamHandler, getLogger
+import random
 import re
 import string
-import random
-from datetime import datetime
+import sys
+from typing import Optional
 
 from tornado.log import LogFormatter
 
-def str_or_none(str):
+def str_or_none(str: str) -> Optional[str]:
     """Return *str* unmodified if it has content, otherwise return ``None``.
 
     A string is considered to have content if it contains at least one non-whitespace character.
     """
     return str if str and str.strip() else None
 
-def randstr(length=16, charset=string.ascii_lowercase):
+def randstr(length: int = 16, charset: str = string.ascii_lowercase) -> str:
     """Generate a random string.
 
     The string will have the given *length* and consist of characters from *charset*.
     """
     return ''.join(random.choice(charset) for i in range(length))
 
-def parse_isotime(isotime):
+def parse_isotime(isotime: str) -> datetime:
     """Parse an ISO 8601 time string into a naive :class:`datetime.datetime`.
 
     Note that this rudimentary parser makes bold assumptions about the format: The first six
@@ -47,11 +49,14 @@ def parse_isotime(isotime):
     Everything else, i.e. microsecond and time zone information, is ignored.
     """
     try:
-        return datetime(*(int(t) for t in re.split(r'\D', isotime)[:6]))
+        values = [int(t) for t in re.split(r'\D', isotime)[:6]]
+        year, month, day = values[:3]
+        hour, minute, second = (values[3:] + [0, 0, 0])[:3]
+        return datetime(year, month, day, hour, minute, second)
     except (TypeError, ValueError):
         raise ValueError('isotime_bad_format')
 
-def parse_slice(str, limit=None):
+def parse_slice(str: str, limit: int = None) -> slice:
     """Parse a slice string into a :class:`slice`.
 
     The slice string *str* has the format ``start:stop``. Negative values are not supported. The
@@ -61,11 +66,11 @@ def parse_slice(str, limit=None):
     if not match:
         raise ValueError('str_bad_format')
 
-    start, stop = match.group(1), match.group(2)
-    start, stop = int(start) if start else None, int(stop) if stop else None
+    start = int(match.group(1)) if match.group(1) else None
+    stop = int(match.group(2)) if match.group(2) else None
     if limit:
         if stop is None:
-            stop = float('inf')
+            stop = sys.maxsize
         stop = min(stop, (start or 0) + limit)
     return slice(start, stop)
 
@@ -77,14 +82,14 @@ def check_polyglot(polyglot):
         raise ValueError('polyglot_value_empty')
     return polyglot
 
-def check_email(email):
+def check_email(email: str) -> None:
     """Check the *email* address."""
     if not str_or_none(email):
         raise ValueError('email_empty')
     if len(email.splitlines()) > 1:
         raise ValueError('email_newline')
 
-def make_command_line_parser():
+def make_command_line_parser() -> ArgumentParser:
     """Create a :class:`argparse.ArgumentParser` handy for micro apps.
 
     The parser is preconfigured to handle common command line arguments.
@@ -103,6 +108,9 @@ def make_command_line_parser():
     parser.add_argument(
         '--smtp-url',
         help='URL of the SMTP server to use for outgoing email. Only host and port are considered, which default to localhost and 25 respectively.')
+    parser.add_argument(
+        '--client-map-service-key',
+        help='Public Mapbox access token, required for location related features. Can be retrieved from https://www.mapbox.com/account/access-tokens.')
     return parser
 
 def setup_logging(debug=False):
@@ -118,3 +126,35 @@ def setup_logging(debug=False):
     logger.setLevel(logging.INFO)
     if not debug:
         getLogger('tornado.access').setLevel(logging.ERROR)
+
+def version(v):
+    """Decorator for creating a versioned function.
+
+    When a versioned function is called, the implementation for the version given by an additional
+    keyword argument *v* is executed. If *v* is not specified, the default implementation is used.
+
+    *v* is the version of the decorated function, which also serves as default implementation.
+
+    The returned object provides a decorator `version(v)`, which can be used to define additional
+    versions.
+    """
+    versions = {}
+
+    def _wrapper(*args, v=v, **kwargs):
+        try:
+            func = versions[v]
+        except KeyError:
+            raise NotImplementedError()
+        return func(*args, **kwargs)
+
+    def _version(v):
+        def _decorator(func):
+            versions[v] = func
+            return _wrapper
+        return _decorator
+    _wrapper.version = _version
+
+    def _decorator(func):
+        versions[v] = func
+        return _wrapper
+    return _decorator

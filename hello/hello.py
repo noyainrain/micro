@@ -14,13 +14,12 @@
 
 """micro application example."""
 
-import json
 import sys
 
 import micro
-from micro import Application, Editable, Object, Settings
-from micro.jsonredis import JSONRedisMapping
-from micro.server import Server, Endpoint
+from micro import Application, Collection, Editable, Object, Settings
+from micro.jsonredis import RedisList
+from micro.server import CollectionEndpoint, Server
 from micro.util import make_command_line_parser, randstr, setup_logging, str_or_none
 
 class Hello(Application):
@@ -28,34 +27,40 @@ class Hello(Application):
 
     .. attribute:: greetings
 
-       Map of all :class:`Greeting` s.
+       See :class:`Hello.Greetings`.
     """
+
+    class Greetings(Collection):
+        """Collection of all class:`Greeting`s."""
+
+        # TODO: text optional?
+        async def create(self, text, *, entity=None):
+            """Create a :class:`Greeting` and return it."""
+            text = str_or_none(text)
+            if entity is not None:
+                entity = await self.resolve_entity(entity)
+            if text is None and entity is None:
+                raise micro.ValueError('text_entity_none')
+
+            greeting = Greeting(id='Greeting:{}'.format(randstr()), app=self.app,
+                                authors=[self.app.user.id], text=text, entity=entity)
+            self.r.oset(greeting.id, greeting)
+            self.r.rpush(self.ids.key, greeting.id)
+            return greeting
 
     def __init__(self, redis_url='', email='bot@localhost', smtp_url='',
                  render_email_auth_message=None):
         super().__init__(redis_url, email, smtp_url, render_email_auth_message)
         self.types.update({'Greeting': Greeting})
-        self.greetings = JSONRedisMapping(self.r, 'greetings')
+        self.greetings = Hello.Greetings(RedisList('greetings', self.r.r), app=self)
 
     def create_settings(self):
+        # pylint: disable=unexpected-keyword-arg; decorated
         return Settings(
-            id='Settings', app=self, authors=[], title='Hello', icon=None, favicon=None,
-            provider_name=None, provider_url=None, provider_description={}, feedback_url=None,
-            staff=[])
-
-    async def create_greeting(self, text, entity=None):
-        """Create a :class:`Greeting` and return it."""
-        text = str_or_none(text)
-        if entity is not None:
-            entity = await self.resolve_entity(entity)
-        if text is None and entity is None:
-            raise micro.ValueError('text_entity_none')
-
-        greeting = Greeting(id=randstr(), app=self, authors=[self.user.id], text=text,
-                            entity=entity)
-        self.r.oset(greeting.id, greeting)
-        self.r.lpush('greetings', greeting.id)
-        return greeting
+            id='Settings', app=self, authors=[], title='Hello', icon=None, icon_small=None,
+            icon_large=None, provider_name=None, provider_url=None, provider_description={},
+            feedback_url=None, staff=[], push_vapid_private_key=None, push_vapid_public_key=None,
+            v=2)
 
 class Greeting(Object, Editable):
     """Public greeting.
@@ -87,7 +92,6 @@ class Greeting(Object, Editable):
             self.entity = entity
 
     def json(self, restricted=False, include=False):
-        # pylint: disable=redefined-outer-name; fine name
         return {
             **super().json(restricted, include),
             **Editable.json(self, restricted, include),
@@ -95,24 +99,23 @@ class Greeting(Object, Editable):
             'entity': self.entity.json() if self.entity else None
         }
 
-def make_server(port=8080, url=None, client_path='.', debug=False, redis_url='', smtp_url=''):
+def make_server(port=8080, url=None, client_path='.', debug=False, redis_url='', smtp_url='',
+                client_map_service_key=None):
     """Create a Hello server."""
     app = Hello(redis_url, smtp_url=smtp_url)
-    handlers = [(r'/api/greetings$', _GreetingsEndpoint)]
-    return Server(app, handlers, port, url, client_path, 'node_modules', debug)
+    handlers = [
+        (r'/api/greetings$', _GreetingsEndpoint, {'get_collection': lambda *args: app.greetings})
+    ]
+    return Server(app, handlers, port, url, client_path, client_modules_path='node_modules',
+                  debug=debug, client_map_service_key=client_map_service_key)
 
-class _GreetingsEndpoint(Endpoint):
+class _GreetingsEndpoint(CollectionEndpoint):
     # pylint: disable=abstract-method; Tornado handlers define a semi-abstract data_received()
     # pylint: disable=arguments-differ; Tornado handler arguments are defined by URLs
 
-    def get(self):
-        greetings = self.app.greetings.values()
-        self.write(json.dumps([g.json(restricted=True, include=True) for g in greetings]))
-
     async def post(self):
-        print(self.args)
         args = self.check_args({'text': (str, None), 'entity': (str, None, 'opt')})
-        greeting = await self.app.create_greeting(**args)
+        greeting = await self.app.greetings.create(**args)
         self.write(greeting.json(restricted=True, include=True))
 
 def main(args):

@@ -23,18 +23,22 @@ import json
 from logging import getLogger
 import os
 import re
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 from urllib.parse import urlparse
 
+from mypy_extensions import VarArg
 from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
 from tornado.template import DictLoader, Loader, filter_whitespace
-from tornado.web import Application, RequestHandler, HTTPError
+from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
 
 from . import micro, templates
-from .micro import AuthRequest, Object, InputError, AuthenticationError, PermissionError, WebError
+from .micro import (Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError,
+                    AuthenticationError, CommunicationError, PermissionError)
 from .util import str_or_none, parse_slice, check_polyglot
 
 LIST_LIMIT = 100
+SLICE_URL = r'(?:/(\d*:\d*))?'
 
 _CLIENT_ERROR_LOG_TEMPLATE = """\
 Client error occurred
@@ -46,6 +50,9 @@ User: %s (%s)
 Device info: %s"""
 
 _LOGGER = getLogger(__name__)
+
+Handler = Union[Tuple[str, Type[RequestHandler]],
+                Tuple[str, Type[RequestHandler], Dict[str, object]]]
 
 class Server:
     """Server for micro apps.
@@ -73,12 +80,28 @@ class Server:
 
        Client location from where static files and templates are delivered.
 
+    .. attribute:: client_service_path
+
+       Location of client service worker script. Defaults to the included micro service worker.
+
+    .. attribute:: client_map_service_key
+
+       See ``--client-map-service-key`` command line option.
+
     .. attribute:: debug
 
        See ``--debug`` command line option.
+
+    .. deprecated:: 0.21.0
+
+       Constructor options as positional arguments. Use keyword arguments instead.
     """
-    def __init__(self, app, handlers, port=8080, url=None, client_path='client',
-                 client_modules_path='.', debug=False):
+
+    def __init__(
+            self, app: micro.Application, handlers: Sequence[Handler], port: int = 8080,
+            url: str = None, client_path: str = 'client', client_modules_path: str = '.',
+            client_service_path: str = None, debug: bool = False, *,
+            client_map_service_key: str = None) -> None:
         url = url or 'http://localhost:{}'.format(port)
         try:
             urlparts = urlparse(url)
@@ -86,7 +109,7 @@ class Server:
             raise ValueError('url_invalid')
         not_allowed = {'username', 'password', 'path', 'params', 'query', 'fragment'}
         if not (urlparts.scheme in {'http', 'https'} and urlparts.hostname and
-                not any(getattr(urlparts, k) for k in not_allowed)):
+                not any(cast(object, getattr(urlparts, k)) for k in not_allowed)):
             raise ValueError('url_invalid')
 
         self.app = app
@@ -94,6 +117,10 @@ class Server:
         self.url = url
         self.client_path = client_path
         self.client_modules_path = client_modules_path
+        self.client_service_path = (
+            client_service_path or
+            os.path.join(client_modules_path, '@noyainrain/micro/service.js'))
+        self.client_map_service_key = client_map_service_key
         self.debug = debug
 
         self.app.email = 'bot@' + urlparts.hostname
@@ -110,28 +137,31 @@ class Server:
             (r'/api/users/([^/]+)/finish-set-email$', _UserFinishSetEmailEndpoint),
             (r'/api/users/([^/]+)/remove-email$', _UserRemoveEmailEndpoint),
             (r'/api/settings$', _SettingsEndpoint),
-            (r'/api/previews/(.+)$', PreviewEndpoint)
+            # Compatibility with non-object Activity (deprecated since 0.14.0)
+            make_activity_endpoint(r'/api/activity/v2', lambda *args: self.app.activity),
+            *make_list_endpoints(r'/api/activity(?:/v1)?', lambda *args: self.app.activity),
+            (r'/api/previews/(.+)$', PreviewEndpoint),
+            *handlers
         ]
-        self.handlers += make_list_endpoints(r'/api/activity', lambda *a: self.app.activity)
-        self.handlers += handlers
 
         self._server = HTTPServer(Application(
             self.handlers, compress_response=True, template_path=self.client_path,
-            static_path=self.client_path, debug=self.debug, server=self))
+            static_path=self.client_path, static_handler_class=_Static, debug=self.debug,
+            server=self))
         self._message_templates = DictLoader(templates.MESSAGE_TEMPLATES, autoescape=None)
         self._micro_templates = Loader(os.path.join(self.client_path, self.client_modules_path,
                                                     '@noyainrain/micro'))
 
-    def start(self):
+    def start(self) -> None:
         """Start the server."""
-        self.app.update()
+        self.app.update() # type: ignore
         self._server.listen(self.port)
 
-    def run(self):
+    def run(self) -> None:
         """Start the server and run it continuously."""
         self.start()
         try:
-            IOLoop.instance().start()
+            IOLoop.current().start()
         except KeyboardInterrupt:
             pass
 
@@ -158,16 +188,21 @@ class Endpoint(RequestHandler):
        Dictionary of JSON arguments passed by the client.
     """
 
-    def initialize(self):
-        self.server = self.application.settings['server']
+    current_user = None # type: Optional[User]
+
+    def initialize(self, **args: object) -> None:
+        # pylint: disable=unused-argument; part of subclass API
+        server = self.application.settings['server']
+        assert isinstance(server, Server)
+        self.server = server
         self.app = self.server.app
-        self.args = {}
+        self.args = {} # type: Dict[str, object]
 
     def prepare(self):
         self.app.user = None
         auth_secret = self.get_cookie('auth_secret')
         if auth_secret:
-            self.app.authenticate(auth_secret)
+            self.current_user = self.app.authenticate(auth_secret)
 
         if self.request.body:
             try:
@@ -179,6 +214,16 @@ class Endpoint(RequestHandler):
 
         if self.request.method in {'GET', 'HEAD'}:
             self.set_header('Cache-Control', 'no-cache')
+
+    def patch(self, *args, **kwargs):
+        try:
+            op = getattr(self, 'patch_{}'.format(self.args.pop('op')))
+        except KeyError:
+            raise HTTPError(http.client.BAD_REQUEST)
+        except AttributeError:
+            raise HTTPError(http.client.UNPROCESSABLE_ENTITY)
+        # Pass through future to support async methods
+        return op(*args, **kwargs)
 
     def write_error(self, status_code, exc_info):
         if issubclass(exc_info[0], KeyError):
@@ -200,9 +245,9 @@ class Endpoint(RequestHandler):
         elif issubclass(exc_info[0], micro.ValueError):
             self.set_status(http.client.BAD_REQUEST)
             self.write({'__type__': exc_info[0].__name__, 'code': exc_info[1].code})
-        elif issubclass(exc_info[0], WebError):
+        elif issubclass(exc_info[0], CommunicationError):
             self.set_status(http.client.BAD_GATEWAY)
-            self.write({'__type__': exc_info[0].__name__})
+            self.write({'__type__': 'CommunicationError'})
         else:
             super().write_error(status_code, exc_info=exc_info)
 
@@ -250,7 +295,32 @@ class Endpoint(RequestHandler):
 
         return args
 
-def make_list_endpoints(url, get_list):
+class CollectionEndpoint(Endpoint):
+    """API endpoint for a :class:`Collection`.
+
+    .. attribute:: get_collection
+
+       Function of the form *get_collection(*args: str) -> Collection*, responsible for retrieving
+       the underlying collection. *args* are the URL arguments.
+    """
+
+    def initialize(self, **args: object) -> None:
+        super().initialize(**args)
+        get_collection = args.get('get_collection')
+        if not callable(get_collection):
+            raise TypeError()
+        self.get_collection = get_collection # type: Callable[[VarArg(str)], Collection[Object]]
+
+    def get(self, *args: str) -> None:
+        collection = self.get_collection(*args)
+        try:
+            slc = parse_slice(self.get_query_argument('slice', ':'), limit=LIST_LIMIT)
+        except ValueError:
+            raise micro.ValueError('bad_slice_format')
+        self.write(collection.json(restricted=True, include=True, slc=slc))
+
+def make_list_endpoints(
+        url: str, get_list: Callable[[VarArg(str)], Sequence[JSONifiable]]) -> List[Handler]:
     """Make the API endpoints for a list with support for slicing.
 
     *url* is the URL of the list.
@@ -280,13 +350,38 @@ def make_orderable_endpoints(url, get_collection):
     """
     return [(url + r'/move$', _OrderableMoveEndpoint, {'get_collection': get_collection})]
 
+def make_activity_endpoint(url: str, get_activity: Callable[[VarArg(str)], Activity]) -> Handler:
+    """Make an API endpoint for an :class:`Activity` at *url*.
+
+    *get_activity* is a function of the form *get_activity(*args)*, responsible for retrieving the
+    activity. *args* are the URL arguments.
+    """
+    return (r'{}{}$'.format(url, SLICE_URL), _ActivityEndpoint, {'get_activity': get_activity})
+
+class _Static(StaticFileHandler):
+    def set_extra_headers(self, path):
+        if self.get_cache_time(path, self.modified, self.get_content_type()) == 0:
+            self.set_header('Cache-Control', 'no-cache')
+        if path == self.application.settings['server'].client_service_path:
+            self.set_header('Service-Worker-Allowed', '/')
+
 class _UI(RequestHandler):
-    def initialize(self):
-        self._server = self.application.settings['server']
+    def initialize(self) -> None:
+        server = self.application.settings['server']
+        assert isinstance(server, Server)
+        self._server = server
         # pylint: disable=protected-access; Server is a friend
         self._templates = self._server._micro_templates
         if self._server.debug:
             self._templates.reset()
+
+    def get_template_namespace(self) -> Dict[str, object]:
+        return {
+            **super().get_template_namespace(),
+            'modules_path': self._server.client_modules_path,
+            'service_path': self._server.client_service_path,
+            'map_service_key': self._server.client_map_service_key
+        }
 
     def get(self):
         self.set_header('Cache-Control', 'no-cache')
@@ -294,15 +389,14 @@ class _UI(RequestHandler):
             'index.html', micro_dependencies=self._render_micro_dependencies,
             micro_boot=self._render_micro_boot, micro_templates=self._render_micro_templates)
 
-    def _render_micro_dependencies(self):
-        return self._templates.load('dependencies.html').generate(
-            static_url=self.static_url, modules_path=self._server.client_modules_path)
+    def _render_micro_dependencies(self) -> str:
+        return self._templates.load('dependencies.html').generate(**self.get_template_namespace())
 
-    def _render_micro_boot(self):
-        return self._templates.load('boot.html').generate()
+    def _render_micro_boot(self) -> str:
+        return self._templates.load('boot.html').generate(**self.get_template_namespace())
 
-    def _render_micro_templates(self):
-        return self._templates.load('templates.html').generate()
+    def _render_micro_templates(self) -> str:
+        return self._templates.load('templates.html').generate(**self.get_template_namespace())
 
 class _LogClientErrorEndpoint(Endpoint):
     def post(self):
@@ -400,6 +494,19 @@ class _UserEndpoint(Endpoint):
         user.edit(**args)
         self.write(user.json(restricted=True))
 
+    async def patch_enable_notifications(self, id):
+        # pylint: disable=missing-docstring; private
+        user = self.app.users[id]
+        args = self.check_args({'push_subscription': str})
+        await user.enable_device_notifications(**args)
+        self.write(user.json(restricted=True))
+
+    def patch_disable_notifications(self, id: str) -> None:
+        # pylint: disable=missing-docstring; private
+        user = self.app.users[id]
+        user.disable_device_notifications(self.current_user)
+        self.write(user.json(restricted=True))
+
 class _UserSetEmailEndpoint(Endpoint):
     def post(self, id):
         user = self.app.users[id]
@@ -431,11 +538,14 @@ class _SettingsEndpoint(Endpoint):
         args = self.check_args({
             'title': (str, 'opt'),
             'icon': (str, None, 'opt'),
-            'favicon': (str, None, 'opt'),
+            'icon_small': (str, None, 'opt'),
+            'icon_large': (str, None, 'opt'),
             'provider_name': (str, None, 'opt'),
             'provider_url': (str, None, 'opt'),
             'provider_description': (dict, 'opt'),
-            'feedback_url': (str, None, 'opt')
+            'feedback_url': (str, None, 'opt'),
+            # Compatibility for favicon (deprecated since 0.13.0)
+            'favicon': (str, None, 'opt')
         })
         if 'provider_description' in args:
             try:
@@ -446,6 +556,28 @@ class _SettingsEndpoint(Endpoint):
         settings = self.app.settings
         settings.edit(**args)
         self.write(settings.json(restricted=True, include=True))
+
+class _ActivityEndpoint(Endpoint):
+    def initialize(self, get_activity):
+        super().initialize()
+        self.get_activity = get_activity
+
+    def get(self, *args):
+        activity = self.get_activity(*args)
+        slice = parse_slice(args[-1] or ':', limit=LIST_LIMIT)
+        self.write(activity.json(restricted=True, include=True, slice=slice))
+
+    def patch_subscribe(self, *args):
+        # pylint: disable=missing-docstring; private
+        activity = self.get_activity(*args)
+        activity.subscribe()
+        self.write(activity.json(restricted=True, include=True))
+
+    def patch_unsubscribe(self, *args):
+        # pylint: disable=missing-docstring; private
+        activity = self.get_activity(*args)
+        activity.unsubscribe()
+        self.write(activity.json(restricted=True, include=True))
 
 class PreviewEndpoint(Endpoint):
     async def get(self, url):

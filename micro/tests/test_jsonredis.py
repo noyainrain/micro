@@ -6,14 +6,15 @@
 # pylint: disable=missing-docstring; test module
 
 from collections import OrderedDict
-from itertools import count
+from itertools import chain, count
 import json
 from unittest import TestCase
 from unittest.mock import Mock
 
 from redis import StrictRedis
 from redis.exceptions import ResponseError
-from micro.jsonredis import JSONRedis, JSONRedisSequence, JSONRedisMapping
+from micro.jsonredis import (JSONRedis, RedisList, RedisSortedSet, JSONRedisSequence,
+                             JSONRedisMapping)
 
 class JSONRedisTestCase(TestCase):
     def setUp(self):
@@ -21,9 +22,16 @@ class JSONRedisTestCase(TestCase):
         self.r.flushdb()
 
 class JSONRedisTest(JSONRedisTestCase):
-    def test_oset_oget(self):
+    def setup_data(self, cache=True):
         cat = Cat('cat:0', 'Happy')
-        self.r.oset('cat:0', cat)
+        if cache:
+            self.r.oset(cat.id, cat)
+        else:
+            self.r.set(cat.id, json.dumps(Cat.encode(cat)))
+        return cat
+
+    def test_oset_oget(self):
+        cat = self.setup_data()
         got_cat = self.r.oget('cat:0')
         self.assertIsInstance(got_cat, Cat)
         self.assertEqual(got_cat, cat)
@@ -32,23 +40,21 @@ class JSONRedisTest(JSONRedisTestCase):
     def test_oset_oget_caching_disabled(self):
         self.r.caching = False
 
-        cat = Cat('cat:0', 'Happy')
-        self.r.oset('cat:0', cat)
+        cat = self.setup_data()
         got_cat = self.r.oget('cat:0')
         self.assertIsInstance(got_cat, Cat)
         self.assertEqual(got_cat, cat)
         self.assertNotEqual(got_cat.instance_id, cat.instance_id)
 
     def test_oget_object_destroyed(self):
-        cat = Cat('cat:0', 'Happy')
-        self.r.oset('cat:0', cat)
+        cat = self.setup_data()
         destroyed_instance_id = cat.instance_id
         del cat
         got_cat = self.r.oget('cat:0')
         self.assertNotEqual(got_cat.instance_id, destroyed_instance_id)
 
     def test_oget_cache_empty(self):
-        self.r.set('cat:0', json.dumps(Cat.encode(Cat('cat:0', 'Happy'))))
+        self.setup_data(cache=False)
 
         got_cat = self.r.oget('cat:0')
         same_cat = self.r.oget('cat:0')
@@ -56,7 +62,7 @@ class JSONRedisTest(JSONRedisTestCase):
         self.assertEqual(same_cat.instance_id, got_cat.instance_id)
 
     def test_oget_cache_empty_caching_disabled(self):
-        self.r.set('cat:0', json.dumps(Cat.encode(Cat('cat:0', 'Happy'))))
+        self.setup_data(cache=False)
         self.r.caching = False
 
         got_cat = self.r.oget('cat:0')
@@ -72,11 +78,109 @@ class JSONRedisTest(JSONRedisTestCase):
         with self.assertRaises(ResponseError):
             self.r.oget('not-json')
 
+    def test_oget_default(self):
+        cat = self.setup_data()
+        self.assertEqual(self.r.oget(cat.id, default=Cat('cat', 'Default')), cat)
+
+    def test_oget_default_missing_key(self):
+        cat = Cat('cat', 'Default')
+        self.assertEqual(self.r.oget('foo', default=cat), cat)
+
+    def test_oget_default_exception_missing_key(self):
+        with self.assertRaises(KeyError):
+            self.r.oget('foo', default=KeyError)
+
     def test_omget_omset(self):
         cats = {'cat:0': Cat('cat:0', 'Happy'), 'cat:1': Cat('cat:1', 'Grumpy')}
         self.r.omset(cats)
         got_cats = self.r.omget(cats.keys())
         self.assertEqual(got_cats, list(cats.values()))
+
+class RedisSequenceTest:
+    def make_seq(self):
+        items = [b'a', b'b', b'c', b'd']
+        seq = self.do_make_seq(items)
+        return seq, items
+
+    def do_make_seq(self, items):
+        raise NotImplementedError()
+
+    def test_index(self):
+        seq, items = self.make_seq()
+        self.assertEqual(seq.index(b'c'), items.index(b'c'))
+
+    def test_index_missing_x(self):
+        seq, _ = self.make_seq()
+        with self.assertRaises(ValueError):
+            seq.index(b'foo')
+
+    def test_len(self):
+        seq, items = self.make_seq()
+        self.assertEqual(len(seq), len(items))
+
+    def test_getitem(self):
+        seq, items = self.make_seq()
+        self.assertEqual(seq[1], items[1])
+
+    def test_getitem_key_negative(self):
+        seq, items = self.make_seq()
+        self.assertEqual(seq[-2], items[-2])
+
+    def test_getitem_key_out_of_range(self):
+        seq, _ = self.make_seq()
+        with self.assertRaises(IndexError):
+            # pylint: disable=pointless-statement; error is triggered on access
+            seq[42]
+
+    def test_getitem_key_slice(self):
+        seq, items = self.make_seq()
+        self.assertEqual(seq[1:3], items[1:3])
+
+    def test_getitem_key_no_start(self):
+        seq, items = self.make_seq()
+        self.assertEqual(seq[:3], items[:3])
+
+    def test_getitem_key_no_stop(self):
+        seq, items = self.make_seq()
+        self.assertEqual(seq[1:], items[1:])
+
+    def test_getitem_key_stop_zero(self):
+        seq, _ = self.make_seq()
+        self.assertFalse(seq[0:0])
+
+    def test_getitem_key_stop_lt_start(self):
+        seq, _ = self.make_seq()
+        self.assertFalse(seq[3:1])
+
+    def test_getitem_key_stop_negative(self):
+        seq, items = self.make_seq()
+        self.assertEqual(seq[1:-1], items[1:-1])
+
+    def test_getitem_key_stop_out_of_range(self):
+        seq, items = self.make_seq()
+        self.assertEqual(seq[0:42], items)
+
+    def test_iter(self):
+        seq, items = self.make_seq()
+        self.assertEqual(list(iter(seq)), items)
+
+    def test_contains(self):
+        seq, _ = self.make_seq()
+        self.assertTrue(b'b' in seq)
+
+    def test_contains_missing_item(self):
+        seq, _ = self.make_seq()
+        self.assertFalse(b'foo' in seq)
+
+class RedisListTest(JSONRedisTestCase, RedisSequenceTest):
+    def do_make_seq(self, items):
+        self.r.rpush('seq', *items)
+        return RedisList('seq', self.r.r)
+
+class RedisSortedSetTest(JSONRedisTestCase, RedisSequenceTest):
+    def do_make_seq(self, items):
+        self.r.zadd('seq', *chain(*enumerate(items)))
+        return RedisSortedSet('seq', self.r.r)
 
 class JSONRedisSequenceTest(JSONRedisTestCase):
     def setUp(self):
@@ -90,34 +194,8 @@ class JSONRedisSequenceTest(JSONRedisTestCase):
     def test_getitem(self):
         self.assertEqual(self.cats[1], self.list[1])
 
-    def test_getitem_key_negative(self):
-        self.assertEqual(self.cats[-2], self.list[-2])
-
-    def test_getitem_key_out_of_range(self):
-        with self.assertRaises(IndexError):
-            # pylint: disable=pointless-statement; error is triggered on access
-            self.cats[42]
-
     def test_getitem_key_slice(self):
         self.assertEqual(self.cats[1:3], self.list[1:3])
-
-    def test_getitem_key_no_start(self):
-        self.assertEqual(self.cats[:3], self.list[:3])
-
-    def test_getitem_key_no_stop(self):
-        self.assertEqual(self.cats[1:], self.list[1:])
-
-    def test_getitem_key_stop_zero(self):
-        self.assertFalse(self.cats[0:0])
-
-    def test_getitem_key_stop_lt_start(self):
-        self.assertFalse(self.cats[3:1])
-
-    def test_getitem_key_stop_negative(self):
-        self.assertEqual(self.cats[1:-1], self.list[1:-1])
-
-    def test_getitem_key_stop_out_of_range(self):
-        self.assertEqual(self.cats[0:42], self.list)
 
     def test_getitem_pre(self):
         pre = Mock()

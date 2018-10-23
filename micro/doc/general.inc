@@ -22,20 +22,15 @@ If user authentication with the given secret fails, an :ref:`AuthenticationError
 any endpoint, a :ref:`PermissionError` is returned if the current user is not allowed to perform the
 action.
 
-Lists
------
-
-For most API endpoints which return a list, a slice of the form ``/(start):(stop)`` may be appended
-to the URL, where *start* (inclusive) and *stop* (exclusive) are indices of the items to return.
-The maximum number of items is limited to a *limit* of ``100``. Both *start* and *stop* are optional
-and default to ``0`` and ``start + limit`` respectively.
-
-Example: ``/api/activity`` (which is equivalent to ``/api/activity/:`` or ``/api/activity/0:100``)
-returns the first hundred items (i.e. global events) and ``/api/activity/10:20`` returns the items
-from index 10 up to including 19.
-
 Additional types
 ----------------
+
+A *slice* represents a range of a list, as array ``[start, stop]``, from index *start* (inclusive)
+to *stop* (exclusive). Both *start* and *stop* may be ``null``, referring to the beginning (0) and
+end (list length) of the list respectively.
+
+A *slice string* has the form ``{start}:{stop}``. Both *start* and *stop* may be omitted, meaning
+``null``.
 
 A *polyglot string* is an :class:`Object` holding multiple translations of a string indexed by short
 language tag.
@@ -77,6 +72,17 @@ setting the email address::
         ...
     }
 
+.. _Collection:
+
+Collection
+----------
+
+Collection of objects.
+
+.. include:: micro/collection-attributes.inc
+
+.. include:: micro/collection-endpoints.inc
+
 .. _AuthRequest:
 
 AuthRequest
@@ -114,6 +120,18 @@ User is editable by the user oneself.
 .. describe:: auth_secret
 
    Secret for authentication. Visible only to the user oneself.
+
+.. describe:: device_notification_status
+
+   Device notification status:
+
+   * ``on``: Notifications are enabled
+   * ``off``: Notifications are disabled
+   * ``off.expired``: Notifications are disabled because *push_subscription* expired
+
+.. describe:: push_subscription
+
+   Push subscription token used for sending device notifications. May be ``null``.
 
 .. http:get:: /api/users/(id)
 
@@ -154,6 +172,23 @@ User is editable by the user oneself.
 
    Permission: The user oneself.
 
+.. http:patch:: /api/users/(id)
+
+   ``{"op": "enable_device_notifications", "push_subscription"}``
+
+   Enable device notifications, using *push_subscription*.
+
+   A confirmation message is sent to the device. If there is a communication issue, a
+   :ref:`CommunicationError` is returned.
+
+   Permission: The user oneself.
+
+   ``{"op": "disable_device_notifications"}``
+
+   Disable device notifications.
+
+   Permission: The user oneself.
+
 .. _Activity:
 
 Activity
@@ -163,9 +198,27 @@ Activity feed (of events) around a common topic/context.
 
 *activity-url* is the URL that identifies the activity feed, e.g. ``/api/activity``.
 
-.. http:get:: (activity-url)
+.. describe:: user_subscribed
 
-   Get the list of recorded :ref:`Event` s.
+   Indicates if the user subscribed to the feed.
+
+.. describe:: items
+
+   List of recorded :ref:`Event` s.
+
+.. http:patch:: /api/(activity-url)
+
+   ``{"op": "subscribe"}``
+
+   Subscribe the user to the feed.
+
+   Permission: Authenticated users.
+
+   ``{"op": "unsubscribe"}``
+
+   Unsubscribe the user from the feed.
+
+   Permission: Authenticated users.
 
 .. _Event:
 
@@ -195,6 +248,21 @@ Event about an action on an *object* by an *user*.
 .. attribute:: detail
 
    Dictionary with additonal details about the event. The contents depend on the event *type*.
+
+.. _Location:
+
+Location
+--------
+
+Location.
+
+.. describe:: name
+
+   Name of the location.
+
+.. describe:: coords
+
+   Coordinates as latitude-longitude pair. May be ``null``.
 
 .. _ValueError:
 
@@ -240,3 +308,10 @@ PermissionError
 ---------------
 
 Returned if the current user is not allowed to perform an action.
+
+.. _CommunicationError:
+
+CommunicationError
+------------------
+
+Returned if communication with a third party fails.
