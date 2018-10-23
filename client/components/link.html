@@ -1,0 +1,160 @@
+<script>
+/** TODO. */
+micro.LinkEntity = class extends HTMLElement {
+    createdCallback() {
+        this.classList.add("micro-entity");
+        this.appendChild(
+            document.importNode(ui.querySelector("#micro-link-entity-template").content, true));
+        this._data = new micro.bind.Watchable({
+            entity: null,
+            hasIcon: false
+        });
+        micro.bind.bind(this.children, this._data);
+        let updateClass = () => {
+            this.classList.toggle("micro-link-entity-image", this.entity.image_url);
+        };
+        this._data.watch("entity", updateClass);
+    }
+
+    get entity() {
+        return this._data.entity;
+    }
+
+    set entity(value) {
+        this._data.entity = value;
+        this._data.hasIcon = Boolean(this._data.entity.icon);
+    }
+};
+
+document.addEventListener(
+    "DOMContentLoaded", () => document.registerElement("micro-link-entity", micro.LinkEntity)
+);
+</script>
+
+<template id="micro-link-entity-template">
+<a data-href="entity.url" target="_blank">
+    <!-- TODO: title before summary would be awesome -->
+    <!-- TODO: maybe favicon would be cool here -->
+    <img data-src="or entity.image_url ''" />
+    <div>
+        <div class="micro-link-entity-icon" data-content="switch hasIcon">
+            <template><img data-src="entity.icon"></img></template>
+            <template><i class="fa fa-globe"></i></template>
+        </div>
+        <p><span data-content="entity.summary"></span></p>
+    </div>
+</a>
+</template>
+
+<style>
+micro-link-entity.micro-entity > a {
+    display: flex;
+    flex-flow: column;
+    overflow: hidden;
+    align-items: center;
+}
+
+micro-link-entity a > img {
+    flex: auto;
+    min-height: 0;
+    /* chrome wont keep aspect ratio of flex items */
+    align-self: stretch;
+    object-fit: cover;
+    object-fit: cover scale-down;
+    /*object-position: left center;*/
+    /*object-fit: cover;*/
+}
+
+micro-link-entity > a > div {
+    display: flex;
+    flex: none;
+    padding: calc(1.5em / 4);
+    max-height: calc(2 * 1.5em + 1.5em / 2);
+}
+
+micro-link-entity a div i {
+    color: var(--micro-color-text-subtle);
+}
+
+micro-link-entity > a > div > div {
+    align-self: flex-start;
+    margin-right: calc(1.5rem / 4);
+}
+
+micro-link-entity div img {
+    display: block;
+    min-height: 0;
+    max-width: calc(2 * 1.5rem);
+    max-height: 100%;
+}
+
+micro-link-entity p {
+    margin: 0;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    color: var(--micro-color-text);
+    text-decoration: none;
+    font-size: 0.875em;
+}
+
+micro-link-entity p > span {
+    display: inline-block;
+    color: var(--micro-color-text);
+    text-decoration: none;
+}
+
+/*micro-link-entity a {
+    grid-template-columns: 1fr;
+    position: relative;
+}
+
+micro-link-entity div {
+    display: grid;
+}
+
+micro-link-entity img {
+    grid-column-start: 1;
+    grid-row-start: 1;
+}
+
+micro-link-entity p {
+    align-self: end;
+    grid-column-start: 1;
+    grid-row-start: 1;
+    width: 100%;
+    display: inline-block;
+    vertical-align: bottom;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: calc(1.5em / 4);
+    z-index: 1;
+    color: #333;
+    background: #ddd;
+    text-decoration: none;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    max-height: calc(2 * 1.5em + 1.5em / 2);
+}*/
+    /*float: right;*/
+    /*position: absolute;*/
+    /*position: relative;*/
+    /*margin-top: -1.5rem;*/
+    /*margin-left: -100%;*/
+
+/*
+micro-link-entity:not(.micro-link-entity-image) i {
+    color: #888;
+}
+
+micro-link-entity.micro-link-entity-image p {
+    color: white;
+    background: rgba(0, 0, 0, 0.66);
+}
+
+micro-link-entity p::after {
+    content: ' ';
+    clear: both;
+}*/
+</style>

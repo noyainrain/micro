@@ -1,0 +1,41 @@
+<script>
+/** TODO. */
+micro.ImageEntity = class extends HTMLElement {
+    createdCallback() {
+        this.classList.add("micro-entity");
+        this.appendChild(
+            document.importNode(ui.querySelector("#micro-image-entity-template").content, true));
+        this._data = new micro.bind.Watchable({
+            entity: null
+        });
+        micro.bind.bind(this.children, this._data);
+    }
+
+    get entity() {
+        return this._data.entity;
+    }
+
+    set entity(value) {
+        this._data.entity = value;
+    }
+};
+
+document.addEventListener(
+    "DOMContentLoaded", () => document.registerElement("micro-image-entity", micro.ImageEntity)
+);
+</script>
+
+<template id="micro-image-entity-template">
+<a data-href="entity.url" target="_blank"><img data-src="or entity.url ''" /></a>
+</template>
+
+<style>
+micro-image-entity img {
+    margin: 0 auto;
+    display: block;
+    max-width: 100%;
+    max-height: calc(70ch * 9 / 16);
+    max-height: calc(70ch * 9 / 16 / 2);
+    object-fit: contain;
+}
+</style>

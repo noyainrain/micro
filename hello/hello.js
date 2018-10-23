@@ -52,15 +52,11 @@ hello.StartPage = class extends micro.Page {
             greetings: null,
 
             createGreeting: async() => {
-                try {
-                    let input = this.querySelector("micro-text-entity-input");
-                    let greeting = await micro.call("POST", "/api/greetings",
-                        {text: input.value.text || null, entity: input.value.entity});
-                    input.reset();
-                    this._data.greetings.unshift(greeting);
-                } catch(e) {
-                    console.log(e);
-                }
+                let form = this.querySelector("form");
+                let greeting = await micro.call("POST", "/api/greetings",
+                                                {text: form.elements.text.value});
+                form.reset();
+                this._data.greetings.unshift(greeting);
             }
         });
         micro.bind.bind(this.children, this._data);

@@ -26,7 +26,7 @@ from redis import StrictRedis
 from redis.exceptions import ResponseError
 
 from . import resolve
-from .resolve import Resolver
+from .resolve import Resolver, LinkEntity, ImageEntity
 from micro.jsonredis import JSONRedis, JSONRedisSequence, JSONRedisMapping
 from micro.util import check_email, randstr, parse_isotime, str_or_none
 
@@ -325,7 +325,7 @@ class Editable:
         if isinstance(self, Trashable) and self.trashed:
             raise ValueError('object_trashed')
 
-        coro = self.do_edit(**attrs, **data)
+        coro = self.do_edit(**attrs)
         if iscoroutine(coro):
             await coro
         if not self.app.user.id in self._authors:
@@ -724,33 +724,6 @@ class AuthRequest(Object):
             del json['email']
             del json['code']
         return json
-
-class Entity:
-    pass
-
-class ImageEntity(Entity):
-    def __init__(self, url, content_type, app):
-        self.url = url
-        self.content_type = content_type
-
-    def json(self):
-        return {'__type__': type(self).__name__, 'url': self.url, 'content_type': self.content_type}
-
-class LinkEntity(Entity):
-    def __init__(self, url, image_url, summary, icon, app):
-        self.url = url
-        self.image_url = image_url
-        self.summary = summary
-        self.icon = icon
-
-    def json(self):
-        return {
-            '__type__': type(self).__name__,
-            'url': self.url,
-            'image_url': self.image_url,
-            'summary': self.summary,
-            'icon': self.icon
-        }
 
 class ValueError(builtins.ValueError):
     """See :ref:`ValueError`.

@@ -740,3 +740,30 @@ micro-activity-page > ul {
 .micro-activity-all .micro-activity-show-more {
     display: none;
 }
+
+/* Entity */
+
+.micro-entity {
+    margin: calc(1.5rem / 4) 0;
+    display: inline-block;
+    max-width: 100%;
+    background: #ddd;
+    /* Just testing, should also work */
+    /*width: 100%;*/
+}
+
+.micro-entity a {
+    /*background: transparent;*/
+    /*background: #ddd;/* /* XXX why? */
+}
+
+.micro-entity > * {
+    display: block;
+    max-height: calc(70ch * 9 / 16);
+    /* secondary style */
+    max-height: calc(70ch * 9 / 16 / 2);
+}
+
+/*.micro-entity img {
+    object-fit: contain;
+}*/

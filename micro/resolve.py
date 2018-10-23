@@ -11,6 +11,34 @@ VIDEO_TYPES = ['video/mp4']
 class WebError(Exception):
     pass
 
+class Entity:
+    pass
+
+class ImageEntity(Entity):
+    def __init__(self, url, content_type, app):
+        self.url = url
+        self.content_type = content_type
+
+    def json(self):
+        return {'__type__': type(self).__name__, 'url': self.url, 'content_type': self.content_type}
+
+class LinkEntity(Entity):
+    def __init__(self, url, image_url, summary, icon, app):
+        self.url = url
+        self.image_url = image_url
+        self.summary = summary
+        self.icon = icon
+
+    def json(self):
+        return {
+            '__type__': type(self).__name__,
+            'url': self.url,
+            'image_url': self.image_url,
+            'summary': self.summary,
+            'icon': self.icon
+        }
+
+
 class WebContent:
     """
     .. attribute: url -> text/html, image/*, video/*, audio/* -> all
@@ -66,7 +94,8 @@ class Resolver:
             raise WebError('io', e)
         content_type = response.headers['Content-Type'].split(';', 1)[0]
         content = None
-        for handler in self.handlers:
+        handlers = self.handlers + [handle_resource]
+        for handler in handlers:
             content = await handler(response.effective_url, content_type, response.buffer)
             #print('handler', handler, 'returned', content)
             if content:
@@ -78,6 +107,10 @@ class Resolver:
 
         #print('result', content)
         return content
+
+def handle_resource():
+    # fallback for everything
+    pass
 
 class Parser(HTMLParser):
     def __init__(self, **attrs):
