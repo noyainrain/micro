@@ -1,10 +1,6 @@
 
 # ---
 
-# TODO for good name, what would I write in UI, i.e.
-# paste a link below to add ...?
-# what does github, facebook etc. write?
-
 Github: attach file
 Facebook: nothing, just a selection of additional content to add
 Twitter: nothing, just add gif, add photo
@@ -19,10 +15,25 @@ additional content -> addendum / enclosure / attachment
 
 # Email: multipart
 # Github -> markdown
-# Twitter: Entity
+
+# Twitter: Media/Entity
+#   1. POST /media/upload(blob) -> Media
+#   2. POST /statuses(media_id) -> Tweet{media_id}
 # Facebook: Object
-# Telegram: Media
+#   A.  POST /photos(blob/url) -> Photo + Post{attached_media}
+#   B1. POST /photos(blob/url,published=false) -> Photo
+#   B2. POST /feed(attached_media) -> Post{attached_media}
 # Slack: Attachment / File
+#   A. files.upload(blob) -> File
+#   B. files.upload(blob,channel) -> File + Event{file_shared}
+#   C. postMessage(attachments) -> Message{attachments}
+#   AB = blob, C = struct
+#
+# VS
+#
+# Telegram: Media
+#   sendVideo/Audio/...(blob/url) -> Message{video/audio/...{file_id}} + File
+
 # General: Resource, Entity, Object, Thing
 #          Part
 #          Content
@@ -40,7 +51,7 @@ additional content -> addendum / enclosure / attachment
 
 # Content
 #   text
-#   resource
+#   element
 
 # --- refresh
 
@@ -112,44 +123,168 @@ class Resource:
 # Because thumbnails are only used for Resource, would rather make Resource an Object with
 # @thumbnail_data property (exposed via /api/cats/abcdef/resource/thumbnail.png)
 
-# ---
+class Resolver:
+    def resolve(self, url: str) -> Content:
+        data = fetch(url)
+        f = extract_image(data)
+        self.app.files.add(f.url, f)
+        return Video(url, image=f.url)
+
+    def adopt(self, content: Content) -> None:
+        del self.cache[content.url]
+
+    def clean(self) -> None:
+        for content in self.cache.values():
+            content.delete()
+        self.cache.values.clear()
+
+class Content:
+    def delete(self, app) -> None:
+        raise NotImplementedError
+        # video example
+        if self.url.starts_with('file:'):
+            app.files.remove(self.url)
+        app.files.remove(self.image_url)
+
+    def copy(self) -> Content:
+        pass
 
 class Resource:
-    def __init__(self, url: str, content_type: str, description: str, *, thumbnail_url: str = None,
-                 thumbnail_size: Tuple[int, int] = None) -> None:
-        self.url = url
-        self.content_type = content_type
-        self.description = description
-        self.thumbnail_url = thumbnail_url
-        self.thumbnail_size = thumbnail_size
+    def destroy(self, *, app=None) -> None:
+        app = app or current_app()
+        if self.url.starts_with('file:'):
+            app.files.remove(self.url)
 
-    def json(self) -> Dict[str, object]:
-        return {
-            '__type__': type(self).__name__,
-            'url': self.url,
-            'content_type': self.content_type,
-            'description': description,
-            'thumbnail_url': self.thumbnail_url,
-            'thumbnail_size': self.thumbnail_size
-        }
+def do_edit(**attrs: object) -> None:
+    if 'element' in attrs:
+        element = attrs.get('element')
+        if not isinstance(element, str):
+            raise TypeError()
+        self.element = self.app.resolver.resolve(element)
 
-class Image(Resource):
-    CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/gif'] # (check browser support)
+# ---
 
-    def __init__(self, url: str, content_type: str, description: str,
-                 thumbnail_size: Tuple[int, int]) -> None:
-        super(url, content_type, description, thumbnail_url=url, thumbnail_size=thumbnail_size)
-
-class Video(Resource):
-    CONTENT_TYPES = ['video/mp4', 'text/html'] # (check browser support)
-
-    duration: int
+class ImageRef:
+    url: str
+    content_type: str
     size: Tuple[int, int]
 
-class Audio(Resource):
-    CONTENT_TYPES = ['audio/mp3', 'audio/mp4', 'audio/wav'] # (check browser support)
+class Content:
+    def json(self) -> Dict[str, object]:
+        return {'__type__': type(self).__name__}
 
-    duration: int
+class Link(Content):
+    url: str
+    description: str # auto (opt)
+    image: Optional[ImageRef] # auto
+
+class Image(Content):
+    url: str
+    thumbnail: ImageRef # auto
+
+class Video(Content):
+    url: str
+    content_type: str # auto
+    size: Tuple[int, int] # auto
+    duration: Optional[int] # auto
+    image: Optional[ImageRef] # auto
+
+    def __init__(
+            self, url: str, *, content_type: str = 'video/mp4', size: Tuple[int, int] = (300, 150),
+            duration: int = None, image: ImageRef = None) -> None:
+        pass
+
+class Audio(Content):
+    url: str
+    content_type: str # auto
+    duration: Optional[int] # auto
+    image: Optional[ImageRef] # auto
+
+class Tweet(Content):
+    url: str
+    id: str # auto
+    text: str # auto
+    user_id: str # auto
+    user_name: str # auto
+    avatar_url: ImageRef # auto
+
+class Quote(Content):
+    text: str
+    author: str
+
+#class Resource:
+#    url: str # min
+#
+#class WithImageRepr:
+#    image: Optional[ImageRef]
+
+    ## See if HTML5 can read it from stream, otherwise as property: => EXIF (jpeg and since 2017 png)
+    #alt: str
+    #CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/gif'] # (check browser support)
+    ## See if HTML5 can read it from stream, otherwise as property: => audioTracks and textTracks, event addressable via foo.mpg#track=oink :)
+    #audio_description
+    #captions
+    #CONTENT_TYPES = ['video/mp4', 'text/html'] # (check browser support)
+    ## See if HTML5 can read it from stream, otherwise as property: => ID3 Tag USLT
+    #transcript: str
+    #CONTENT_TYPES = ['audio/mp3', 'audio/mp4', 'audio/wav'] # (check browser support)
+
+    #def __init__(self, url: str, content_type: str, description: str, *, thumbnail_url: str = None,
+    #             thumbnail_size: Tuple[int, int] = None) -> None:
+    #    self.url = url
+    #    self.content_type = content_type
+    #    self.summary = summary
+    #    self.image_url = image_url
+    #    self.image_size = image_size
+    #def __init__(self, url: str, content_type: str, description: str,
+    #             thumbnail_size: Tuple[int, int]) -> None:
+    #    super(url, content_type, description, thumbnail_url=url, thumbnail_size=thumbnail_size)
+#def json(self) -> Dict[str, object]:
+#    return {
+#        **super.json(),
+#        'url': self.url,
+#        'content_type': self.content_type,
+#        'description': description,
+#        'thumbnail_url': self.thumbnail_url,
+#        'thumbnail_size': self.thumbnail_size
+#    }
+
+#class Resource:
+#    def __init__(self, url: str, content_type: str, description: str, *, thumbnail_url: str = None,
+#                 thumbnail_size: Tuple[int, int] = None) -> None:
+#        self.url = url
+#        self.content_type = content_type
+#        self.description = description
+#        self.thumbnail_url = thumbnail_url
+#        self.thumbnail_size = thumbnail_size
+#
+#    def json(self) -> Dict[str, object]:
+#        return {
+#            '__type__': type(self).__name__,
+#            'url': self.url,
+#            'content_type': self.content_type,
+#            'description': description,
+#            'thumbnail_url': self.thumbnail_url,
+#            'thumbnail_size': self.thumbnail_size
+#        }
+#
+#class Image(Resource):
+#    CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/gif'] # (check browser support)
+#
+#    def __init__(self, url: str, content_type: str, description: str,
+#                 thumbnail_size: Tuple[int, int]) -> None:
+#        super(url, content_type, description, thumbnail_url=url, thumbnail_size=thumbnail_size)
+#
+#class Video(Resource):
+#    CONTENT_TYPES = ['video/mp4', 'text/html'] # (check browser support)
+#
+#    duration: int
+#    size: Tuple[int, int]
+#
+#class Audio(Resource):
+#    CONTENT_TYPES = ['audio/mp3', 'audio/mp4', 'audio/wav'] # (check browser support)
+#
+#    duration: int
 
 #class Document(Resource):
 # do not need anything per se, will just be rendered as std resource
