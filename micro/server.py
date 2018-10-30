@@ -424,6 +424,7 @@ class _LogClientErrorEndpoint(Endpoint):
             _CLIENT_ERROR_LOG_TEMPLATE, args['type'], message_part, args['stack'].strip(),
             args['url'], self.app.user.name, self.app.user.id,
             self.request.headers.get('user-agent', '-'))
+        self.write({})
 
 class _ListEndpoint(Endpoint):
     def initialize(self, get_list):

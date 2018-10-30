@@ -59,6 +59,8 @@ micro.APIError = class extends Error {
  *    :class:`TypeError` for IO related errors. Check for :class:`micro.NetworkError` instead.
  */
 micro.call = async function(method, url, args) {
+    console.log("PRE", url);
+    console.trace();
     let options = {method, credentials: "same-origin"};
     if (args) {
         options.headers = {"Content-Type": "application/json"};
@@ -68,12 +70,18 @@ micro.call = async function(method, url, args) {
     let response;
     let result;
     try {
+        console.log("PREAWAIT", url);
+        console.trace();
         response = await fetch(url, options);
+        console.log("POSTAWAIT", url);
+        console.trace();
         result = await response.json();
     } catch (e) {
+        console.log("CATCH", url, e);
+        console.trace();
         if (e instanceof TypeError || e instanceof SyntaxError) {
             // Consider invalid JSON an IO error as well
-            throw new micro.NetworkError();
+            throw new micro.NetworkError("LOL");
         }
         throw e;
     }

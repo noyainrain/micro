@@ -1589,6 +1589,13 @@ micro.EditUserPage = class extends micro.Page {
     handleEvent(event) {
         if (event.currentTarget === this._form) {
             event.preventDefault();
+
+            micro.call("POST", "/api/users").catch(micro.util.catch);
+            /*(async () => {
+                let x = await micro.call("POST", "/api/users");
+            })().catch(micro.util.catch);*/
+            return;
+
             (async() => {
                 try {
                     let user = await ui.call("POST", `/api/users/${this._user.id}`, {

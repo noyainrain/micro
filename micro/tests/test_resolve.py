@@ -45,14 +45,6 @@ class ResolverTestCase(AsyncHTTPTestCase):
         self.assertEqual(content.content_type, 'image/png')
 
     @gen_test
-    async def test_resolve_website(self):
-        resolver = Resolver()
-        content = await resolver.resolve(self.get_url('/website.html'))
-        print(content)
-        self.assertTrue(content)
-        self.assertEqual(content.content_type, 'text/html')
-
-    @gen_test
     async def test_resolve_website_og(self):
         resolver = Resolver()
         content = await resolver.resolve(self.get_url('/og.html'))

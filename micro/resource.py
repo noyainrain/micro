@@ -1,19 +1,25 @@
 # TODO
 
+import errno
+import os
 from typing import Dict, List, Tuple, Callable, Optional, cast
 
+from .error import CommunicationError, Exception
 from .util import str_or_none
 
-from tornado.httpclient import AsyncHTTPClient, HTTPClientError
+from tornado.httpclient import AsyncHTTPClient, HTTPClientError, HTTPResponse
+from tornado.simple_httpclient import HTTPStreamClosedError, HTTPTimeoutError
 
 IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/gif']
 WEBPAGE_TYPES = ['text/html', 'application/xhtml+xml']
+
+Handle = Callable[[str, str, bytes], Optional['Resource']]
 
 class Resource:
     """TODO Web resource representation with useful meta data."""
 
     def __init__(self, url: str, content_type: str, *, description: str = None,
-                 image: Image = None) -> None:
+                 image: 'Image' = None) -> None:
         if str_or_none(url) is None:
             raise ValueError('blank_url')
         if str_or_none(content_type) is None:
@@ -41,45 +47,65 @@ class Image(Resource):
     def __init__(self, url: str, content_type: str, *, description: str = None) -> None:
         super().__init__(url, content_type, description=description)
 
-# TODO better name
-class Discovery:
-    """TODO."""
+class Analyzer:
+    """TODO.
 
-    def __init__(self) -> None:
-        self.handlers = [handle_image] # type: List[Callable[[str, str, bytes], Optional[Resource]]]
-        self.cache = {} # type: Dict[str, Resource]
+    .. attribute:: handlers
 
-    async def discover(self, url: str) -> Resource:
-        """TODO."""
-        if url in self.cache:
-            return self.cache[url]
+       TODO. Defaults to all builtin handlers.
+    """
 
-        try:
-            # TODO max=5 * 1024 * 1024 (default is 100mb, maybe okay?)
-            # TODO: handle ValueError (e.g. wrong url scheme)
-            # TODO: convert timeout to oserror like for notifications (utility method maybe)
-            response = await AsyncHTTPClient().fetch(url)
-        except HTTPClientError as e:
-            if e.code in (404, 410):
-                raise KeyError(url)
-            if e.code in (401, 402, 403, 405, 451):
-                raise ValueError('{} forbidden [forbidden_resource]'.format(url))
-            raise CommunicationError('Server responded with status {}'.format(e.code))
-        except OSError as e:
-            raise CommunicationError(str(e))
-        content_type = response.headers['Content-Type'].split(';', 1)[0]
+    def __init__(self, *, handlers: List[Handle] = None) -> None:
+        self.handlers = ([handle_image, handle_webpage] if handlers is None
+                         else list(handlers)) # type: List[Handle]
+        self._cache = {} # type: Dict[str, Resource]
+
+    async def analyze(self, url: str) -> Resource:
+        """Analyze the resource at *url*.
+
+        CommunicationError, AnalysisError.
+        """
+        if url in self._cache:
+            return self._cache[url]
 
         resource = None
-        for handler in self.handlers:
-            resource = handler(response.effective_url, content_type, response.body)
+        response = await self.fetch(url)
+        content_type = response.headers['Content-Type'].split(';', 1)[0]
+        for handle in self.handlers:
+            resource = handle(response.effective_url, content_type, response.body)
             if resource:
                 break
         if not resource:
             resource = Resource(response.effective_url, content_type)
 
-        self.cache[url] = resource
-        self.cache[resource.url] = resource
+        self._cache[url] = resource
+        self._cache[resource.url] = resource
         return resource
+
+    @staticmethod
+    async def fetch(url: str) -> HTTPResponse:
+        """Fetch resource with exception handling.
+
+        Error handling as explained in :meth:`Analyzer.analyze`.
+        """
+        request = 'GET {}'.format(url)
+        try:
+            # TODO: handle ValueError (e.g. wrong url scheme)
+            return await AsyncHTTPClient().fetch(url)
+        except HTTPStreamClosedError:
+            raise CommunicationError(os.strerror(errno.ESHUTDOWN), request)
+        except HTTPTimeoutError:
+            raise CommunicationError(os.strerror(errno.ETIMEDOUT), request)
+        except HTTPClientError as e:
+            if e.code in (404, 410):
+                raise AnalysisError('Resource not found [no_resource]', url)
+            if e.code in (401, 402, 403, 405, 451):
+                raise AnalysisError('Resource forbidden [forbidden_resource]', url)
+            raise CommunicationError('Server responded with status {}'.format(e.code), request,
+                                     str(e.code))
+        except OSError as e:
+            raise CommunicationError(str(e), request)
+
 
 def handle_image(url: str, content_type: str, data: bytes) -> Optional[Image]:
     if content_type in IMAGE_TYPES:
@@ -89,21 +115,30 @@ def handle_image(url: str, content_type: str, data: bytes) -> Optional[Image]:
 def handle_webpage(url: str, content_type: str, data: bytes) -> Optional[Resource]:
     # TODO implement (see resolve)
     # if data is somehow invalid:
-    # raise ValueError('Broken HTML in {} [broken_resource_content]'.format(url))
+    # raise AnalysisError('Broken HTML [bad_resource]', url) #.format(url))
     if content_type in WEBPAGE_TYPES:
         return Resource(url, content_type)
     return None
 
-# overkill?
-#class DiscoveryError(Exception):
-#    def __init__(self, msg: str, url: str) -> None:
-#        super().__init__(msg, url)
-#
-#    @property
-#    def url(self) -> Optional[str]:
-#        return cast(Tuple[str, str], self.args)[1]
+#async def handle_youtube(url: str, content_type: str, data: bytes) -> Optional[Resource]:
+#    id = re.find(url, 'foo')
+#    response = await fetch('https://api.youtube.com/videos/{}'.format(id))
+#    return Video(url)
 
-# TODO move
-class CommunicationError(Exception):
-    """See :ref:`CommunicationError`."""
-    pass
+class AnalysisError(Exception):
+    """See :ref:`AnalysisError`.
+
+    Returned if analyzing a web resource fails.
+
+    .. describe:: url
+
+       URL of the web resource subject to analysis.
+    """
+    args = None # type: Tuple[str, str]
+
+    def __init__(self, message: str, url: str) -> None:
+        super().__init__(message)
+        self.url = url
+
+    def json(self) -> Dict[str, object]:
+        return {**super().json(), 'url': self.url}

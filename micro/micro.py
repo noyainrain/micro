@@ -45,6 +45,7 @@ from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedis
 from . import resolve
 from .resolve import Resolver, LinkEntity, ImageEntity
 from .util import check_email, randstr, parse_isotime, str_or_none, version
+from .error import CommunicationError
 
 _PUSH_TTL = 24 * 60 * 60
 
@@ -1215,9 +1216,9 @@ class PermissionError(Exception):
     """See :ref:`PermissionError`."""
     pass
 
-class CommunicationError(Exception):
-    """See :ref:`CommunicationError`."""
-    pass
+#class CommunicationError(Exception):
+#    """See :ref:`CommunicationError`."""
+#    pass
 
 class EmailError(Exception):
     """Raised if communication with the SMTP server fails."""

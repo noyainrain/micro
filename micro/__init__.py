@@ -16,10 +16,15 @@
 
 micro is based on Redis and thus any method may raise a :exc:`RedisError` if there is a problem
 communicating with the Redis server.
+
+.. deprecated:: TODO
+
+   CommuniationError. Use error.CommunicationError instead.
 """
 
 import os
 
+# TODO Compatibility with CommunicationError
 from micro.micro import (
     Application, Object, Editable, Trashable, Collection, Orderable, User, Settings, Activity,
     Event, AuthRequest, Location, ValueError, InputError, AuthenticationError, PermissionError,
