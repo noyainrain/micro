@@ -4,7 +4,7 @@ import os
 
 from micro.error import CommunicationError
 
-from micro.resource import Analyzer, AnalysisError, Resource, Image
+from micro.resource import Analyzer, AnalysisError, Resource, Image, BadDataError, NoResourceError, ForbiddenResourceError
 
 from tornado.web import Application, RequestHandler
 from tornado.testing import AsyncHTTPTestCase, gen_test
@@ -37,23 +37,32 @@ class AnalyzerTestCase(AsyncHTTPTestCase):
         self.assertEqual(image.content_type, 'image/png')
 
     @gen_test
-    async def test_analyze_webpage(self):
+    async def test_analyze_webpage(self) -> None:
         analyzer = Analyzer()
         webpage = await analyzer.analyze(self.get_url('/static/webpage.html'))
         self.assertIsInstance(webpage, Resource)
-        # TODO implement and test more
         self.assertEqual(webpage.content_type, 'text/html')
+        self.assertEqual(webpage.description, 'Happy Blog - Blog of Happy Cat')
+        assert isinstance(webpage.image, Image)
+        self.assertRegex(webpage.image.url, '/static/image.png$')
+
+    @gen_test
+    async def test_analyze_loop(self) -> None:
+        analyzer = Analyzer()
+        # TODO better exception
+        with self.assertRaises(BadDataError):
+            await analyzer.analyze(self.get_url('/static/loop.html'))
 
     @gen_test
     async def test_analyze_no_resource(self) -> None:
         analyzer = Analyzer()
-        with self.assertRaisesRegex(AnalysisError, r'\[no_resource\]'):
+        with self.assertRaises(NoResourceError):
             await analyzer.analyze(self.get_url('/foo'))
 
     @gen_test
     async def test_analyze_forbidden_resource(self) -> None:
         analyzer = Analyzer()
-        with self.assertRaisesRegex(AnalysisError, r'\[forbidden_resource\]'):
+        with self.assertRaises(ForbiddenResourceError):
             await analyzer.analyze(self.get_url('/echo/403'))
 
     @gen_test

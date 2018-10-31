@@ -3,7 +3,7 @@
 import builtins
 from typing import Dict, List, Tuple, Callable, Optional, cast
 
-class Exception(builtins.Exception):
+class Error(Exception):
     """TODO."""
 
     def __init__(self, message: str) -> None:
@@ -15,7 +15,11 @@ class Exception(builtins.Exception):
     def json(self) -> Dict[str, object]:
         return {'__type__': type(self).__name__, 'msg': str(self)}
 
-class CommunicationError(Exception):
+class ValueError(Error, builtins.ValueError):
+    """See TODO."""
+    pass
+
+class CommunicationError(Error):
     """See :ref:`CommunicationError`."""
 
     args = None # type: Tuple[str, str, Optional[str]]

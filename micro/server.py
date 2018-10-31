@@ -32,6 +32,9 @@ from tornado.ioloop import IOLoop
 from tornado.template import DictLoader, Loader, filter_whitespace
 from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
 
+from . import error
+from .error import Error
+from .resource import NoResourceError, ForbiddenResourceError, BadDataError
 from . import micro, templates
 from .micro import (Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError,
                     AuthenticationError, CommunicationError, PermissionError)
@@ -140,7 +143,7 @@ class Server:
             # Compatibility with non-object Activity (deprecated since 0.14.0)
             make_activity_endpoint(r'/api/activity/v2', lambda *args: self.app.activity),
             *make_list_endpoints(r'/api/activity(?:/v1)?', lambda *args: self.app.activity),
-            (r'/api/previews/(.+)$', PreviewEndpoint),
+            (r'/api/previews/(.+)$', PreviewsEndpoint),
             *handlers
         ]
 
@@ -226,7 +229,17 @@ class Endpoint(RequestHandler):
         return op(*args, **kwargs)
 
     def write_error(self, status_code, exc_info):
-        if issubclass(exc_info[0], KeyError):
+        if issubclass(exc_info[0], Error):
+            statuses = {
+                error.ValueError: http.client.BAD_REQUEST,
+                error.CommunicationError: http.client.BAD_GATEWAY,
+                NoResourceError: http.client.NOT_FOUND,
+                ForbiddenResourceError: http.client.FORBIDDEN,
+                BadDataError: http.client.BAD_REQUEST
+            }
+            self.set_status(statuses[exc_info[0]])
+            self.write(exc_info[1].json())
+        elif issubclass(exc_info[0], KeyError):
             self.set_status(http.client.NOT_FOUND)
             self.write({'__type__': 'NotFoundError'})
         elif issubclass(exc_info[0], AuthenticationError):
@@ -253,7 +266,7 @@ class Endpoint(RequestHandler):
 
     def log_exception(self, typ, value, tb):
         # These errors are handled specially and there is no need to log them as exceptions
-        if issubclass(typ, (KeyError, AuthenticationError, PermissionError, micro.ValueError)):
+        if issubclass(typ, (Error, KeyError, AuthenticationError, PermissionError, micro.ValueError)):
             return
         super().log_exception(typ, value, tb)
 
@@ -580,11 +593,13 @@ class _ActivityEndpoint(Endpoint):
         activity.unsubscribe()
         self.write(activity.json(restricted=True, include=True))
 
-class PreviewEndpoint(Endpoint):
-    async def get(self, url):
-        entity = await self.app.resolve_entity(url)
-        print('entity', entity);
-        if entity:
-            self.write(entity.json())
-        else:
-            raise HTTPError(http.client.NOT_FOUND)
+class PreviewsEndpoint(Endpoint):
+    async def get(self, url: str) -> None:
+        resource = await self.app.preview(url)
+        self.write(resource.json())
+        #entity = await self.app.resolve_entity(url)
+        #print('entity', entity);
+        #if entity:
+        #    self.write(entity.json())
+        #else:
+        #    raise HTTPError(http.client.NOT_FOUND)

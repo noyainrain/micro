@@ -44,6 +44,7 @@ from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedis
                              RedisSequence, expect_type)
 from . import resolve
 from .resolve import Resolver, LinkEntity, ImageEntity
+from .resource import Analyzer, Resource
 from .util import check_email, randstr, parse_isotime, str_or_none, version
 from .error import CommunicationError
 
@@ -137,6 +138,7 @@ class Application:
         self.render_email_auth_message = render_email_auth_message
 
         self._resolver = Resolver()
+        self._analyzer = Analyzer()
 
     @property
     def settings(self):
@@ -286,6 +288,9 @@ class Application:
                 self.r.oset(settings.id, settings)
 
         return self.authenticate(user.auth_secret)
+
+    async def preview(self, url: str) -> Resource:
+        return await self._analyzer.analyze(url)
 
     async def resolve_entity(self, url):
         try:
