@@ -1,7 +1,9 @@
 from typing import Callable, Coroutine, TypeVar
 from unittest import TestCase
 
-class AsyncHTTPTestCase(TestCase):
+class AsyncTestCase(TestCase): ...
+
+class AsyncHTTPTestCase(AsyncTestCase):
     def get_url(self, path: str) -> str: ...
 
 # TODO
