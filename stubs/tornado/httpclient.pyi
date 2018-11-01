@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Dict, Optional
 
 class AsyncHTTPClient:
     async def fetch(self, request: str, raise_error: bool = ...,
@@ -6,6 +6,10 @@ class AsyncHTTPClient:
 
 class HTTPResponse:
     code: int
+    headers: Dict[str, str] # TODO: HTTPHeaders
+    effective_url: str
+    body: bytes
     error: Optional[Exception]
 
-class HTTPClientError(Exception): ...
+class HTTPClientError(Exception):
+    code: int

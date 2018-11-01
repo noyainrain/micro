@@ -264,6 +264,26 @@ Location.
 
    Coordinates as latitude-longitude pair. May be ``null``.
 
+.. _Resource:
+
+Resource
+--------
+
+Web resource description.
+
+.. include:: micro/resource-attributes.inc
+
+.. _Image:
+
+Image
+-----
+
+Image :ref:`Resource` description.
+
+Note that *image* is always ``null``.
+
+.. include:: micro/resource-attributes.inc
+
 .. _ValueError:
 
 ValueError
@@ -315,3 +335,31 @@ CommunicationError
 ------------------
 
 Returned if communication with a third party fails.
+
+.. _AnalysisError:
+
+AnalysisError
+-------------
+
+Returned if analyzing a web resource fails.
+
+.. _NoResourceError
+
+NoResourceError
+---------------
+
+:ref:`AnalysisError`, returned if there is no resource at the URL to analyze.
+
+.. _ForbiddenResourceError
+
+ForbiddenResourceError
+----------------------
+
+:ref:`AnalysisError`, returned if access to the resource is forbidden at the URL to analyze.
+
+.. _BorkenResourceError
+
+BrokenResourceError
+-------------------
+
+:ref:`AnalysisError`, returned if the resource subject to analysis is broken.

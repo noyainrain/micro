@@ -12,23 +12,25 @@
 # You should have received a copy of the GNU Lesser General Public License along with this program.
 # If not, see <http://www.gnu.org/licenses/>.
 
-"""Toolkit for social micro web apps.
+"""micro errors."""
 
-micro is based on Redis and thus any method may raise a :exc:`RedisError` if there is a problem
-communicating with the Redis server.
+import builtins
 
-.. deprecated:: TODO
+class Error(Exception):
+    """Base for micro errors."""
+    pass
 
-   CommuniationError, ValueError. Use error.CommunicationError and error.ValueError respectively
-   instead.
-"""
+class ValueError(builtins.ValueError, Error):
+    """See :ref:`ValueError`.
 
-import os
+    The first item of *args* is also available as *code*.
+    """
 
-# TODO Compatibility with CommunicationError, ValueError
-from micro.micro import (
-    Application, Object, Editable, Trashable, Collection, Orderable, User, Settings, Activity,
-    Event, AuthRequest, Location, ValueError, InputError, AuthenticationError, PermissionError,
-    CommunicationError, EmailError)
+    @property
+    def code(self):
+        # pylint: disable=missing-docstring; already documented
+        return self.args[0] if self.args else None
 
-DOC_PATH = os.path.join(os.path.dirname(__file__), 'doc')
+class CommunicationError(Error):
+    """See :ref:`CommunicationError`."""
+    pass

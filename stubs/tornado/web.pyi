@@ -4,6 +4,8 @@ class RequestHandler:
     application: Application
     current_user: Optional[object]
 
+    def set_status(self, status_code: int) -> None: ...
+
     def get_query_argument(self, name: str, default: str = ...) -> str: ...
 
     def write(self, chunk: Union[bytes, str, Dict[str, object]]) -> None: ...
@@ -18,7 +20,7 @@ class Application:
         handlers:
             Sequence[
                 Union[Tuple[str, Type[RequestHandler]], Tuple[str, Type[RequestHandler],
-                      Dict[str, object]]]],
+                      Dict[str, object]]]] = None,
         **settings: object) -> None: ...
 
 class StaticFileHandler(RequestHandler): ...
