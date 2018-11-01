@@ -1,16 +1,33 @@
-# TODO
+# micro
+# Copyright (C) 2018 micro contributors
+#
+# This program is free software: you can redistribute it and/or modify it under the terms of the GNU
+# Lesser General Public License as published by the Free Software Foundation, either version 3 of
+# the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License along with this program.
+# If not, see <http://www.gnu.org/licenses/>.
+
+# pylint: disable=missing-docstring; test module
 
 import os
 
-from micro.error import CommunicationError
-
-from micro.resource import Analyzer, AnalysisError, Resource, Image, BrokenResourceError, NoResourceError, ForbiddenResourceError
-
-from tornado.web import Application, RequestHandler
 from tornado.testing import AsyncHTTPTestCase, gen_test
+from tornado.web import Application, RequestHandler
+
+from micro.error import CommunicationError
+from micro.resource import (Analyzer, BrokenResourceError, ForbiddenResourceError, Image,
+                            NoResourceError, Resource)
 
 class EchoHandler(RequestHandler):
+    # pylint: disable=abstract-method; Tornado handlers define a semi-abstract data_received()
+
     def get(self, code: str) -> None:
+        # pylint: disable=arguments-differ; Tornado handler arguments are defined by URLs
         self.set_status(int(code))
 
 class AnalyzerTestCase(AsyncHTTPTestCase):

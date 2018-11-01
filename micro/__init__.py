@@ -17,15 +17,15 @@
 micro is based on Redis and thus any method may raise a :exc:`RedisError` if there is a problem
 communicating with the Redis server.
 
-.. deprecated:: TODO
+.. deprecated:: 0.25.0
 
-   CommuniationError, ValueError. Use error.CommunicationError and error.ValueError respectively
-   instead.
+   ``CommuniationError`` and ``ValueError``. Use ``error.CommunicationError`` and
+   ``error.ValueError`` instead respectively.
 """
 
 import os
 
-# TODO Compatibility with CommunicationError, ValueError
+# Compatibility for old location of CommunicationError and ValueError (deprecated since 0.25.0)
 from micro.micro import (
     Application, Object, Editable, Trashable, Collection, Orderable, User, Settings, Activity,
     Event, AuthRequest, Location, ValueError, InputError, AuthenticationError, PermissionError,

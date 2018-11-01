@@ -25,8 +25,8 @@
 
 from collections import OrderedDict
 import errno
-from inspect import isawaitable
 from html.parser import HTMLParser
+from inspect import isawaitable
 import os
 import time
 from typing import Awaitable, Callable, Dict, List, Optional, Tuple, Union, cast
@@ -57,6 +57,7 @@ class Resource:
         self.image = image
 
     def json(self) -> Dict[str, object]:
+        """Return a JSON representation of the resource."""
         return {
             '__type__': type(self).__name__,
             'url': self.url,
@@ -110,21 +111,18 @@ class Analyzer:
         content_type = response.headers['Content-Type'].split(';', 1)[0]
         analyzer = Analyzer(handlers=self.handlers, _stack=self._stack + [url], _cache=self._cache)
         resource = None
+
         for handle in self.handlers:
             try:
                 result = handle(response.effective_url, content_type, response.body, analyzer)
-                resource = result if result is None or isinstance(result, Resource) else await result
+                resource = (await cast(Awaitable[Optional[Resource]], result) if isawaitable(result)
+                            else cast(Optional[Resource], result))
             except _LoopError:
-                if len(self._stack) > 0:
+                if self._stack:
                     raise
                 raise BrokenResourceError('Loop analyzing {}'.format(url))
-            #resource = await result if isawaitable(result) else result
-            #resource = handle(response.effective_url, content_type, response.body)
-            #if resource is not None and not isinstance(resource, Resource): # isawaitable(resource):
-            #    resource = await resource
             if resource is not None:
                 break
-        # assert resource is None or isinstance(resource, Resource)
         if resource is None:
             resource = Resource(response.effective_url, content_type)
 
@@ -173,6 +171,7 @@ class Analyzer:
 
 def handle_image(url: str, content_type: str, data: bytes, analyzer: Analyzer) -> Optional[Image]:
     """Process an image resource."""
+    # pylint: disable=unused-argument; part of API
     if content_type in ['image/jpeg', 'image/png', 'image/svg+xml', 'image/gif']:
         return Image(url, content_type)
     return None
@@ -203,7 +202,7 @@ async def handle_webpage(url: str, content_type: str, data: bytes,
         image_url = urljoin(url, image_url)
         try:
             res = await analyzer.analyze(image_url)
-        except error.ValueError as e:
+        except error.ValueError:
             raise BrokenResourceError('Bad data image URL scheme {!r} analyzing {}'.format(image_url, url))
         if not isinstance(res, Image):
             raise BrokenResourceError('Bad image type {!r} analyzing {}'.format(type(res).__name__, url))
@@ -230,8 +229,9 @@ class BrokenResourceError(AnalysisError):
 class _LoopError(Exception):
     pass
 
-# TODO: should we quit after head?
 class _MetaParser(HTMLParser):
+    # pylint: disable=abstract-method; https://bugs.python.org/issue31844
+
     def __init__(self) -> None:
         super().__init__()
         self.meta = {} # type: Dict[str, str]
