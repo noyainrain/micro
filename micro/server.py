@@ -34,7 +34,7 @@ from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandle
 
 from . import error
 from .error import Error
-from .resource import NoResourceError, ForbiddenResourceError, BadDataError
+from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
 from . import micro, templates
 from .micro import (Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError,
                     AuthenticationError, CommunicationError, PermissionError)
@@ -229,17 +229,7 @@ class Endpoint(RequestHandler):
         return op(*args, **kwargs)
 
     def write_error(self, status_code, exc_info):
-        if issubclass(exc_info[0], Error):
-            statuses = {
-                error.ValueError: http.client.BAD_REQUEST,
-                error.CommunicationError: http.client.BAD_GATEWAY,
-                NoResourceError: http.client.NOT_FOUND,
-                ForbiddenResourceError: http.client.FORBIDDEN,
-                BadDataError: http.client.BAD_REQUEST
-            }
-            self.set_status(statuses[exc_info[0]])
-            self.write(exc_info[1].json())
-        elif issubclass(exc_info[0], KeyError):
+        if issubclass(exc_info[0], KeyError):
             self.set_status(http.client.NOT_FOUND)
             self.write({'__type__': 'NotFoundError'})
         elif issubclass(exc_info[0], AuthenticationError):
@@ -261,6 +251,16 @@ class Endpoint(RequestHandler):
         elif issubclass(exc_info[0], CommunicationError):
             self.set_status(http.client.BAD_GATEWAY)
             self.write({'__type__': 'CommunicationError'})
+        if issubclass(exc_info[0], Error):
+            statuses = {
+                error.ValueError: http.client.BAD_REQUEST,
+                error.CommunicationError: http.client.BAD_GATEWAY,
+                NoResourceError: http.client.NOT_FOUND,
+                ForbiddenResourceError: http.client.FORBIDDEN,
+                BrokenResourceError: http.client.BAD_REQUEST
+            }
+            self.set_status(statuses[exc_info[0]])
+            self.write({'__type__': exc_info[0].__name__, 'message': str(exc_info[1])})
         else:
             super().write_error(status_code, exc_info=exc_info)
 

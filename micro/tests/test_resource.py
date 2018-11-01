@@ -4,7 +4,7 @@ import os
 
 from micro.error import CommunicationError
 
-from micro.resource import Analyzer, AnalysisError, Resource, Image, BadDataError, NoResourceError, ForbiddenResourceError
+from micro.resource import Analyzer, AnalysisError, Resource, Image, BrokenResourceError, NoResourceError, ForbiddenResourceError
 
 from tornado.web import Application, RequestHandler
 from tornado.testing import AsyncHTTPTestCase, gen_test
@@ -49,8 +49,7 @@ class AnalyzerTestCase(AsyncHTTPTestCase):
     @gen_test
     async def test_analyze_loop(self) -> None:
         analyzer = Analyzer()
-        # TODO better exception
-        with self.assertRaises(BadDataError):
+        with self.assertRaises(BrokenResourceError):
             await analyzer.analyze(self.get_url('/static/loop.html'))
 
     @gen_test

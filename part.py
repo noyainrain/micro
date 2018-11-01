@@ -1,4 +1,9 @@
 
+#async def handle_youtube(url: str, content_type: str, data: bytes) -> Optional[Resource]:
+#    id = re.find(url, 'foo')
+#    response = await fetch('https://api.youtube.com/videos/{}'.format(id))
+#    return Video(url)
+
 # ---
 
 Github: attach file

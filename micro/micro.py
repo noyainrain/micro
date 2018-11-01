@@ -1,5 +1,4 @@
 # micro
-
 # Copyright (C) 2018 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
@@ -46,7 +45,7 @@ from . import resolve
 from .resolve import Resolver, LinkEntity, ImageEntity
 from .resource import Analyzer, Resource
 from .util import check_email, randstr, parse_isotime, str_or_none, version
-from .error import CommunicationError
+from .error import CommunicationError, ValueError
 
 _PUSH_TTL = 24 * 60 * 60
 
@@ -138,7 +137,7 @@ class Application:
         self.render_email_auth_message = render_email_auth_message
 
         self._resolver = Resolver()
-        self._analyzer = Analyzer()
+        self.analyzer = Analyzer()
 
     @property
     def settings(self):
@@ -290,7 +289,7 @@ class Application:
         return self.authenticate(user.auth_secret)
 
     async def preview(self, url: str) -> Resource:
-        return await self._analyzer.analyze(url)
+        return await self.analyzer.analyze(url)
 
     async def resolve_entity(self, url):
         try:
@@ -1177,17 +1176,6 @@ class Location:
         """Return a JSON representation of the location."""
         return {'name': self.name, 'coords': list(self.coords) if self.coords else None}
 
-class ValueError(builtins.ValueError):
-    """See :ref:`ValueError`.
-
-    The first item of *args* is also available as *code*.
-    """
-
-    @property
-    def code(self):
-        # pylint: disable=missing-docstring; already documented
-        return self.args[0] if self.args else None
-
 class InputError(ValueError):
     """See :ref:`InputError`.
 
@@ -1220,10 +1208,6 @@ class AuthenticationError(Exception):
 class PermissionError(Exception):
     """See :ref:`PermissionError`."""
     pass
-
-#class CommunicationError(Exception):
-#    """See :ref:`CommunicationError`."""
-#    pass
 
 class EmailError(Exception):
     """Raised if communication with the SMTP server fails."""

@@ -1,24 +1,49 @@
-# TODO
+# micro
+# Copyright (C) 2018 micro contributors
+#
+# This program is free software: you can redistribute it and/or modify it under the terms of the GNU
+# Lesser General Public License as published by the Free Software Foundation, either version 3 of
+# the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License along with this program.
+# If not, see <http://www.gnu.org/licenses/>.
 
+"""Functionality for handling web resource.
+
+.. data:: HandleResourceFunc
+
+   Function of the form
+   ``handle(url: str, content_type: str, data: bytes, analyzer: Analyzer) -> Optional[Resource]``
+   which processes a web resource and returns a description of it. Resource *url* media type
+   *content_type* and content *data*. Additionally *analyzer*, useful for analyzing subresources. If
+   the given resource cannot be handled by the function, ``None`` is returned. May be ``async``.
+"""
+
+from collections import OrderedDict
 import errno
+from inspect import isawaitable
+from html.parser import HTMLParser
 import os
-from typing import Dict, List, Tuple, Callable, Optional, cast, Awaitable, Union
+import time
+from typing import Awaitable, Callable, Dict, List, Optional, Tuple, Union, cast
+from urllib.parse import urljoin
+
+from tornado.httpclient import AsyncHTTPClient, HTTPClientError, HTTPResponse
+from tornado.simple_httpclient import HTTPStreamClosedError, HTTPTimeoutError
 
 from . import error
 from .error import CommunicationError, Error
 from .util import str_or_none
 
-from tornado.httpclient import AsyncHTTPClient, HTTPClientError, HTTPResponse
-from tornado.simple_httpclient import HTTPStreamClosedError, HTTPTimeoutError
-
-IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/gif']
-WEBPAGE_TYPES = ['text/html', 'application/xhtml+xml']
-
-HandleFunc = Callable[[str, str, bytes, 'Analyzer'],
-                      Union[Optional['Resource'], Awaitable[Optional['Resource']]]]
+HandleResourceFunc = Callable[[str, str, bytes, 'Analyzer'],
+                              Union[Optional['Resource'], Awaitable[Optional['Resource']]]]
 
 class Resource:
-    """TODO Web resource representation with useful meta data."""
+    """See :ref:`Resource`."""
 
     def __init__(self, url: str, content_type: str, *, description: str = None,
                  image: 'Image' = None) -> None:
@@ -41,76 +66,58 @@ class Resource:
         }
 
 class Image(Resource):
-    """TODO.
-
-    image is always none because the image itself is its image representation ;)
-    """
+    """See :ref:`Image`."""
 
     def __init__(self, url: str, content_type: str, *, description: str = None) -> None:
         super().__init__(url, content_type, description=description)
 
-from inspect import isawaitable
-
 class Analyzer:
-    """TODO.
+    """Web resource analyzer.
 
     .. attribute:: handlers
 
-       TODO. Defaults to all builtin handlers.
+       List of web resource handlers to use for analyzing. By default, all handlers included with
+       the module are enabled.
     """
 
-    def __init__(self, *, handlers: List[HandleFunc] = None, _stack: List[str] = []) -> None:
-        self.handlers = ([handle_image, handle_webpage] if handlers is None
-                         else list(handlers)) # type: List[HandleFunc]
-        self._stack = list(_stack)
-        self._cache = {} # type: Dict[str, Resource]
-        #self._expiry = deque()
+    _CACHE_SIZE = 128
+    _CACHE_TTL = 60 * 60
 
-    #def _clear_cache(self):
-    #    now = time.time()
-    #    for x in self._expiry:
-    #        if x[0] > now:
-    #            break
-    #        del self._cache[x[1]]
-    #        self._expiry.popleft()
+    def __init__(self, *, handlers: List[HandleResourceFunc] = None, _stack: List[str] = None,
+                 _cache: 'OrderedDict[str, Tuple[Resource, float]]' = None) -> None:
+        self.handlers = ([handle_image, handle_webpage] if handlers is None
+                         else list(handlers)) # type: List[HandleResourceFunc]
+        self._stack = [] if _stack is None else _stack
+        self._cache = OrderedDict() if _cache is None else _cache
 
     async def analyze(self, url: str) -> Resource:
-        """Analyze the resource at *url*.
+        """Analyze the web resource at *url* and return a description of it.
 
-        CommunicationError, AnalysisError.
+        *url* is an absolute HTTP(S) URL. If there is a problem fetching or analyzing the resource,
+        a :class:`CommunicationError` or :class:`AnalysisError` is raised respectively.
+
+        Results are cached for around one hour.
         """
-        #self._clear_cache()
-        if url in self._cache:
-            return self._cache[url]
+        if len(self._stack) == 3:
+            raise _LoopError()
 
-        if len(self._stack) >= 3:
-            raise BadDataError('max sub resources', url)
-        analyzer = Analyzer(handlers=self.handlers, _stack=self._stack + [url])
-
-        request = 'GET {}'.format(url)
         try:
-            response = await AsyncHTTPClient().fetch(url)
-        except ValueError:
-            raise error.ValueError('Unsupported url {}'.format(url))
-        except HTTPStreamClosedError:
-            raise CommunicationError(os.strerror(errno.ESHUTDOWN), request)
-        except HTTPTimeoutError:
-            raise CommunicationError(os.strerror(errno.ETIMEDOUT), request)
-        except HTTPClientError as e:
-            if e.code in (404, 410):
-                raise NoResourceError('Resource not found', url)
-            if e.code in (401, 402, 403, 405, 451):
-                raise ForbiddenResourceError('Resource forbidden', url)
-            raise CommunicationError('Server responded with status {}'.format(e.code), request,
-                                     str(e.code))
-        except OSError as e:
-            raise CommunicationError(str(e), request)
-        content_type = response.headers['Content-Type'].split(';', 1)[0]
+            return self._cache_get(url)
+        except KeyError:
+            pass
 
+        response = await self.fetch(url)
+        content_type = response.headers['Content-Type'].split(';', 1)[0]
+        analyzer = Analyzer(handlers=self.handlers, _stack=self._stack + [url], _cache=self._cache)
         resource = None
         for handle in self.handlers:
-            result = handle(response.effective_url, content_type, response.body, analyzer)
-            resource = result if result is None or isinstance(result, Resource) else await result
+            try:
+                result = handle(response.effective_url, content_type, response.body, analyzer)
+                resource = result if result is None or isinstance(result, Resource) else await result
+            except _LoopError:
+                if len(self._stack) > 0:
+                    raise
+                raise BrokenResourceError('Loop analyzing {}'.format(url))
             #resource = await result if isawaitable(result) else result
             #resource = handle(response.effective_url, content_type, response.body)
             #if resource is not None and not isinstance(resource, Resource): # isawaitable(resource):
@@ -121,46 +128,64 @@ class Analyzer:
         if resource is None:
             resource = Resource(response.effective_url, content_type)
 
-        self._cache[url] = resource
-        self._cache[resource.url] = resource
-        #expire = time.time() + 60 * 60
-        #self._expiry.append((expire, url))
-        #self._expiry.append((expire, resource.url))
+        self._cache_set(url, resource)
+        self._cache_set(resource.url, resource)
         return resource
 
-    @staticmethod
-    async def fetch(url: str) -> HTTPResponse:
-        """Fetch resource with exception handling.
+    def _cache_get(self, url: str) -> Resource:
+        resource, expires = self._cache[url]
+        if time.time() >= expires:
+            del self._cache[url]
+            raise KeyError(url)
+        return resource
 
-        Error handling as explained in :meth:`Analyzer.analyze`.
+    def _cache_set(self, url: str, resource: Resource) -> None:
+        try:
+            del self._cache[url]
+        except KeyError:
+            pass
+        if len(self._cache) == self._CACHE_SIZE:
+            self._cache.popitem(last=False)
+        self._cache[url] = (resource, time.time() + self._CACHE_TTL)
+
+    async def fetch(self, request: str, **kwargs: object) -> HTTPResponse:
+        """Execute a *request*.
+
+        Wrapper around :meth:`AsyncHTTPClient.fetch` with error handling suitable for
+        :meth:`analyze`.
         """
-
-from html.parser import HTMLParser
+        try:
+            return await AsyncHTTPClient().fetch(request)
+        except ValueError:
+            raise error.ValueError('Bad url scheme {!r}'.format(request, **kwargs))
+        except HTTPStreamClosedError:
+            raise CommunicationError('{} for GET {}'.format(os.strerror(errno.ESHUTDOWN), request))
+        except HTTPTimeoutError:
+            raise CommunicationError('{} for GET {}'.format(os.strerror(errno.ETIMEDOUT), request))
+        except HTTPClientError as e:
+            if e.code in (404, 410):
+                raise NoResourceError('No resource at {}'.format(request))
+            if e.code in (401, 402, 403, 405, 451):
+                raise ForbiddenResourceError('Forbidden resource at {}'.format(request))
+            raise CommunicationError('Unexpected response status {} for GET {}'.format(e.code, request))
+        except OSError as e:
+            raise CommunicationError('{} for GET {}'.format(e, request))
 
 def handle_image(url: str, content_type: str, data: bytes, analyzer: Analyzer) -> Optional[Image]:
-    if content_type in IMAGE_TYPES:
+    """Process an image resource."""
+    if content_type in ['image/jpeg', 'image/png', 'image/svg+xml', 'image/gif']:
         return Image(url, content_type)
     return None
 
-from micro.util import str_or_none
-from urllib.parse import urljoin
-
 async def handle_webpage(url: str, content_type: str, data: bytes,
                          analyzer: Analyzer) -> Optional[Resource]:
-    # TODO implement (see resolve)
-    # if data is somehow invalid:
-    # raise AnalysisError('Broken HTML [bad_resource]', url) #.format(url))
-    if content_type not in WEBPAGE_TYPES:
+    """Process a webpage resource."""
+    if content_type not in ['text/html', 'application/xhtml+xml']:
         return None
-        #raise AnalysisError('Unsupported content type {} [unsupported_content_type]'.format(content_type), url)
-        #raise AnalysisError('content_type: unsupported' 'content type {} [unsupported_content_type]'.format(content_type), url)
-        #raise ValueError('content_type', 'unsupported', content_type)
-        #raise ValueError('Unsupported content_type {}'.format(content_type))
-        #raise AnalysisError('Unsupported content_type {}'.format(content_type), url)
     try:
         html = data.decode()
     except UnicodeDecodeError:
-        raise BadDataError('unicode', url)
+        raise BrokenResourceError('Bad data encoding analyzing {}'.format(url))
     parser = _MetaParser()
     parser.feed(html)
     parser.close()
@@ -172,52 +197,37 @@ async def handle_webpage(url: str, content_type: str, data: bytes,
     description = '{} - {}'.format(title, short) if title and short else title or short
 
     image = None
-    image_url = parser.meta.get('og:image') or parser.meta.get('og:image:url') or parser.meta.get('og:image:secure_url')
+    image_url = (parser.meta.get('og:image') or parser.meta.get('og:image:url') or
+                 parser.meta.get('og:image:secure_url'))
     if image_url:
         image_url = urljoin(url, image_url)
         try:
             res = await analyzer.analyze(image_url)
-        except ValueError:
-            raise BadDataError('url', image_url)
+        except error.ValueError as e:
+            raise BrokenResourceError('Bad data image URL scheme {!r} analyzing {}'.format(image_url, url))
         if not isinstance(res, Image):
-            raise BadDataError('not an image', image_url)
+            raise BrokenResourceError('Bad image type {!r} analyzing {}'.format(type(res).__name__, url))
         image = res
 
     return Resource(url, content_type, description=description, image=image)
 
-#async def handle_youtube(url: str, content_type: str, data: bytes) -> Optional[Resource]:
-#    id = re.find(url, 'foo')
-#    response = await fetch('https://api.youtube.com/videos/{}'.format(id))
-#    return Video(url)
-
 class AnalysisError(Error):
-    """See :ref:`AnalysisError`.
-
-    Returned if analyzing a web resource fails.
-
-    .. describe:: url
-
-       URL of the web resource subject to analysis.
-    """
-    args = None # type: Tuple[str, str]
-
-    def __init__(self, message: str, url: str) -> None:
-        super().__init__(message)
-        self.url = url
-
-    def json(self) -> Dict[str, object]:
-        return {**super().json(), 'url': self.url}
+    """See :ref:`AnalysisError`."""
+    pass
 
 class NoResourceError(AnalysisError):
-    """TODO."""
+    """See :ref:`NoResourceError`."""
     pass
 
 class ForbiddenResourceError(AnalysisError):
-    """TODO."""
+    """See :ref:`ForbiddenResourceError`."""
     pass
 
-class BadDataError(AnalysisError):
-    """TODO."""
+class BrokenResourceError(AnalysisError):
+    """See :ref:`BrokenResourceError`."""
+    pass
+
+class _LoopError(Exception):
     pass
 
 # TODO: should we quit after head?
