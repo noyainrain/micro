@@ -251,7 +251,7 @@ class Endpoint(RequestHandler):
         elif issubclass(exc_info[0], CommunicationError):
             self.set_status(http.client.BAD_GATEWAY)
             self.write({'__type__': 'CommunicationError'})
-        if issubclass(exc_info[0], Error):
+        elif issubclass(exc_info[0], Error):
             statuses = {
                 error.ValueError: http.client.BAD_REQUEST,
                 error.CommunicationError: http.client.BAD_GATEWAY,
@@ -260,7 +260,7 @@ class Endpoint(RequestHandler):
                 BrokenResourceError: http.client.BAD_REQUEST
             }
             self.set_status(statuses[exc_info[0]])
-            self.write({'__type__': exc_info[0].__name__, 'message': str(exc_info[1])})
+            self.write(exc_info[1].json())
         else:
             super().write_error(status_code, exc_info=exc_info)
 

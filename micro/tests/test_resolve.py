@@ -26,23 +26,23 @@ class ResolverTestCase(AsyncHTTPTestCase):
         with self.assertRaises(WebError):
             content = await resolver.resolve(self.get_url('/foo'))
 
-    @gen_test
-    async def test_resolve_media(self):
-        resolver = Resolver()
-        content = await resolver.resolve(self.get_url('/image.png'))
-        print(content)
-        self.assertTrue(content)
-        self.assertEqual(content.content_type, 'image/png')
+    #@gen_test
+    #async def test_resolve_media(self):
+    #    resolver = Resolver()
+    #    content = await resolver.resolve(self.get_url('/image.png'))
+    #    print(content)
+    #    self.assertTrue(content)
+    #    self.assertEqual(content.content_type, 'image/png')
 
-    @gen_test
-    async def test_resolve_media_cached(self):
-        resolver = Resolver()
-        content = await resolver.resolve(self.get_url('/image.png'))
-        print(content)
-        content = await resolver.resolve(self.get_url('/image.png'))
-        print(content)
-        self.assertTrue(content)
-        self.assertEqual(content.content_type, 'image/png')
+    #@gen_test
+    #async def test_resolve_media_cached(self):
+    #    resolver = Resolver()
+    #    content = await resolver.resolve(self.get_url('/image.png'))
+    #    print(content)
+    #    content = await resolver.resolve(self.get_url('/image.png'))
+    #    print(content)
+    #    self.assertTrue(content)
+    #    self.assertEqual(content.content_type, 'image/png')
 
     @gen_test
     async def test_resolve_website_og(self):
