@@ -19,8 +19,7 @@ communicating with the Redis server.
 
 .. deprecated:: 0.25.0
 
-   ``CommuniationError`` and ``ValueError``. Use ``error.CommunicationError`` and
-   ``error.ValueError`` instead respectively.
+   ``CommuniationError`` and ``ValueError``. Import them from :mod:`error` instead.
 """
 
 import os
