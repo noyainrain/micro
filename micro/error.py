@@ -12,22 +12,29 @@
 # You should have received a copy of the GNU Lesser General Public License along with this program.
 # If not, see <http://www.gnu.org/licenses/>.
 
-"""Toolkit for social micro web apps.
+"""micro errors."""
 
-micro is based on Redis and thus any method may raise a :exc:`RedisError` if there is a problem
-communicating with the Redis server.
+import builtins
+from typing import Dict
 
-.. deprecated:: 0.25.0
+class Error(Exception):
+    """Base for micro errors."""
 
-   ``CommuniationError`` and ``ValueError``. Import them from :mod:`error` instead.
-"""
+    def json(self) -> Dict[str, object]:
+        """Return a JSON representation of the error."""
+        return {'__type__': type(self).__name__, 'message': str(self)}
 
-import os
+class ValueError(builtins.ValueError, Error):
+    """See :ref:`ValueError`.
 
-# Compatibility for old location of CommunicationError and ValueError (deprecated since 0.25.0)
-from micro.micro import (
-    Application, Object, Editable, Trashable, Collection, Orderable, User, Settings, Activity,
-    Event, AuthRequest, Location, ValueError, InputError, AuthenticationError, PermissionError,
-    CommunicationError, EmailError)
+    The first item of *args* is also available as *code*.
+    """
 
-DOC_PATH = os.path.join(os.path.dirname(__file__), 'doc')
+    @property
+    def code(self):
+        # pylint: disable=missing-docstring; already documented
+        return self.args[0] if self.args else None
+
+class CommunicationError(Error):
+    """See :ref:`CommunicationError`."""
+    pass

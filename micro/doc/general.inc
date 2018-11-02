@@ -264,10 +264,33 @@ Location.
 
    Coordinates as latitude-longitude pair. May be ``null``.
 
+.. _Resource:
+
+Resource
+--------
+
+Web resource description.
+
+.. include:: micro/resource-attributes.inc
+
+.. _Image:
+
+Image
+-----
+
+Image :ref:`Resource` description.
+
+Note that the *image* representation is always ``null``.
+
+.. include:: micro/resource-attributes.inc
+
+Errors
+------
+
 .. _ValueError:
 
 ValueError
-----------
+^^^^^^^^^^
 
 Returned for value-related errors.
 
@@ -278,7 +301,7 @@ Returned for value-related errors.
 .. _InputError:
 
 InputError
-----------
+^^^^^^^^^^
 
 Returned if the input to an endpoint contains one or more arguments with an invalid value.
 
@@ -291,27 +314,55 @@ InputError is a :ref:`ValueError` with *code* set to ``input_invalid``.
 .. _NotFoundError:
 
 NotFoundError
--------------
+^^^^^^^^^^^^^
 
 Returned if a requested endpoint does not exist.
 
 .. _AuthenticationError:
 
 AuthenticationError
--------------------
+^^^^^^^^^^^^^^^^^^^
 
 Returned if user authentication fails.
 
 .. _PermissionError:
 
 PermissionError
----------------
+^^^^^^^^^^^^^^^
 
 Returned if the current user is not allowed to perform an action.
 
 .. _CommunicationError:
 
 CommunicationError
-------------------
+^^^^^^^^^^^^^^^^^^
 
 Returned if communication with a third party fails.
+
+.. _AnalysisError:
+
+AnalysisError
+^^^^^^^^^^^^^
+
+Returned if analyzing a web resource fails.
+
+.. _NoResourceError:
+
+NoResourceError
+^^^^^^^^^^^^^^^
+
+:ref:`AnalysisError` returned if there is no resource at the URL to analyze.
+
+.. _ForbiddenResourceError:
+
+ForbiddenResourceError
+^^^^^^^^^^^^^^^^^^^^^^
+
+:ref:`AnalysisError` returned if access to the resource subject to analysis is forbidden.
+
+.. _BorkenResourceError:
+
+BrokenResourceError
+^^^^^^^^^^^^^^^^^^^
+
+:ref:`AnalysisError` returned if the resource subject to analysis is broken.

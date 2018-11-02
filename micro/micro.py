@@ -42,6 +42,7 @@ from typing_extensions import Protocol
 
 from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
                              RedisSequence, expect_type)
+from .error import CommunicationError, ValueError
 from .util import check_email, randstr, parse_isotime, str_or_none, version
 
 _PUSH_TTL = 24 * 60 * 60
@@ -1131,17 +1132,6 @@ class Location:
         """Return a JSON representation of the location."""
         return {'name': self.name, 'coords': list(self.coords) if self.coords else None}
 
-class ValueError(builtins.ValueError):
-    """See :ref:`ValueError`.
-
-    The first item of *args* is also available as *code*.
-    """
-
-    @property
-    def code(self):
-        # pylint: disable=missing-docstring; already documented
-        return self.args[0] if self.args else None
-
 class InputError(ValueError):
     """See :ref:`InputError`.
 
@@ -1173,10 +1163,6 @@ class AuthenticationError(Exception):
 
 class PermissionError(Exception):
     """See :ref:`PermissionError`."""
-    pass
-
-class CommunicationError(Exception):
-    """See :ref:`CommunicationError`."""
     pass
 
 class EmailError(Exception):
