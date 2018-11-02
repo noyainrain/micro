@@ -44,8 +44,8 @@ from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedis
 from . import resolve
 from .resolve import Resolver, LinkEntity, ImageEntity
 from .resource import Analyzer, Resource
-from .util import check_email, randstr, parse_isotime, str_or_none, version
 from .error import CommunicationError, ValueError
+from .util import check_email, randstr, parse_isotime, str_or_none, version
 
 _PUSH_TTL = 24 * 60 * 60
 
