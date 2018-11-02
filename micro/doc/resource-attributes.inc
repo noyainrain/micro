@@ -1,10 +1,10 @@
 .. describe:: url
 
-   URL to retrieve the resource.
+   URL of the resource.
 
 .. describe:: content_type
 
-   Media type of the resource.
+   Media type.
 
 .. describe:: description
 

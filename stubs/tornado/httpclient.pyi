@@ -6,7 +6,7 @@ class AsyncHTTPClient:
 
 class HTTPResponse:
     code: int
-    headers: Dict[str, str] # TODO: HTTPHeaders
+    headers: Dict[str, str]
     effective_url: str
     body: bytes
     error: Optional[Exception]

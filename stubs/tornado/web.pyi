@@ -20,7 +20,7 @@ class Application:
         handlers:
             Sequence[
                 Union[Tuple[str, Type[RequestHandler]], Tuple[str, Type[RequestHandler],
-                      Dict[str, object]]]] = None,
+                      Dict[str, object]]]],
         **settings: object) -> None: ...
 
 class StaticFileHandler(RequestHandler): ...

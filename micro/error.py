@@ -15,10 +15,14 @@
 """micro errors."""
 
 import builtins
+from typing import Dict
 
 class Error(Exception):
     """Base for micro errors."""
-    pass
+
+    def json(self) -> Dict[str, object]:
+        """Return a JSON representation of the error."""
+        return {'__type__': type(self).__name__, 'message': str(self)}
 
 class ValueError(builtins.ValueError, Error):
     """See :ref:`ValueError`.
