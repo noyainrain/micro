@@ -1,12 +1,18 @@
 <template class="micro-ui-template">
     <header class="micro-ui-header" style="display: none;">
-        <nav class="micro-ui-inside">
-            <h1 class="micro-ui-logo">
-                <a class="link" href="/" data-shortcut="new Shortcut 'N,S'">
+        <nav class="micro-ui-inside micro-panel">
+            <a class="micro-ui-logo link" href="/" data-shortcut="new Shortcut 'N,S'">
+                <h1>
                     <img/> <span class="micro-ui-logo-text"></span>
                     <span class="micro-ui-beta">Beta</span>
-                </a>
-            </h1>
+                </h1>
+            </a>
+            <p
+                class="micro-ui-header-offline" tabindex="0"
+                data-title="format '{title} is currently offline' 'title' settings.title"
+            >
+                <i class="fa fa-fw fa-wifi"></i>
+            </p>
 
             <div class="micro-ui-header-fill"></div>
 
@@ -66,6 +72,10 @@
     </header>
 </template>
 <style>
+    .micro-ui-header-offline {
+        color: var(--micro-color-text-subtle);
+    }
+
     .micro-ui-keyboard {
         padding: 0 calc(1.5rem / 4);
     }
@@ -84,6 +94,10 @@
     .micro-ui-keyboard:hover ul,
     .micro-ui-keyboard:focus ul {
         display: block;
+    }
+
+    body:not(.micro-ui-offline) .micro-ui-header-offline {
+        display: none;
     }
 </style>
 

@@ -126,6 +126,9 @@ class Server:
         self.app.email = 'bot@' + urlparts.hostname
         self.app.render_email_auth_message = self._render_email_auth_message
 
+        def get_activity(*args: str) -> Activity:
+            # pylint: disable=unused-argument; part of API
+            return self.app.activity
         self.handlers = [
             # UI
             (r'/log-client-error$', _LogClientErrorEndpoint),
@@ -138,8 +141,10 @@ class Server:
             (r'/api/users/([^/]+)/remove-email$', _UserRemoveEmailEndpoint),
             (r'/api/settings$', _SettingsEndpoint),
             # Compatibility with non-object Activity (deprecated since 0.14.0)
-            make_activity_endpoint(r'/api/activity/v2', lambda *args: self.app.activity),
-            *make_list_endpoints(r'/api/activity(?:/v1)?', lambda *args: self.app.activity),
+            make_activity_endpoint(r'/api/activity/v2', get_activity),
+            *make_list_endpoints(r'/api/activity(?:/v1)?', get_activity),
+            (r'/api/activity/stream', ActivityStreamEndpoint,
+             {'get_activity': cast(object, get_activity)}),
             *handlers
         ]
 
@@ -317,6 +322,38 @@ class CollectionEndpoint(Endpoint):
         except ValueError:
             raise micro.ValueError('bad_slice_format')
         self.write(collection.json(restricted=True, include=True, slc=slc))
+
+class ActivityStreamEndpoint(Endpoint):
+    """Event stream API endpoint for :class:`Activity`.
+
+    .. attribute:: get_activity
+
+       Function of the form ``get_activity(*args)``, responsible for retrieving the activity. *args*
+       are the URL arguments.
+    """
+
+    def initialize(self, **args: object) -> None:
+        super().initialize(**args)
+        get_activity = args.get('get_activity')
+        if not callable(get_activity):
+            raise TypeError()
+        self.get_activity = get_activity # type: Callable[[VarArg(str)], Activity]
+        self._stream = None # type: Optional[Activity.Stream]
+
+    async def get(self, *args: str) -> None:
+        activity = self.get_activity(*args)
+        self._stream = activity.stream()
+        self.set_header('Content-Type', 'text/event-stream')
+        self.flush()
+        async for event in self._stream:
+            self.app.user = self.current_user
+            data = json.dumps(event.json(restricted=True, include=True)) # type: ignore
+            self.write('data: {}\n\n'.format(data))
+            self.flush()
+
+    def on_connection_close(self) -> None:
+        if self._stream:
+            IOLoop.current().add_callback(self._stream.aclose)
 
 def make_list_endpoints(
         url: str, get_list: Callable[[VarArg(str)], Sequence[JSONifiable]]) -> List[Handler]:

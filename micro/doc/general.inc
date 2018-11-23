@@ -220,6 +220,10 @@ Activity feed (of events) around a common topic/context.
 
    Permission: Authenticated users.
 
+.. http:get:: /api/(activity-url)/stream
+
+   Get a live stream of :ref:`Event`s as ``text/event-stream``.
+
 .. _Event:
 
 Event

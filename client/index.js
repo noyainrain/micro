@@ -91,6 +91,7 @@ micro.UI = class extends HTMLBodyElement {
         this._page = null;
         this._progressElem = this.querySelector(".micro-ui-progress");
         this._pageSpace = this.querySelector("main .micro-ui-inside");
+        this._activities = new Set();
 
         this.pages = [
             {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.EditUserPage.make},
@@ -111,7 +112,13 @@ micro.UI = class extends HTMLBodyElement {
             }
         };
 
-        window.addEventListener("error", this);
+        window.addEventListener("error", event => {
+            // Work around bogus EventSource polyfill errors
+            if (event.message.startsWith("EventSource")) {
+                return;
+            }
+            this.notify(document.createElement("micro-error-notification"));
+        });
         window.addEventListener("popstate", () => this._navigate().catch(micro.util.catch));
         this.addEventListener("click", event => {
             let a = micro.findAncestor(event.target, e => e instanceof HTMLAnchorElement, this);
@@ -147,7 +154,8 @@ micro.UI = class extends HTMLBodyElement {
             document.importNode(this.querySelector(".micro-ui-template").content, true),
             this.querySelector("main"));
         this._data = new micro.bind.Watchable({
-            settings: {title: document.title}
+            settings: {title: document.title},
+            offline: false
         });
         micro.bind.bind(this.children, this._data);
 
@@ -156,8 +164,9 @@ micro.UI = class extends HTMLBodyElement {
                 this._data.settings.icon_small || "";
             document.querySelector('link[rel=icon][sizes="192x192"]').href =
                 this._data.settings.icon_large || "";
+            this.classList.toggle("micro-ui-offline", this._data.offline);
         };
-        this._data.watch("settings", update);
+        ["settings", "offline"].forEach(prop => this._data.watch(prop, update));
 
         this.features = {
             es6TypedArray: "ArrayBuffer" in window,
@@ -542,11 +551,21 @@ micro.UI = class extends HTMLBodyElement {
         }
     }
 
-    handleEvent(event) {
-        if (event.currentTarget === window && event.type === "error") {
-            this.notify(document.createElement("micro-error-notification"));
+    _addActivity(activity) {
+        const update = () => {
+            this._data.offline = !Array.from(this._activities).every(a => a.connected);
+        };
+        this._activities.add(activity);
+        update();
+        activity.events.addEventListener("close", () => {
+            this._activities.delete(activity);
+            update();
+        });
+        ["connect", "disconnect"].forEach(event => activity.events.addEventListener(event, update));
+    }
 
-        } else if (event.target === this && event.type === "user-edit") {
+    handleEvent(event) {
+        if (event.target === this && event.type === "user-edit") {
             this._storeUser(event.detail.user);
             this._update();
 
@@ -554,6 +573,103 @@ micro.UI = class extends HTMLBodyElement {
             this._data.settings = event.detail.settings;
             this._update();
         }
+    }
+};
+
+/**
+ * :ref:`Activity` stream of events.
+ *
+ * Received events are dispatched.
+ *
+ * .. attribute:: url
+ *
+ *    :http:get:`/api/(activity-url)/stream` URL.
+ *
+ * .. attribute:: connected
+ *
+ *    Indicates if the stream is connected and ready to emit events. If disconnected, it'll be
+ *    reconnected automatically.
+ *
+ * .. describe:: connect
+ *
+ *    Dispatched if the stream has been reconnected.
+ *
+ * .. describe:: disconnect
+ *
+ *    Dispatched if the stream has been disconnected.
+ *
+ * .. describe:: close
+ *
+ *    Dispatched when the stream has been closed (via :meth:`close`).
+ */
+micro.Activity = class {
+    /** Open the activity stream at *url*. */
+    static async open(url) {
+        const eventSource = new EventSource(url, {heartbeatTimeout: 60 * 60 * 1000});
+        // Wait for initial connection attempt
+        await new Promise(resolve => {
+            function stop() {
+                ["open", "error"].forEach(event => eventSource.removeEventListener(event, stop));
+                resolve();
+            }
+            ["open", "error"].forEach(event => eventSource.addEventListener(event, stop));
+        });
+
+        const activity = new micro.Activity(eventSource);
+        // eslint-disable-next-line no-underscore-dangle
+        ui._addActivity(activity);
+        return activity;
+    }
+
+    constructor(eventSource) {
+        this._RESET_TIMEOUT = 60 * 1000;
+
+        this.url = eventSource.url;
+        this.connected = eventSource.readyState === 1;
+        this.events = document.createElement("span");
+        this._eventSource = eventSource;
+        this._timeout = null;
+
+        this._setupEventSource();
+        if (this._eventSource.readyState === 2) {
+            this._resetEventSource();
+        }
+    }
+
+    /** Close the stream. */
+    close() {
+        this._eventSource.close();
+        clearTimeout(this._timeout);
+        this.events.dispatchEvent(new CustomEvent("close"));
+    }
+
+    _setupEventSource() {
+        this._eventSource.addEventListener("open", () => {
+            this.connected = true;
+            this.events.dispatchEvent(new CustomEvent("connect"));
+        });
+
+        this._eventSource.addEventListener("error", () => {
+            if (this.connected) {
+                this.connected = false;
+                this.events.dispatchEvent(new CustomEvent("disconnect"));
+            }
+            if (this._eventSource.readyState === 2) {
+                this._resetEventSource();
+            }
+        });
+
+        this._eventSource.addEventListener("message", event => {
+            const e = JSON.parse(event.data);
+            this.events.dispatchEvent(new CustomEvent(e.type, {detail: {event: e}}));
+        });
+    }
+
+    _resetEventSource() {
+        this._timeout = setTimeout(() => {
+            this._eventSource = new EventSource(this.url, {heartbeatTimeout: 60 * 60 * 1000});
+            this._setupEventSource();
+        }, this._RESET_TIMEOUT);
     }
 };
 

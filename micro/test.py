@@ -75,7 +75,7 @@ class CatApp(Application):
             self.app.r.rpush('cats', cat.id)
             return cat
 
-    def __init__(self, redis_url=''):
+    def __init__(self, redis_url: str = '') -> None:
         super().__init__(redis_url=redis_url)
         self.types.update({'Cat': Cat})
         self.cats = self.Cats(app=self)

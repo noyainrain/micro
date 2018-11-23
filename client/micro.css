@@ -158,11 +158,6 @@ pre {
     margin: 0;
 }
 
-.micro-panel p {
-    padding: var(--micro-size-xs);
-    margin: 0;
-}
-
 .micro-icon-title {
     border-bottom: none;
     color: #888;
@@ -346,6 +341,36 @@ legend {
 
 legend::after {
     content: ':';
+}
+
+/* ---- Panel ---- */
+
+.micro-panel > h1,
+.micro-panel > p,
+.micro-panel > .link,
+.micro-panel > div > p,
+.micro-panel > div > .link {
+    padding: var(--micro-size-xs);
+    margin: 0;
+}
+
+.micro-panel > h1,
+.micro-panel > .link > h1 {
+    border-bottom: none;
+    margin: 0;
+    font-size: 1em;
+}
+
+.micro-panel > .link:focus,
+.micro-panel > .link:hover,
+.micro-panel > [tabindex]:focus,
+.micro-panel > [tabindex]:hover,
+.micro-panel > div > .link:focus,
+.micro-panel > div > .link:hover,
+.micro-panel > div > [tabindex]:focus,
+.micro-panel > div > [tabindex]:hover {
+    background: var(--micro-color-delimiter);
+    text-decoration: none;
 }
 
 /* ---- Entity list ---- */
@@ -615,21 +640,8 @@ legend::after {
     white-space: nowrap;
 }
 
-.micro-ui-logo {
-    border-bottom: none;
-    margin: 0;
-    font-size: 1rem;
-}
-
-.micro-ui-logo .link {
-    display: block;
-    padding: calc(0.25 * 1.5em) 0;
-}
-
-.micro-ui-logo .link:hover,
-.micro-ui-logo .link:focus {
-    background: #ddd;
-    text-decoration: none;
+.micro-panel > .micro-ui-logo {
+    padding-left: 1px;
 }
 
 .micro-ui-logo img {
@@ -644,7 +656,6 @@ legend::after {
 
 .micro-ui-header-fill {
     flex: auto;
-    min-width: calc(0.25 * 1.5rem);
 }
 
 .micro-ui-menu {

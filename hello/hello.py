@@ -17,7 +17,7 @@
 import sys
 
 import micro
-from micro import Application, Collection, Editable, Object, Settings
+from micro import Application, Collection, Editable, Event, Object, Settings
 from micro.jsonredis import RedisList
 from micro.server import CollectionEndpoint, Server
 from micro.util import make_command_line_parser, randstr, setup_logging, str_or_none
@@ -41,6 +41,8 @@ class Hello(Application):
                                 authors=[self.app.user.id], text=text)
             self.r.oset(greeting.id, greeting)
             self.r.rpush(self.ids.key, greeting.id)
+            self.app.activity.publish(
+                Event.create('greetings-create', None, detail={'greeting': greeting}, app=self.app))
             return greeting
 
     def __init__(self, redis_url='', email='bot@localhost', smtp_url='',

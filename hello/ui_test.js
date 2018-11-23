@@ -20,13 +20,15 @@
 "use strict";
 
 let {exec, spawn} = require("child_process");
+let {hostname} = require("os");
 let {promisify} = require("util");
 
 let {until} = require("selenium-webdriver");
 
 let {startBrowser, untilElementTextLocated} = require("@noyainrain/micro/test");
 
-let URL = "http://localhost:8081";
+// Some browsers do not open localhost via proxy
+let URL = `http://${hostname()}:8081`;
 
 describe("UI", function() {
     let server;

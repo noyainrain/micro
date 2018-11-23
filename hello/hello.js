@@ -45,9 +45,10 @@ hello.UI = class extends micro.UI {
 hello.StartPage = class extends micro.Page {
     createdCallback() {
         super.createdCallback();
+        this._activity = null;
+
         this.appendChild(
             document.importNode(ui.querySelector(".hello-start-page-template").content, true));
-
         this._data = new micro.bind.Watchable({
             settings: ui.settings,
             greetings: null,
@@ -55,9 +56,7 @@ hello.StartPage = class extends micro.Page {
             createGreeting: async() => {
                 try {
                     let form = this.querySelector("form");
-                    let greeting = await ui.call("POST", "/api/greetings",
-                                                 {text: form.elements.text.value});
-                    this._data.greetings.unshift(greeting);
+                    await ui.call("POST", "/api/greetings", {text: form.elements.text.value});
                     form.reset();
                 } catch (e) {
                     ui.handleCallError(e);
@@ -77,10 +76,21 @@ hello.StartPage = class extends micro.Page {
             try {
                 let greetings = await ui.call("GET", "/api/greetings");
                 this._data.greetings = new micro.bind.Watchable(greetings.items);
+                this._activity = await micro.Activity.open("/api/activity/stream");
+                this._activity.events.addEventListener(
+                    "greetings-create",
+                    event => this._data.greetings.unshift(event.detail.event.detail.greeting)
+                );
             } catch (e) {
                 ui.handleCallError(e);
             }
         })().catch(micro.util.catch));
+    }
+
+    detachedCallback() {
+        if (this._activity) {
+            this._activity.close();
+        }
     }
 };
 

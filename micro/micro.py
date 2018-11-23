@@ -15,6 +15,7 @@
 
 """Core parts of micro."""
 
+from asyncio import Queue
 import builtins
 from datetime import datetime
 from email.message import EmailMessage
@@ -25,8 +26,8 @@ import os
 import re
 from smtplib import SMTP
 import sys
-from typing import (Callable, Dict, Generic, Iterator, List, Optional, Sequence, Tuple, Type,
-                    TypeVar, Union, cast, overload)
+from typing import (AsyncIterator, Callable, Coroutine, Dict, Generic, Iterator, List, Optional,
+                    Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload)
 from urllib.parse import urlparse
 from warnings import catch_warnings
 
@@ -125,7 +126,7 @@ class Application:
             'Event': Event,
             'AuthRequest': AuthRequest
         } # type: Dict[str, Type[JSONifiable]]
-        self.user = None
+        self.user = None # type: Optional[User]
         self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)
 
         self.email = email
@@ -297,7 +298,7 @@ class Application:
     def check_user_is_staff(self) -> None:
         """Check if the current :attr:`user` is a staff member."""
         # pylint: disable=protected-access; Settings is a friend
-        if not (self.user and self.user.id in self.settings._staff):
+        if not (self.user and self.user.id in self.settings._staff): # type: ignore
             raise PermissionError()
 
     @staticmethod
@@ -705,14 +706,14 @@ class User(Object, Editable):
             raise ValueError('user_no_email')
         self._send_email(self.email, msg)
 
-    def notify(self, event):
+    def notify(self, event: 'Event') -> None:
         """Notify the user about the :class:`Event` *event*.
 
         If :attr:`push_subscription` has expired, device notifications are disabled.
         """
         if self.device_notification_status != 'on':
             return
-        IOLoop.current().add_callback(self._notify, event)
+        IOLoop.current().add_callback(self._notify, event) # type: ignore
 
     async def enable_device_notifications(self, push_subscription):
         """See :http:patch:`/api/users/(id)` (``enable_device_notifications``)."""
@@ -962,19 +963,62 @@ class Settings(Object, Editable):
 class Activity(Object, JSONRedisSequence[JSONifiable]):
     """See :ref:`Activity`."""
 
+    class Stream(AsyncIterator['Event']):
+        """:cls:`collections.abc.AsyncGenerator` of events."""
+        # Syntax for Python 3.6+:
+        #
+        # async def stream(self) -> AsyncGenerator['Event', None]:
+        #     """Return a live stream of events."""
+        #     queue = Queue() # type: Queue[Event]
+        #     self._streams.add(queue)
+        #     try:
+        #         while True:
+        #             yield await cast(Coroutine[object, None, Event], queue.get())
+        #     except GeneratorExit as e:
+        #         self._streams.remove(queue)
+        #         # Work around https://bugs.python.org/issue34730
+        #         queue.put_nowait(None) # type: ignore
+
+        def __init__(self, streams: Set['Queue[Optional[Event]]']) -> None:
+            self._queue = Queue() # type: Queue[Optional[Event]]
+            self._streams = streams
+            self._streams.add(self._queue)
+
+        async def asend(self, value: None) -> 'Event':
+            # pylint: disable=unused-argument, missing-docstring; part of API
+            event = await cast(Coroutine[object, None, Optional[Event]], self._queue.get())
+            if event is None:
+                raise StopAsyncIteration()
+            return event
+
+        async def athrow(self, typ: Type[BaseException], val: BaseException = None,
+                         tb: object = None) -> 'Event':
+            # pylint: disable=unused-argument, missing-docstring; part of API
+            raise val if val else typ()
+
+        async def aclose(self) -> None:
+            # pylint: disable=missing-docstring; part of API
+            self._streams.remove(self._queue)
+            self._queue.put_nowait(None)
+
+        async def __anext__(self) -> 'Event':
+            return await self.asend(None)
+
     def __init__(self, id: str, app: Application, subscriber_ids: List[str],
                  pre: Callable[[], None] = None) -> None:
         super().__init__(id, app)
         JSONRedisSequence.__init__(self, app.r, '{}.items'.format(id), pre)
         self.host = None # type: Optional[object]
         self._subscriber_ids = subscriber_ids
+        self._streams = set() # type: Set[Queue[Optional[Event]]]
 
     @property
-    def subscribers(self):
+    def subscribers(self) -> List[User]:
         """List of :class:`User`s who subscribed to the activity."""
-        return self.app.r.omget(self._subscriber_ids)
+        return self.app.r.omget(self._subscriber_ids, default=AssertionError,
+                                expect=expect_type(User))
 
-    def publish(self, event):
+    def publish(self, event: 'Event') -> None:
         """Publish an *event* to the feed.
 
         All :attr:`subscribers`, except the user who triggered the event, are notified.
@@ -986,6 +1030,8 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
         for subscriber in self.subscribers:
             if subscriber is not event.user:
                 subscriber.notify(event)
+        for stream in self._streams:
+            stream.put_nowait(event)
 
     def subscribe(self):
         """See :http:patch:`/api/(activity-url)` (``subscribe``)."""
@@ -1004,6 +1050,10 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
         except ValueError:
             pass
         self.app.r.oset(self.host.id if self.host else self.id, self.host or self)
+
+    def stream(self) -> 'Activity.Stream':
+        """Return a live stream of events."""
+        return Activity.Stream(self._streams)
 
     def json(self, restricted: bool = False, include: bool = False,
              slice: 'slice' = None) -> Dict[str, object]:
@@ -1069,21 +1119,20 @@ class Event(Object):
         return detail
 
     def json(self, restricted=False, include=False):
-        # pylint: disable=redefined-outer-name; good name
-        json = super().json(restricted=restricted, include=include)
-        json.update({
-            'type': self.type,
-            'object': self._object_id,
-            'user': self._user_id,
-            'time': self.time.isoformat() + 'Z' if self.time else None,
-            'detail': self._detail
-        })
+        obj = self._object_id
+        detail = self._detail
         if include:
-            json['object'] = self.object.json(restricted=restricted) if self.object else None
-            json['user'] = self.user.json(restricted=restricted)
-            json['detail'] = {k: v.json(restricted=restricted) if isinstance(v, Object) else v
-                              for k, v in self.detail.items()}
-        return json
+            obj = self.object.json(restricted, include) if self.object else None
+            detail = {k: v.json(restricted, include) if isinstance(v, Object) else v for k, v
+                      in self.detail.items()}
+        return {
+            **super().json(restricted, include),
+            'type': self.type,
+            'object': obj,
+            'user': self.user.json(restricted) if include else self._user_id,
+            'time': self.time.isoformat() + 'Z' if self.time else None,
+            'detail': detail
+        }
 
     def __str__(self) -> str:
         return '<{} {} on {} by {}>'.format(type(self).__name__, self.type, self._object_id,

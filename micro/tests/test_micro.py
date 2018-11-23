@@ -14,12 +14,15 @@
 
 # pylint: disable=missing-docstring; test module
 
+from asyncio import sleep
 from subprocess import check_call
 from tempfile import mkdtemp
 from unittest.mock import Mock, patch
 
-from redis import RedisError
-from tornado.testing import AsyncTestCase
+from typing import List
+
+from redis.exceptions import RedisError
+from tornado.testing import AsyncTestCase, gen_test
 
 import micro
 from micro import Activity, Collection, Event, Location
@@ -53,13 +56,13 @@ if not hasattr(app, 'cats'):
 """
 
 class MicroTestCase(AsyncTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.app = CatApp(redis_url='15')
         self.app.r.flushdb()
-        self.app.update()
-        self.staff_member = self.app.login()
-        self.user = self.app.login()
+        self.app.update() # type: ignore
+        self.staff_member = self.app.login() # type: ignore
+        self.user = self.app.login() # type: ignore
 
 class ApplicationTest(MicroTestCase):
     def test_init_redis_url_invalid(self):
@@ -278,7 +281,7 @@ class UserTest(MicroTestCase):
         self.assertEqual(self.user.name, 'Happy')
 
 class ActivityTest(MicroTestCase):
-    def make_activity(self):
+    def make_activity(self) -> Activity:
         return Activity('Activity:more', self.app, subscriber_ids=[])
 
     @patch('micro.User.notify', autospec=True)
@@ -292,6 +295,36 @@ class ActivityTest(MicroTestCase):
         activity.publish(event)
         self.assertIn(event, activity)
         notify.assert_called_once_with(self.user, event)
+
+    @gen_test
+    async def test_publish_stream(self) -> None:
+        activity = self.make_activity()
+        stream = activity.stream()
+
+        observed = []
+        closed = False
+        async def observe() -> None:
+            nonlocal closed
+            async for event in stream:
+                observed.append(event)
+            closed = True
+        self.io_loop.add_callback(observe)
+        # Scheduled coroutines are run in the next IO loop iteration but one
+        await sleep(0)
+        await sleep(0)
+
+        events = [
+            Event.create('meow', None, app=self.app), # type:ignore
+            Event.create('woof', None, app=self.app) # type:ignore
+        ] # type: List[Event]
+        activity.publish(events[0]) # type:ignore
+        activity.publish(events[1]) # type:ignore
+        await sleep(0)
+        await stream.aclose()
+        await sleep(0)
+
+        self.assertEqual(observed, events)
+        self.assertTrue(closed)
 
     def test_subscribe(self):
         activity = self.make_activity()
