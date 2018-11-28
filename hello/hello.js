@@ -56,9 +56,10 @@ hello.StartPage = class extends micro.Page {
             createGreeting: async() => {
                 try {
                     let form = this.querySelector("form");
-                    await ui.call("POST", "/api/greetings", {text: form.elements.text.value});
+                    await ui.call("POST", "/api/greetings", {text: form.elements.text.value, resource: 'https://twitch.tv/'});
                     form.reset();
                 } catch (e) {
+                    console.log("ERROR", e);
                     ui.handleCallError(e);
                 }
             },

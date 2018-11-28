@@ -45,6 +45,7 @@ from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedis
                              RedisSequence, expect_type)
 from .error import CommunicationError, ValueError
 from .util import check_email, randstr, parse_isotime, str_or_none, version
+from .resource import Analyzer
 
 _PUSH_TTL = 24 * 60 * 60
 
@@ -132,6 +133,8 @@ class Application:
         self.email = email
         self.smtp_url = smtp_url
         self.render_email_auth_message = render_email_auth_message
+
+        self.analyzer = Analyzer()
 
     @property
     def settings(self):
@@ -360,6 +363,13 @@ class Object:
     def __repr__(self):
         return '<{}>'.format(self.id)
 
+from inspect import isawaitable
+from typing import Awaitable
+
+class OnType:
+    pass
+On = OnType()
+
 class Editable:
     """:class:`Object` that can be edited."""
 
@@ -367,7 +377,8 @@ class Editable:
     app = None # type: Application
     trashed = None # type: bool
 
-    def __init__(self, authors: List[str], activity: 'Activity' = None) -> None:
+    def __init__(self, *, authors: List[str],
+                 activity: Union['Activity', Callable[[], 'Activity']] = None) -> None:
         self._authors = authors
         self.__activity = activity
 
@@ -376,23 +387,42 @@ class Editable:
         # pylint: disable=missing-docstring; already documented
         return self.app.r.omget(self._authors, default=AssertionError, expect=expect_type(User))
 
-    def edit(self, **attrs):
+    @overload
+    def edit(self, *, coro: None, **attrs: object) -> None:
+        pass
+    @overload
+    def edit(self, *, coro: OnType, **attrs: object) -> Awaitable[None]:
+        pass
+    def edit(self, *, coro: OnType = None, **attrs: object) -> Optional[Awaitable[None]]:
+        # Compatibility
+        if coro is None:
+            try:
+                self._edit(**attrs).send(None)
+                assert False
+            except StopIteration:
+                return None
+        return self._edit(**attrs)
+
+    async def _edit(self, **attrs: object) -> None:
         """See :http:post:`/api/(object-url)`."""
         if not self.app.user:
             raise PermissionError()
         if isinstance(self, Trashable) and self.trashed:
             raise ValueError('object_trashed')
 
-        self.do_edit(**attrs)
+        coro = self.do_edit(**attrs)
+        if isawaitable(coro):
+            await cast(Awaitable[None], coro)
+
         if not self.app.user.id in self._authors:
             self._authors.append(self.app.user.id)
         self.app.r.oset(self.id, self)
 
         if self.__activity is not None:
             activity = self.__activity() if callable(self.__activity) else self.__activity
-            activity.publish(Event.create('editable-edit', self, app=self.app))
+            activity.publish(Event.create('editable-edit', self, app=self.app)) # type: ignore
 
-    def do_edit(self, **attrs):
+    def do_edit(self, **attrs: object) -> Optional[Awaitable[None]]:
         """Subclass API: Perform the edit operation.
 
         More precisely, validate and then set the given *attrs*.
@@ -444,6 +474,53 @@ class Trashable:
         """Subclass API: Return a JSON representation of the trashable part of the object."""
         # pylint: disable=unused-argument; part of subclass API
         return {'trashed': self.trashed}
+
+from micro.resource import Resource
+
+class WithContent:
+    """:class:`Editable` :class:`Object` with content.
+
+    .. describe:: text
+
+       Text content. May be ``null``.
+
+    .. describe:: resource
+
+       Web :ref:`Resource` content. May be ``null``.
+    """
+
+    def __init__(self, text: str = None, resource: Dict[str, object] = None) -> None:
+        self.text = text
+        self.resource = Resource.parse(resource) if resource else None
+
+    # NOTE: do not run second time if url == resource.url
+    @staticmethod
+    async def process_attrs(attrs: Dict[str, object], app: Application) -> Dict[str, object]:
+        """Pre-Process the given attributes *attrs* for editing."""
+        if 'text' in attrs:
+            text = attrs['text']
+            if text is not None and not isinstance(text, str):
+                raise TypeError()
+            if text is not None and str_or_none(text) is None:
+                raise ValueError('blank_text')
+        if 'resource' in attrs:
+            url = attrs['resource']
+            if not (url is None or isinstance(url, str)):
+                raise TypeError()
+            if url:
+                attrs['resource'] = await app.analyzer.analyze(url)
+        return attrs
+
+    def do_edit(self, attrs: Dict[str, object]) -> None:
+        """See :meth:`Editable.do_edit`."""
+        if 'text' in attrs:
+            self.text = attrs['text'] # type: ignore
+        if 'resource' in attrs:
+            self.resource = attrs['resource'] # type: ignore
+
+    def json(self, include: bool = False, restricted: bool = False) -> Dict[str, object]:
+        """See :meth:`JSONifiable.json`."""
+        return {'text': self.text, 'resource': self.resource.json() if self.resource else None}
 
 class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
     """See :ref:`Collection`.

@@ -42,6 +42,8 @@ from .util import str_or_none
 HandleResourceFunc = Callable[[str, str, bytes, 'Analyzer'],
                               Union[Optional['Resource'], Awaitable[Optional['Resource']]]]
 
+from micro.jsonredis import expect_type
+
 class Resource:
     """See :ref:`Resource`."""
 
@@ -55,6 +57,15 @@ class Resource:
         self.content_type = content_type
         self.description = str_or_none(description) if description else None
         self.image = image
+
+    @staticmethod
+    def parse(data: Dict[str, object]) -> 'Resource':
+        url = expect_type(str)(data['url'])
+        content_type = expect_type(str)(data['content_type'])
+        description = data['description']
+        if not (description is None or isinstance(description, str)):
+            raise TypeError()
+        return Resource(url, content_type, description=description)
 
     def json(self) -> Dict[str, object]:
         """Return a JSON representation of the resource."""
