@@ -377,7 +377,7 @@ class Editable:
     app = None # type: Application
     trashed = None # type: bool
 
-    def __init__(self, *, authors: List[str],
+    def __init__(self, authors: List[str],
                  activity: Union['Activity', Callable[[], 'Activity']] = None) -> None:
         self._authors = authors
         self.__activity = activity
@@ -388,14 +388,14 @@ class Editable:
         return self.app.r.omget(self._authors, default=AssertionError, expect=expect_type(User))
 
     @overload
-    def edit(self, *, coro: None, **attrs: object) -> None:
+    def edit(self, *, asynchronous: None, **attrs: object) -> None:
         pass
     @overload
-    def edit(self, *, coro: OnType, **attrs: object) -> Awaitable[None]:
+    def edit(self, *, asynchronous: OnType, **attrs: object) -> Awaitable[None]:
         pass
-    def edit(self, *, coro: OnType = None, **attrs: object) -> Optional[Awaitable[None]]:
+    def edit(self, *, asynchronous: OnType = None, **attrs: object) -> Optional[Awaitable[None]]:
         # Compatibility
-        if coro is None:
+        if asynchronous is None:
             try:
                 self._edit(**attrs).send(None)
                 assert False
@@ -476,6 +476,7 @@ class Trashable:
         return {'trashed': self.trashed}
 
 from micro.resource import Resource
+from micro.jsonredis import expect_type2
 
 class WithContent:
     """:class:`Editable` :class:`Object` with content.
@@ -489,34 +490,29 @@ class WithContent:
        Web :ref:`Resource` content. May be ``null``.
     """
 
-    def __init__(self, text: str = None, resource: Dict[str, object] = None) -> None:
+    def __init__(self, *, text: str = None, resource: Dict[str, object] = None) -> None:
         self.text = text
         self.resource = Resource.parse(resource) if resource else None
 
-    # NOTE: do not run second time if url == resource.url
     @staticmethod
-    async def process_attrs(attrs: Dict[str, object], app: Application) -> Dict[str, object]:
+    async def process_attrs(attrs: Dict[str, object], *, app: Application) -> Dict[str, object]:
         """Pre-Process the given attributes *attrs* for editing."""
         if 'text' in attrs:
             text = attrs['text']
-            if text is not None and not isinstance(text, str):
-                raise TypeError()
-            if text is not None and str_or_none(text) is None:
-                raise ValueError('blank_text')
+            if text is not None:
+                attrs['text'] = str_or_none(expect_type(str)(text))
         if 'resource' in attrs:
             url = attrs['resource']
-            if not (url is None or isinstance(url, str)):
-                raise TypeError()
-            if url:
-                attrs['resource'] = await app.analyzer.analyze(url)
+            if url is not None:
+                attrs['resource'] = await app.analyzer.analyze(expect_type(str)(url))
         return attrs
 
     def do_edit(self, attrs: Dict[str, object]) -> None:
         """See :meth:`Editable.do_edit`."""
         if 'text' in attrs:
-            self.text = attrs['text'] # type: ignore
+            self.text = expect_type2(str)(attrs['text'])
         if 'resource' in attrs:
-            self.resource = attrs['resource'] # type: ignore
+            self.resource = expect_type2(Resource)(attrs['resource'])
 
     def json(self, include: bool = False, restricted: bool = False) -> Dict[str, object]:
         """See :meth:`JSONifiable.json`."""

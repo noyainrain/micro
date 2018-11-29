@@ -363,6 +363,14 @@ def redis_range(slc: slice) -> Tuple[int, int]:
         return (1, 0)
     return (0 if slc.start is None else slc.start, -1 if slc.stop is None else slc.stop - 1)
 
+def expect_type2(cls: Type[T]) -> ExpectFunc[Optional[object], Optional[T]]:
+    """Return a function which asserts that a given *obj* is an instance of *cls*."""
+    def _f(obj: Optional[object]) -> Optional[T]:
+        if obj is not None and not isinstance(obj, cls):
+            raise TypeError()
+        return obj
+    return _f
+
 def expect_type(cls: Type[T]) -> ExpectFunc[object, T]:
     """Return a function which asserts that a given *obj* is an instance of *cls*."""
     def _f(obj: object) -> T:

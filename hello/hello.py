@@ -17,7 +17,7 @@
 import sys
 
 import micro
-from micro import Application, Collection, Editable, Event, Object, Settings, WithContent
+from micro import Application, Collection, Editable, Event, Object, Settings, WithContent, error
 from micro.jsonredis import RedisList
 from micro.server import CollectionEndpoint, Server
 from micro.util import make_command_line_parser, randstr, setup_logging, str_or_none
@@ -35,17 +35,14 @@ class Hello(Application):
 
         async def create(self, text, resource):
             """Create a :class:`Greeting` and return it."""
-            if str_or_none(text) is None:
-                raise micro.ValueError('text_empty')
-
-            attrs = await WithContent.process_attrs({'text': text, 'resource': resource}, self.app)
-            # XXX
-            resource = attrs['resource']
-
+            attrs = await WithContent.process_attrs({'text': text, 'resource': resource},
+                                                    app=self.app)
+            if attrs['text'] is None and attrs['resource'] is None:
+                raise error.ValueError('Missing text and resource')
             greeting = Greeting(
                 id='Greeting:{}'.format(randstr()), app=self.app, authors=[self.app.user.id],
-                text=attrs['text'], resource=resource.json() if resource else None)
-
+                text=attrs['text'],
+                resource=attrs['resource'].json() if attrs['resource'] else None)
             self.r.oset(greeting.id, greeting)
             self.r.rpush(self.ids.key, greeting.id)
             self.app.activity.publish(
@@ -74,13 +71,13 @@ class Greeting(Object, Editable, WithContent):
        Text content.
     """
 
-    def __init__(self, id, app, authors, text, resource):
+    def __init__(self, *, id, app, authors, text, resource):
         super().__init__(id, app)
         Editable.__init__(self, authors)
-        WithContent.__init__(self, text, resource)
+        WithContent.__init__(self, text=text, resource=resource)
 
     async def do_edit(self, **attrs):
-        attrs = await WithContent.process_attrs(attrs)
+        attrs = await WithContent.process_attrs(attrs, app=self.app)
         WithContent.do_edit(attrs)
 
     def json(self, restricted=False, include=False):
@@ -105,12 +102,9 @@ class _GreetingsEndpoint(CollectionEndpoint):
     # pylint: disable=arguments-differ; Tornado handler arguments are defined by URLs
 
     async def post(self):
-        try:
-            args = self.check_args({'text': str, 'resource': (str, None)})
-            greeting = await self.app.greetings.create(**args)
-            self.write(greeting.json(restricted=True, include=True))
-        except Exception as e:
-            raise RuntimeError()
+        args = self.check_args({'text': (str, None), 'resource': (str, None)})
+        greeting = await self.app.greetings.create(**args)
+        self.write(greeting.json(restricted=True, include=True))
 
 def main(args):
     """Run Hello.

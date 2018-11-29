@@ -42,7 +42,7 @@ from .util import str_or_none
 HandleResourceFunc = Callable[[str, str, bytes, 'Analyzer'],
                               Union[Optional['Resource'], Awaitable[Optional['Resource']]]]
 
-from micro.jsonredis import expect_type
+from micro.jsonredis import expect_type, expect_type2
 
 class Resource:
     """See :ref:`Resource`."""
@@ -62,9 +62,7 @@ class Resource:
     def parse(data: Dict[str, object]) -> 'Resource':
         url = expect_type(str)(data['url'])
         content_type = expect_type(str)(data['content_type'])
-        description = data['description']
-        if not (description is None or isinstance(description, str)):
-            raise TypeError()
+        description = expect_type2(str)(data['description'])
         return Resource(url, content_type, description=description)
 
     def json(self) -> Dict[str, object]:
