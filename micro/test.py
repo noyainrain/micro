@@ -105,7 +105,10 @@ class CatApp(Application):
         self.r.set('auth_request', auth_request.id)
         self.cats.create()
 
-class Cat(Object, Editable, Trashable):
+from typing import Dict
+from micro import WithContent
+
+class Cat(Object, Editable, Trashable, WithContent):
     """Cute cat."""
 
     @staticmethod
@@ -113,18 +116,23 @@ class Cat(Object, Editable, Trashable):
         """Create a :class:`Cat` object."""
         id = 'Cat:{}'.format(randstr())
         return Cat(id=id, app=app, authors=[], trashed=False, name=name,
-                   activity=Activity(id='{}.activity'.format(id), app=app, subscriber_ids=[]))
+                   activity=Activity(id='{}.activity'.format(id), app=app, subscriber_ids=[]),
+                   text=None, resource=None)
 
     def __init__(self, id: str, app: Application, authors: List[str], trashed: bool,
-                 name: Optional[str], activity: Activity) -> None:
+                 name: Optional[str], activity: Activity, text: Optional[str],
+                 resource: Optional[Dict[str, object]]) -> None:
         super().__init__(id, app)
         Editable.__init__(self, authors, activity)
         Trashable.__init__(self, trashed, activity)
+        WithContent.__init__(self, text=text, resource=resource)
         self.name = name
         self.activity = activity
         self.activity.host = self
 
-    def do_edit(self, **attrs):
+    async def do_edit(self, **attrs):
+        attrs = await WithContent.pre_edit(self, attrs)
+        WithContent.do_edit(self, attrs)
         if 'name' in attrs:
             self.name = attrs['name']
 

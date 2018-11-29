@@ -169,6 +169,18 @@ class EditableTest(MicroTestCase):
         with self.assertRaises(micro.PermissionError):
             self.cat.edit(name='Happy')
 
+from micro.micro import On
+
+class WithContentTest(MicroTestCase):
+    @gen_test
+    async def test_edit(self) -> None:
+        # TODO test submitting a URL, introduce a local server delivering a resource like an image
+        # TODO test submitting the same URL twice
+        cat = self.app.cats.create()
+        await cat.edit(text='foo', resource=None, asynchronous=On)
+        self.assertEqual(cat.text, 'foo')
+        self.assertIsNone(cat.resource)
+
 class TrashableTest(MicroTestCase):
     def test_trash(self):
         cat = self.app.cats.create()

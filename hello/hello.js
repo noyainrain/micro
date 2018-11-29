@@ -55,8 +55,11 @@ hello.StartPage = class extends micro.Page {
 
             createGreeting: async() => {
                 try {
-                    let form = this.querySelector("form");
-                    await ui.call("POST", "/api/greetings", {text: form.elements.text.value, resource: 'https://twitch.tv/'});
+                    const form = this.querySelector("form");
+                    const text = form.elements.text.value;
+                    const match = text.match(/^\s*(https?:\/\/\S+)\s*$/u);
+                    const args = match ? {text: null, resource: match[1]} : {text, resource: null};
+                    await ui.call("POST", "/api/greetings", args);
                     form.reset();
                 } catch (e) {
                     console.log("ERROR", e);

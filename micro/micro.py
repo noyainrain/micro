@@ -507,6 +507,12 @@ class WithContent:
                 attrs['resource'] = await app.analyzer.analyze(expect_type(str)(url))
         return attrs
 
+    async def pre_edit(self, attrs: Dict[str, object]) -> Dict[str, object]:
+        if 'resource' in attrs:
+            if self.resource is not None and attrs['resource'] == self.resource.url:
+                del attrs['resource']
+        return attrs
+
     def do_edit(self, attrs: Dict[str, object]) -> None:
         """See :meth:`Editable.do_edit`."""
         if 'text' in attrs:

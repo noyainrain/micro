@@ -77,7 +77,7 @@ class Greeting(Object, Editable, WithContent):
         WithContent.__init__(self, text=text, resource=resource)
 
     async def do_edit(self, **attrs):
-        attrs = await WithContent.process_attrs(attrs, app=self.app)
+        attrs = await WithContent.pre_edit(self, attrs)
         WithContent.do_edit(attrs)
 
     def json(self, restricted=False, include=False):

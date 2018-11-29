@@ -81,6 +81,13 @@ class Image(Resource):
     def __init__(self, url: str, content_type: str, *, description: str = None) -> None:
         super().__init__(url, content_type, description=description)
 
+    @staticmethod
+    def parse(data: Dict[str, object]) -> 'Image':
+        url = expect_type(str)(data['url'])
+        content_type = expect_type(str)(data['content_type'])
+        description = expect_type2(str)(data['description'])
+        return Image(url, content_type, description=description)
+
 class Analyzer:
     """Web resource analyzer.
 
