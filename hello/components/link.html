@@ -1,0 +1,71 @@
+<script>
+
+micro.components = {};
+
+/**
+ * Link including a preview of the target resource.
+ *
+ * .. attribute:: resource
+ *
+ *    Target :ref:`Resource` description.
+ */
+micro.components.LinkElement = class extends HTMLElement {
+    createdCallback() {
+        this.appendChild(document.importNode(document.querySelector("#micro-link-template").content, true));
+        this._data = new micro.bind.Watchable({
+            resource: null
+        });
+        micro.bind.bind(this.children, this._data);
+    }
+
+    set resource(value) {
+        console.log("RESOURCE", value);
+        this._data.resource = value;
+    }
+
+    get resource() {
+        return this._data.resource;
+    }
+
+    // url
+    // description
+    // image -> url
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+    document.registerElement("micro-link", micro.components.LinkElement);
+});
+</script>
+
+<template id="micro-link-template">
+    <div data-content="switch resource.image">
+        <template>
+            <img data-src="resource.image.url"><img>
+        </template>
+    </div>
+    <p>
+        <a class="link" data-href="resource.url" data-content="or resource.description resource.url" target="_blank"></a>
+    </p>
+</template>
+
+<style>
+micro-link {
+    display: inline-grid;
+    background: #ddd;
+}
+
+micro-link div {
+    grid-column-start: 1;
+    grid-row-start: 1;
+    justify-self: center;
+}
+
+micro-link p {
+    padding: var(--micro-size-xs);
+    grid-column-start: 1;
+    grid-row-start: 1;
+    background: rgba(255, 255, 255, 0.66);
+    align-self: end;
+    margin: 0;
+}
+</style>

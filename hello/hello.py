@@ -38,7 +38,7 @@ class Hello(Application):
             attrs = await WithContent.process_attrs({'text': text, 'resource': resource},
                                                     app=self.app)
             if attrs['text'] is None and attrs['resource'] is None:
-                raise error.ValueError('Missing text and resource')
+                raise error.ValueError('No text and resource')
             greeting = Greeting(
                 id='Greeting:{}'.format(randstr()), app=self.app, authors=[self.app.user.id],
                 text=attrs['text'],
@@ -78,6 +78,8 @@ class Greeting(Object, Editable, WithContent):
 
     async def do_edit(self, **attrs):
         attrs = await WithContent.pre_edit(self, attrs)
+        if attrs.get('text', self.text) is None and attrs.get('resource', self.resource) is None:
+            raise error.ValueError('No text and resource')
         WithContent.do_edit(attrs)
 
     def json(self, restricted=False, include=False):

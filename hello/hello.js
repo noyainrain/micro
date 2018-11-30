@@ -62,8 +62,11 @@ hello.StartPage = class extends micro.Page {
                     await ui.call("POST", "/api/greetings", args);
                     form.reset();
                 } catch (e) {
-                    console.log("ERROR", e);
-                    ui.handleCallError(e);
+                    if (["CommunicationError", "NoResourceError", "ForbiddenResourceError", "BrokenResourceError"].includes(e.error.__type__)) {
+                        ui.notify("Oops, there was a problem fetching the URL. Please try again in a few moments.");
+                    } else {
+                        ui.handleCallError(e);
+                    }
                 }
             },
 

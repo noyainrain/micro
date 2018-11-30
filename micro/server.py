@@ -32,10 +32,11 @@ from tornado.ioloop import IOLoop
 from tornado.template import DictLoader, Loader, filter_whitespace
 from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
 
-from . import micro, templates
+from . import micro, templates, error
 from .micro import (Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError,
                     AuthenticationError, CommunicationError, PermissionError)
 from .util import str_or_none, parse_slice, check_polyglot
+from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
 
 LIST_LIMIT = 100
 SLICE_URL = r'(?:/(\d*:\d*))?'
@@ -249,9 +250,18 @@ class Endpoint(RequestHandler):
         elif issubclass(exc_info[0], micro.ValueError):
             self.set_status(http.client.BAD_REQUEST)
             self.write({'__type__': exc_info[0].__name__, 'code': exc_info[1].code})
-        elif issubclass(exc_info[0], CommunicationError):
-            self.set_status(http.client.BAD_GATEWAY)
-            self.write({'__type__': 'CommunicationError'})
+        #elif issubclass(exc_info[0], CommunicationError):
+        #    self.set_status(http.client.BAD_GATEWAY)
+        #    self.write({'__type__': 'CommunicationError'})
+        elif issubclass(exc_info[0], error.Error):
+            status = {
+                CommunicationError: http.client.BAD_GATEWAY,
+                NoResourceError: http.client.NOT_FOUND,
+                ForbiddenResourceError: http.client.FORBIDDEN,
+                BrokenResourceError: http.client.BAD_REQUEST
+            }
+            self.set_status(status[exc_info[0]])
+            self.write(exc_info[1].json())
         else:
             super().write_error(status_code, exc_info=exc_info)
 

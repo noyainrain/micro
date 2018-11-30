@@ -440,7 +440,7 @@ class Trashable:
     """Mixin for :class:`Object` which can be trashed and restored."""
     # pylint: disable=no-member; mixin
 
-    def __init__(self, trashed: bool, activity: 'Activity' = None) -> None:
+    def __init__(self, trashed: bool, activity: Union['Activity', Callable[[], 'Activity']] = None) -> None:
         self.trashed = trashed
         self.__activity = activity
 
@@ -490,6 +490,8 @@ class WithContent:
        Web :ref:`Resource` content. May be ``null``.
     """
 
+    app = None # type: Application
+
     def __init__(self, *, text: str = None, resource: Dict[str, object] = None) -> None:
         self.text = text
         self.resource = Resource.parse(resource) if resource else None
@@ -508,19 +510,19 @@ class WithContent:
         return attrs
 
     async def pre_edit(self, attrs: Dict[str, object]) -> Dict[str, object]:
-        if 'resource' in attrs:
-            if self.resource is not None and attrs['resource'] == self.resource.url:
-                del attrs['resource']
-        return attrs
+        if 'resource' in attrs and self.resource and attrs['resource'] == self.resource.url:
+            del attrs['resource']
+        return await self.process_attrs(attrs, app=self.app)
 
-    def do_edit(self, attrs: Dict[str, object]) -> None:
+    def do_edit(self, **attrs: object) -> Optional[Awaitable[None]]:
         """See :meth:`Editable.do_edit`."""
         if 'text' in attrs:
             self.text = expect_type2(str)(attrs['text'])
         if 'resource' in attrs:
             self.resource = expect_type2(Resource)(attrs['resource'])
+        return None
 
-    def json(self, include: bool = False, restricted: bool = False) -> Dict[str, object]:
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
         """See :meth:`JSONifiable.json`."""
         return {'text': self.text, 'resource': self.resource.json() if self.resource else None}
 

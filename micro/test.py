@@ -89,6 +89,11 @@ class CatApp(Application):
         if cat and 'activity' not in cat:
             cat['activity'] = Activity('Cat.activity', app=self, subscriber_ids=[]).json()
             r.oset(cat['id'], cat)
+        # Deprecated TODO
+        if cat and 'text' not in cat:
+            cat['text'] = None
+            cat['resource'] = None
+            r.oset(cat['id'], cat)
 
     def create_settings(self):
         # pylint: disable=unexpected-keyword-arg; decorated
@@ -107,6 +112,7 @@ class CatApp(Application):
 
 from typing import Dict
 from micro import WithContent
+from micro.jsonredis import expect_type2
 
 class Cat(Object, Editable, Trashable, WithContent):
     """Cute cat."""
@@ -115,13 +121,13 @@ class Cat(Object, Editable, Trashable, WithContent):
     def make(*, name: str = None, app: Application) -> 'Cat':
         """Create a :class:`Cat` object."""
         id = 'Cat:{}'.format(randstr())
-        return Cat(id=id, app=app, authors=[], trashed=False, name=name,
-                   activity=Activity(id='{}.activity'.format(id), app=app, subscriber_ids=[]),
-                   text=None, resource=None)
+        return Cat(id=id, app=app, authors=[], trashed=False, text=None, resource=None, name=name,
+                   activity=Activity(id='{}.activity'.format(id), app=app, subscriber_ids=[]))
 
-    def __init__(self, id: str, app: Application, authors: List[str], trashed: bool,
-                 name: Optional[str], activity: Activity, text: Optional[str],
-                 resource: Optional[Dict[str, object]]) -> None:
+    def __init__(
+            self, *, id: str, app: Application, authors: List[str], trashed: bool,
+            text: Optional[str], resource: Optional[Dict[str, object]], name: Optional[str],
+            activity: Activity) -> None:
         super().__init__(id, app)
         Editable.__init__(self, authors, activity)
         Trashable.__init__(self, trashed, activity)
@@ -130,11 +136,11 @@ class Cat(Object, Editable, Trashable, WithContent):
         self.activity = activity
         self.activity.host = self
 
-    async def do_edit(self, **attrs):
+    async def do_edit(self, **attrs: object) -> None:
         attrs = await WithContent.pre_edit(self, attrs)
-        WithContent.do_edit(self, attrs)
+        WithContent.do_edit(self, **attrs)
         if 'name' in attrs:
-            self.name = attrs['name']
+            self.name = expect_type2(str)(attrs['name'])
 
     def json(self, restricted=False, include=False):
         return {

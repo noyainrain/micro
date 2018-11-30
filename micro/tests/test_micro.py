@@ -170,16 +170,31 @@ class EditableTest(MicroTestCase):
             self.cat.edit(name='Happy')
 
 from micro.micro import On
+from micro.resource import Resource
+
+async def pseudo_analyze(self: object, url: str) -> Resource:
+    print('self', self)
+    print('URL', url)
+    return Resource(url, content_type='text/html', description='Meow!')
 
 class WithContentTest(MicroTestCase):
+    @patch('micro.resource.Analyzer.analyze', autospec=True, side_effect=pseudo_analyze) # type: ignore
     @gen_test
-    async def test_edit(self) -> None:
-        # TODO test submitting a URL, introduce a local server delivering a resource like an image
-        # TODO test submitting the same URL twice
+    async def test_edit(self, mock) -> None:
         cat = self.app.cats.create()
-        await cat.edit(text='foo', resource=None, asynchronous=On)
+        await cat.edit(text='foo', resource='http://example.org/', asynchronous=On)
         self.assertEqual(cat.text, 'foo')
-        self.assertIsNone(cat.resource)
+        assert isinstance(cat.resource, Resource)
+        self.assertEqual(cat.resource.url, 'http://example.org/')
+
+    @patch('micro.resource.Analyzer.analyze', autospec=True, side_effect=pseudo_analyze) # type: ignore
+    @gen_test
+    async def test_edit_same_url(self, mock) -> None:
+        cat = self.app.cats.create()
+        await cat.edit(resource='http://example.org/', asynchronous=On)
+        await cat.edit(resource='http://example.org/', asynchronous=On)
+        assert isinstance(cat.resource, Resource)
+        self.assertEqual(cat.resource.url, 'http://example.org/')
 
 class TrashableTest(MicroTestCase):
     def test_trash(self):
@@ -296,7 +311,7 @@ class ActivityTest(MicroTestCase):
     def make_activity(self) -> Activity:
         return Activity('Activity:more', self.app, subscriber_ids=[])
 
-    @patch('micro.User.notify', autospec=True)
+    @patch('micro.User.notify', autospec=True) # type: ignore
     def test_publish(self, notify):
         activity = self.make_activity()
         activity.subscribe()

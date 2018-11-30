@@ -22,6 +22,7 @@ class Error(Exception):
 
     def json(self) -> Dict[str, object]:
         """Return a JSON representation of the error."""
+        # NOTE: why is the message not included in the client JSON
         return {'__type__': type(self).__name__, 'message': str(self)}
 
 class ValueError(builtins.ValueError, Error):
