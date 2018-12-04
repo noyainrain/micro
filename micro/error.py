@@ -15,26 +15,35 @@
 """micro errors."""
 
 import builtins
-from typing import Dict
+from typing import Dict, Tuple, cast
 
 class Error(Exception):
     """Base for micro errors."""
 
     def json(self) -> Dict[str, object]:
         """Return a JSON representation of the error."""
-        # NOTE: why is the message not included in the client JSON
         return {'__type__': type(self).__name__, 'message': str(self)}
 
 class ValueError(builtins.ValueError, Error):
     """See :ref:`ValueError`.
 
     The first item of *args* is also available as *code*.
+
+    .. deprecated:: TODO
+
+       code. use message instead
     """
 
     @property
-    def code(self):
+    def code(self) -> object:
         # pylint: disable=missing-docstring; already documented
-        return self.args[0] if self.args else None
+        args = cast(Tuple[object, ...], self.args)
+        return args[0] if args else None
+
+    def json(self) -> Dict[str, object]:
+        """Return a JSON representation of the error."""
+        # Compatibility with
+        return {**super().json(), 'code': self.code}
 
 class CommunicationError(Error):
     """See :ref:`CommunicationError`."""

@@ -63,9 +63,8 @@ class Resource:
         url = expect_type(str)(data['url'])
         content_type = expect_type(str)(data['content_type'])
         description = expect_type2(str)(data['description'])
-        image = data['image']
-        if image is not None:
-            image = Image.parse(image)
+        image_data = expect_type2(dict)(data['image'])
+        image = Image.parse(image_data) if image_data is not None else None
         return Resource(url, content_type, description=description, image=image)
 
     def json(self) -> Dict[str, object]:
@@ -218,8 +217,6 @@ async def handle_webpage(url: str, content_type: str, data: bytes,
     image = None
     image_url = (parser.meta.get('og:image') or parser.meta.get('og:image:url') or
                  parser.meta.get('og:image:secure_url'))
-    print('ANALYZED WEB PAGE IMAGE', parser.meta)
-    print('ANALYZED WEB PAGE IMAGE', image_url)
     if image_url:
         image_url = urljoin(url, image_url)
         try:

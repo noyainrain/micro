@@ -172,27 +172,17 @@ class EditableTest(MicroTestCase):
 from micro.micro import On
 from micro.resource import Resource
 
-async def pseudo_analyze(self: object, url: str) -> Resource:
-    print('self', self)
-    print('URL', url)
-    return Resource(url, content_type='text/html', description='Meow!')
-
 class WithContentTest(MicroTestCase):
-    @patch('micro.resource.Analyzer.analyze', autospec=True, side_effect=pseudo_analyze) # type: ignore
+    async def analyze(self, url: str) -> Resource:
+        return Resource(url, content_type='text/html')
+
+    @patch('micro.resource.Analyzer.analyze', autospec=True, side_effect=analyze) # type: ignore
     @gen_test
     async def test_edit(self, mock) -> None:
         cat = self.app.cats.create()
-        await cat.edit(text='foo', resource='http://example.org/', asynchronous=On)
-        self.assertEqual(cat.text, 'foo')
-        assert isinstance(cat.resource, Resource)
-        self.assertEqual(cat.resource.url, 'http://example.org/')
-
-    @patch('micro.resource.Analyzer.analyze', autospec=True, side_effect=pseudo_analyze) # type: ignore
-    @gen_test
-    async def test_edit_same_url(self, mock) -> None:
-        cat = self.app.cats.create()
         await cat.edit(resource='http://example.org/', asynchronous=On)
-        await cat.edit(resource='http://example.org/', asynchronous=On)
+        await cat.edit(text='Meow!', resource='http://example.org/', asynchronous=On)
+        self.assertEqual(cat.text, 'Meow!')
         assert isinstance(cat.resource, Resource)
         self.assertEqual(cat.resource.url, 'http://example.org/')
 

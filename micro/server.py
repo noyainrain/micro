@@ -247,14 +247,9 @@ class Endpoint(RequestHandler):
                 'code': exc_info[1].code,
                 'errors': exc_info[1].errors
             })
-        elif issubclass(exc_info[0], micro.ValueError):
-            self.set_status(http.client.BAD_REQUEST)
-            self.write({'__type__': exc_info[0].__name__, 'code': exc_info[1].code})
-        #elif issubclass(exc_info[0], CommunicationError):
-        #    self.set_status(http.client.BAD_GATEWAY)
-        #    self.write({'__type__': 'CommunicationError'})
         elif issubclass(exc_info[0], error.Error):
             status = {
+                error.ValueError: http.client.BAD_REQUEST,
                 CommunicationError: http.client.BAD_GATEWAY,
                 NoResourceError: http.client.NOT_FOUND,
                 ForbiddenResourceError: http.client.FORBIDDEN,

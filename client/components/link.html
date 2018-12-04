@@ -1,6 +1,5 @@
 <script>
-
-micro.components = {};
+micro.components = micro.components || {};
 
 /**
  * Link including a preview of the target resource.
@@ -11,30 +10,27 @@ micro.components = {};
  */
 micro.components.LinkElement = class extends HTMLElement {
     createdCallback() {
-        this.appendChild(document.importNode(document.querySelector("#micro-link-template").content, true));
+        this.appendChild(
+            document.importNode(document.querySelector("#micro-link-template").content, true)
+        );
         this._data = new micro.bind.Watchable({
             resource: null
         });
         micro.bind.bind(this.children, this._data);
     }
 
-    set resource(value) {
-        console.log("RESOURCE", value);
-        this._data.resource = value;
-    }
-
     get resource() {
         return this._data.resource;
     }
 
-    // url
-    // description
-    // image -> url
+    set resource(value) {
+        this._data.resource = value;
+    }
 };
 
-document.addEventListener("DOMContentLoaded", () => {
-    document.registerElement("micro-link", micro.components.LinkElement);
-});
+document.addEventListener(
+    "DOMContentLoaded", () => document.registerElement("micro-link", micro.components.LinkElement)
+);
 </script>
 
 <template id="micro-link-template">
