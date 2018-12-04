@@ -39,7 +39,7 @@
                     <li data-id="makeGreetingHash greeting" class="micro-quick-nav" tabindex="0">
                         <span><micro-user data-user="greeting.authors.0"></micro-user>:</span>
                         <div><micro-link data-resource="greeting.resource"></micro-link></div>
-                        <q data-content="greeting.text"></q>
+                        <div data-content="greeting.text"></div>
                     </li>
                 </template>
             </ul>
@@ -74,6 +74,15 @@
 
             .hello-start-greetings > li span {
                 color: #888;
+            }
+
+            .hello-start-greetings micro-link {
+                /*max-width: calc(1.5em * 5 * 16 / 9);*/
+            }
+
+            .hello-start-greetings micro-link img {
+                max-height: calc(1.5em * 5);
+                /*height: calc(1.5em * 5);*/
             }
 
             .hello-start-greetings > li > q {

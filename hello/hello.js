@@ -57,9 +57,9 @@ hello.StartPage = class extends micro.Page {
                 try {
                     const form = this.querySelector("form");
                     const text = form.elements.text.value;
-                    const match = text.match(/^\s*(https?:\/\/\S+)\s*$/u);
-                    const args = match ? {text: null, resource: match[1]} : {text, resource: null};
-                    await ui.call("POST", "/api/greetings", args);
+                    const match = text.match(/^https?:\/\/\S+/u);
+                    const resource = match ? match[0] : null;
+                    await ui.call("POST", "/api/greetings", {text, resource});
                     form.reset();
                 } catch (e) {
                     if (

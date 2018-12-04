@@ -34,34 +34,62 @@ document.addEventListener(
 </script>
 
 <template id="micro-link-template">
-    <div data-content="switch resource.image">
-        <template>
-            <img data-src="resource.image.url"><img>
-        </template>
-    </div>
-    <p>
-        <a class="link" data-href="resource.url" data-content="or resource.description resource.url" target="_blank"></a>
-    </p>
+    <a class="link"
+        data-class-micro-link-has-image="resource.image" data-href="resource.url" target="_blank"
+    >
+        <img data-src="or resource.image.url ''" />
+        <p data-content="or resource.description resource.url"></p>
+    </a>
 </template>
 
 <style>
 micro-link {
-    display: inline-grid;
+    display: inline-block;
     background: #ddd;
 }
 
-micro-link div {
+micro-link .link {
+    display: grid;
+    /*grid-template-rows: 100px;*/
+    /*max-height: 100%;*/
+    /*height: 100%;*/
+}
+
+micro-link img {
     grid-column-start: 1;
     grid-row-start: 1;
     justify-self: center;
+    align-self: center;
+    max-width: 100%;
+    /*max-height: 100%;
+    min-width: 0;
+    min-height: 0;*/
+}
+micro-link .link:hover,
+micro-link .link:focus {
+    text-decoration: none;
 }
 
 micro-link p {
     padding: var(--micro-size-xs);
     grid-column-start: 1;
     grid-row-start: 1;
-    background: rgba(255, 255, 255, 0.66);
     align-self: end;
     margin: 0;
+    color: var(--micro-color-text);
+    max-height: calc(1.5em + 2 * var(--micro-size-xs));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+micro-link .link.micro-link-has-image p {
+    background: rgba(221, 221, 221, 0.66);
+    /*border: 1px solid var(--micro-color-delimiter);
+    border-top: none;*/
+}
+
+micro-link .link:not(.micro-link-has-image) img {
+    display: none;
 }
 </style>
