@@ -143,6 +143,28 @@ micro.UI = class extends HTMLBodyElement {
             return;
         }
 
+        /** Render the given web :ref:`Resource` *resource*. */
+        micro.bind.transforms.renderResource = function(ctx, resource) {
+            if (!resource) {
+                return "";
+            }
+            console.log("resource", resource);
+            let elem;
+            switch (resource.__type__) {
+            case "Image":
+                elem = document.createElement("micro-image");
+                elem.image = resource;
+                return elem;
+            case "Resource":
+                console.log("RESOURC ELEM", elem);
+                elem = document.createElement("micro-link");
+                console.log("RESOURC ELEM 2", elem);
+                console.log(micro.components);
+                elem.resource = resource;
+                return elem;
+            }
+        };
+
         micro.keyboard.enableActivatedClass();
         micro.bind.transforms.ShortcutContext = micro.keyboard.ShortcutContext;
         micro.bind.transforms.Shortcut = micro.keyboard.Shortcut;

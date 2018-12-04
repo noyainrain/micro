@@ -38,7 +38,7 @@
                 <template>
                     <li data-id="makeGreetingHash greeting" class="micro-quick-nav" tabindex="0">
                         <span><micro-user data-user="greeting.authors.0"></micro-user>:</span>
-                        <div><micro-link data-resource="greeting.resource"></micro-link></div>
+                        <div data-content="renderResource greeting.resource"></div>
                         <div data-content="greeting.text"></div>
                     </li>
                 </template>
@@ -80,6 +80,7 @@
                 /*max-width: calc(1.5em * 5 * 16 / 9);*/
             }
 
+            .hello-start-greetings micro-image img,
             .hello-start-greetings micro-link img {
                 max-height: calc(1.5em * 5);
                 /*height: calc(1.5em * 5);*/

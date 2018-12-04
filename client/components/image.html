@@ -1,0 +1,58 @@
+<script>
+micro.components = micro.components || {};
+
+/**
+ * Image with zoom option.
+ *
+ * .. attribute:: image
+ *
+ *    :ref:`Image` description.
+ */
+micro.components.ImageElement = class extends HTMLElement {
+    createdCallback() {
+        this.appendChild(document.importNode(document.querySelector("#micro-image-template").content, true));
+        this._data = new micro.bind.Watchable({
+            image: null
+        });
+        micro.bind.bind(this.children, this._data);
+    }
+
+    get image() {
+        return this._data.image;
+    }
+
+    set image(value) {
+        this._data.image = value;
+    }
+};
+
+document.addEventListener(
+    "DOMContentLoaded", () => document.registerElement("micro-image", micro.components.ImageElement)
+);
+</script>
+
+<template id="micro-image-template">
+    <img data-src="image.url" data-alt="or image.description ''" />
+    <a class="link" data-href="image.url" target="_blank"><i class="fa fa-search-plus"></i></a>
+</template>
+
+<style>
+micro-image {
+    display: inline-block;
+    background: #ddd;
+    position: relative;
+}
+
+micro-image img {
+    max-width: 100%;
+}
+
+micro-image .link {
+    position: absolute;
+    display: block;
+    right: 0;
+    bottom: 0;
+    padding: var(--micro-size-xs);
+    background: rgba(221, 221, 221, 0.66);
+}
+</style>

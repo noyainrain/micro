@@ -311,12 +311,13 @@ class Application:
     def _decode(self, json: Dict[str, object]) -> Union[JSONifiable, Dict[str, object]]:
         # pylint: disable=redefined-outer-name; good name
         try:
-            type = self.types[str(json.pop('__type__'))]
+            type = self.types[str(json['__type__'])]
         except KeyError:
             return json
         # Compatibility for Settings without icon_large (deprecated since 0.13.0)
         if issubclass(type, Settings):
             json['v'] = 2
+        del json['__type__']
         return type(app=self, **json)
 
     @staticmethod
@@ -475,7 +476,7 @@ class Trashable:
         # pylint: disable=unused-argument; part of subclass API
         return {'trashed': self.trashed}
 
-from micro.resource import Resource
+from micro.resource import Resource, Image
 from micro.jsonredis import expect_type2
 
 class WithContent:
@@ -494,7 +495,11 @@ class WithContent:
 
     def __init__(self, *, text: str = None, resource: Dict[str, object] = None) -> None:
         self.text = text
-        self.resource = Resource.parse(resource) if resource else None
+        ts = {
+            'Resource': Resource,
+            'Image': Image
+        }
+        self.resource = ts[resource['__type__']].parse(resource) if resource else None
 
     @staticmethod
     async def process_attrs(attrs: Dict[str, object], *, app: Application) -> Dict[str, object]:
