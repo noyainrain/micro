@@ -499,7 +499,8 @@ class WithContent:
             'Resource': Resource,
             'Image': Image
         }
-        self.resource = ts[resource['__type__']].parse(resource) if resource else None
+        self.resource = None # type: Optional[Resource]
+        self.resource = ts[resource['__type__']].parse(resource) if resource else None # type: ignore
 
     @staticmethod
     async def process_attrs(attrs: Dict[str, object], *, app: Application) -> Dict[str, object]:

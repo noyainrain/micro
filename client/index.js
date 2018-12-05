@@ -40,6 +40,28 @@ micro.SHORT_DATE_TIME_FORMAT = {
  */
 micro.findAncestor = micro.keyboard.findAncestor;
 
+/** Render the given web :ref:`Resource` *resource*. */
+micro.renderResource = function(ctx, resource) {
+    if (!resource) {
+        return "";
+    }
+    let elem;
+    switch (resource.__type__) {
+    case "Image":
+        elem = document.createElement("micro-image");
+        elem.image = resource;
+        break;
+    case "Resource":
+        elem = document.createElement("micro-link");
+        console.log(micro.components);
+        elem.resource = resource;
+        break;
+    default:
+        throw new Error();
+    }
+    return elem;
+};
+
 /**
  * User interface of a micro app.
  *
@@ -143,29 +165,8 @@ micro.UI = class extends HTMLBodyElement {
             return;
         }
 
-        /** Render the given web :ref:`Resource` *resource*. */
-        micro.bind.transforms.renderResource = function(ctx, resource) {
-            if (!resource) {
-                return "";
-            }
-            console.log("resource", resource);
-            let elem;
-            switch (resource.__type__) {
-            case "Image":
-                elem = document.createElement("micro-image");
-                elem.image = resource;
-                return elem;
-            case "Resource":
-                console.log("RESOURC ELEM", elem);
-                elem = document.createElement("micro-link");
-                console.log("RESOURC ELEM 2", elem);
-                console.log(micro.components);
-                elem.resource = resource;
-                return elem;
-            }
-        };
-
         micro.keyboard.enableActivatedClass();
+        micro.bind.transforms.renderResource = micro.renderResource;
         micro.bind.transforms.ShortcutContext = micro.keyboard.ShortcutContext;
         micro.bind.transforms.Shortcut = micro.keyboard.Shortcut;
         this.shortcutContext = new micro.keyboard.ShortcutContext(this);
