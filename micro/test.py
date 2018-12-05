@@ -121,6 +121,18 @@ class Cat(Object, Editable, Trashable, WithContent):
         return Cat(id=id, app=app, authors=[], trashed=False, text=None, resource=None, name=name,
                    activity=Activity(id='{}.activity'.format(id), app=app, subscriber_ids=[]))
 
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> 'Cat':
+        return Cat(
+            id=expect_type(str)(data['id']),
+            app=expect_type(Application)(args['app']),
+            authors=expect_type(list)(data['authors']),
+            trashed=expect_type(bool)(data['trashed']),
+            text=expect_opt_type(str)(data['text']),
+            resource=expect_opt_type(Resource)(data['resource']),
+            name=expect_opt_type(str)(data['name']),
+            activity=expect_type(Activity)(data['activity']))
+
     def __init__(
             self, *, id: str, app: Application, authors: List[str], trashed: bool,
             text: Optional[str], resource: Optional[Dict[str, object]], name: Optional[str],

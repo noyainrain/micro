@@ -55,6 +55,11 @@ class JSONifiable(Protocol):
     """Object which can be encoded to and decoded from a JSON representation."""
 
     def __init__(self, **kwargs: object) -> None:
+        """
+        .. deprecated::
+
+           Use parse instead.
+        """
         # pylint: disable=super-init-not-called; protocol
         pass
 
@@ -322,13 +327,14 @@ class Application:
             type = self.types[str(json['__type__'])]
         except KeyError:
             return json
-        if hasattr(type, 'parse'):
-            return cast(JSONifiableParse, type).parse(json, app=self)
-        # Compatibility for Settings without icon_large (deprecated since 0.13.0)
-        if issubclass(type, Settings):
-            json['v'] = 2
-        del json['__type__']
-        return type(app=self, **json)
+        # Compatibility
+        if not hasattr(type, 'parse'):
+            # Compatibility for Settings without icon_large (deprecated since 0.13.0)
+            if issubclass(type, Settings):
+                json['v'] = 2
+            del json['__type__']
+            return type(app=self, **json)
+        return cast(JSONifiableParse, type).parse(json, app=self)
 
     @staticmethod
     def _scan_objects(r: JSONRedis[Dict[str, object]]) -> Iterator[Dict[str, object]]:
@@ -716,8 +722,20 @@ class Orderable:
 class User(Object, Editable):
     """See :ref:`User`."""
 
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> 'User':
+        return User(
+            id=expect_type(str)(data['id']),
+            app=expect_type(Application)(args['app']),
+            authors=expect_type(list)(data['authors']),
+            name=expect_type(str)(data['name']),
+            email=expect_opt_type(str)(data['email']),
+            auth_secret=expect_type(str)(data['auth_secret']),
+            device_notification_status=expect_type(str)(data['device_notification_status']),
+            push_subscription=expect_opt_type(str)(data['push_subscription']))
+
     def __init__(
-            self, id: str, app: Application, authors: List[str], name: str, email: str,
+            self, *, id: str, app: Application, authors: List[str], name: str, email: Optional[str],
             auth_secret: str, device_notification_status: str,
             push_subscription: Optional[str]) -> None:
         super().__init__(id, app)
@@ -965,6 +983,25 @@ class Settings(Object, Editable):
        VAPID private key used for sending device notifications.
     """
 
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> 'Settings':
+        return Settings( # type: ignore
+            id=expect_type(str)(data['id']),
+            app=expect_type(Application)(args['app']),
+            authors=expect_type(list)(data['authors']),
+            title=expect_type(str)(data['title']),
+            icon=expect_opt_type(str)(data['icon']),
+            icon_small=expect_opt_type(str)(data['icon_small']),
+            icon_large=expect_opt_type(str)(data['icon_large']),
+            provider_name=expect_opt_type(str)(data['provider_name']),
+            provider_url=expect_opt_type(str)(data['provider_url']),
+            provider_description=expect_type(dict)(data['provider_description']),
+            feedback_url=expect_opt_type(str)(data['feedback_url']),
+            staff=expect_type(list)(data['staff']),
+            push_vapid_private_key=expect_type(str)(data['push_vapid_private_key']),
+            push_vapid_public_key=expect_type(str)(data['push_vapid_public_key']),
+            v=2)
+
     @version(1)
     def __init__(
             self, id, app, authors, title, icon, favicon, provider_name, provider_url,
@@ -1093,6 +1130,11 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
         async def __anext__(self) -> 'Event':
             return await self.asend(None)
 
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> 'Activity':
+        return Activity(id=expect_type(str)(data['id']), app=expect_type(Application)(args['app']),
+                        subscriber_ids=expect_type(list)(data['subscriber_ids']))
+
     def __init__(self, id: str, app: Application, subscriber_ids: List[str],
                  pre: Callable[[], None] = None) -> None:
         super().__init__(id, app)
@@ -1177,7 +1219,19 @@ class Event(Object):
             id='Event:' + randstr(), type=type, object=object.id if object else None,
             user=app.user.id, time=datetime.utcnow().isoformat() + 'Z', detail=transformed, app=app)
 
-    def __init__(self, id: str, type: str, object: str, user: str, time: str,
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> 'Event':
+        # NOTE: Should parse time here
+        return Event(
+            id=expect_type(str)(data['id']),
+            app=expect_type(Application)(args['app']),
+            type=expect_type(str)(data['type']),
+            object=expect_opt_type(str)(data['object']),
+            user=expect_type(str)(data['user']),
+            time=expect_type(str)(data['time']),
+            detail=expect_type(dict)(data['detail']))
+
+    def __init__(self, id: str, type: str, object: Optional[str], user: str, time: str,
                  detail: Dict[str, object], app: Application) -> None:
         super().__init__(id, app)
         self.type = type
@@ -1231,6 +1285,14 @@ class Event(Object):
 class AuthRequest(Object):
     """See :ref:`AuthRequest`."""
 
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> 'AuthRequest':
+        return AuthRequest(
+            id=expect_type(str)(data['id']),
+            app=expect_type(Application)(args['app']),
+            email=expect_type(str)(data['email']),
+            code=expect_type(str)(data['code']))
+
     def __init__(self, id: str, app: Application, email: str, code: str) -> None:
         super().__init__(id, app)
         self._email = email
@@ -1254,7 +1316,7 @@ class Location:
         self.coords = coords
 
     @staticmethod
-    def parse(data: Dict[str, object]) -> 'Location':
+    def parse(data: Dict[str, object], **args: object) -> 'Location':
         """Parse the given location JSON *data* into a :class:`Location`."""
         name, coords = data.get('name'), data.get('coords')
         if not isinstance(name, str):
