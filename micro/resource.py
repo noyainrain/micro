@@ -36,13 +36,12 @@ from tornado.httpclient import AsyncHTTPClient, HTTPClientError, HTTPResponse
 from tornado.simple_httpclient import HTTPStreamClosedError, HTTPTimeoutError
 
 from . import error
+from .jsonredis import expect_opt_type, expect_type
 from .error import CommunicationError, Error
 from .util import str_or_none
 
 HandleResourceFunc = Callable[[str, str, bytes, 'Analyzer'],
                               Union[Optional['Resource'], Awaitable[Optional['Resource']]]]
-
-from micro.jsonredis import expect_type, expect_type2
 
 class Resource:
     """See :ref:`Resource`."""
@@ -59,15 +58,14 @@ class Resource:
         self.image = image
 
     @staticmethod
-    def parse(data: Dict[str, object]) -> 'Resource':
+    def parse(data: Dict[str, object], **args: object) -> 'Resource':
         url = expect_type(str)(data['url'])
         content_type = expect_type(str)(data['content_type'])
-        description = expect_type2(str)(data['description'])
-        image_data = expect_type2(dict)(data['image'])
-        image = Image.parse(image_data) if image_data is not None else None
+        description = expect_opt_type(str)(data['description'])
+        image = expect_opt_type(Image)(data['image'])
         return Resource(url, content_type, description=description, image=image)
 
-    def json(self) -> Dict[str, object]:
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
         """Return a JSON representation of the resource."""
         return {
             '__type__': type(self).__name__,
@@ -84,7 +82,7 @@ class Image(Resource):
         super().__init__(url, content_type, description=description)
 
     @staticmethod
-    def parse(data: Dict[str, object]) -> 'Image':
+    def parse(data: Dict[str, object], **args: object) -> 'Image':
         resource = Resource.parse(data)
         return Image(resource.url, resource.content_type, description=resource.description)
 

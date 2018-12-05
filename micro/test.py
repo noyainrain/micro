@@ -14,15 +14,16 @@
 
 """Test utilites."""
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urljoin
 
 from tornado.httpclient import AsyncHTTPClient
 from tornado.testing import AsyncTestCase
 
-from .jsonredis import JSONRedis, RedisList, expect_type
+from .jsonredis import JSONRedis, RedisList, expect_opt_type, expect_type
 from .micro import (Activity, Application, Collection, Editable, Object, Orderable, Settings,
-                    Trashable)
+                    Trashable, WithContent)
+from .resource import Resource
 from .util import randstr
 
 class ServerTestCase(AsyncTestCase):
@@ -110,10 +111,6 @@ class CatApp(Application):
         self.r.set('auth_request', auth_request.id)
         self.cats.create()
 
-from typing import Dict
-from micro import WithContent
-from micro.jsonredis import expect_type2
-
 class Cat(Object, Editable, Trashable, WithContent):
     """Cute cat."""
 
@@ -140,7 +137,7 @@ class Cat(Object, Editable, Trashable, WithContent):
         attrs = await WithContent.pre_edit(self, attrs)
         WithContent.do_edit(self, **attrs)
         if 'name' in attrs:
-            self.name = expect_type2(str)(attrs['name'])
+            self.name = expect_opt_type(str)(attrs['name'])
 
     def json(self, restricted=False, include=False):
         return {

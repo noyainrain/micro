@@ -42,10 +42,10 @@ from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
 from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
-                             RedisSequence, expect_type)
+                             RedisSequence, expect_opt_type, expect_type)
 from .error import CommunicationError, ValueError
+from .resource import Analyzer, Image, Resource
 from .util import check_email, randstr, parse_isotime, str_or_none, version
-from .resource import Analyzer
 
 _PUSH_TTL = 24 * 60 * 60
 
@@ -68,6 +68,12 @@ class JSONifiable(Protocol):
         :attr:`Application.user` are excluded. If *include* is ``True``, additional fields that may
         be of interest to the caller are included.
         """
+        pass
+
+class JSONifiableParse(JSONifiable, Protocol):
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> JSONifiable:
+        """TODO."""
         pass
 
 class Application:
@@ -125,7 +131,9 @@ class Application:
             'Settings': Settings,
             'Activity': Activity,
             'Event': Event,
-            'AuthRequest': AuthRequest
+            'AuthRequest': AuthRequest,
+            'Resource': Resource,
+            'Image': Image
         } # type: Dict[str, Type[JSONifiable]]
         self.user = None # type: Optional[User]
         self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)
@@ -314,6 +322,8 @@ class Application:
             type = self.types[str(json['__type__'])]
         except KeyError:
             return json
+        if hasattr(type, 'parse'):
+            return cast(JSONifiableParse, type).parse(json, app=self)
         # Compatibility for Settings without icon_large (deprecated since 0.13.0)
         if issubclass(type, Settings):
             json['v'] = 2
@@ -476,9 +486,6 @@ class Trashable:
         # pylint: disable=unused-argument; part of subclass API
         return {'trashed': self.trashed}
 
-from micro.resource import Resource, Image
-from micro.jsonredis import expect_type2
-
 class WithContent:
     """:class:`Editable` :class:`Object` with content.
 
@@ -493,14 +500,9 @@ class WithContent:
 
     app = None # type: Application
 
-    def __init__(self, *, text: str = None, resource: Dict[str, object] = None) -> None:
+    def __init__(self, *, text: str = None, resource: Resource = None) -> None:
         self.text = text
-        ts = {
-            'Resource': Resource,
-            'Image': Image
-        }
-        self.resource = None # type: Optional[Resource]
-        self.resource = ts[resource['__type__']].parse(resource) if resource else None # type: ignore
+        self.resource = resource
 
     @staticmethod
     async def process_attrs(attrs: Dict[str, object], *, app: Application) -> Dict[str, object]:
@@ -523,9 +525,9 @@ class WithContent:
     def do_edit(self, **attrs: object) -> Optional[Awaitable[None]]:
         """See :meth:`Editable.do_edit`."""
         if 'text' in attrs:
-            self.text = expect_type2(str)(attrs['text'])
+            self.text = expect_opt_type(str)(attrs['text'])
         if 'resource' in attrs:
-            self.resource = expect_type2(Resource)(attrs['resource'])
+            self.resource = expect_opt_type(Resource)(attrs['resource'])
         return None
 
     def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:

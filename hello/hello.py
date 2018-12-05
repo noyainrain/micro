@@ -41,8 +41,7 @@ class Hello(Application):
                 raise error.ValueError('No text and resource')
             greeting = Greeting(
                 id='Greeting:{}'.format(randstr()), app=self.app, authors=[self.app.user.id],
-                text=attrs['text'],
-                resource=attrs['resource'].json() if attrs['resource'] else None)
+                text=attrs['text'], resource=attrs['resource'])
             self.r.oset(greeting.id, greeting)
             self.r.rpush(self.ids.key, greeting.id)
             self.app.activity.publish(
