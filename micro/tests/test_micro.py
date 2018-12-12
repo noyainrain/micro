@@ -25,9 +25,11 @@ from redis.exceptions import RedisError
 from tornado.testing import AsyncTestCase, gen_test
 
 import micro
-from micro import Activity, Collection, Event, Location
+from micro import Activity, Collection, Event, Location, WithContent
 from micro.jsonredis import RedisList
+from micro.resource import Analyzer, Resource
 from micro.test import CatApp, Cat
+from micro.util import ON
 
 SETUP_DB_SCRIPT = """\
 from micro.test import CatApp
@@ -49,10 +51,13 @@ else:
 app.settings.edit(provider_name='Meow Inc.')
 app.settings.edit(provider_url='https://meow.example.com/')
 
-# Compatibility for sample data without a cat (deprecated since 0.6.0)
+# Compatibility for app without cats (deprecated since 0.6.0)
 if not hasattr(app, 'cats'):
     from micro.test import Cat
     app.r.oset('Cat', Cat(id='Cat', trashed=False, app=app, authors=[], name=None))
+    app.r.rpush('cats', 'Cat')
+else:
+    app.cats.create()
 """
 
 class MicroTestCase(AsyncTestCase):
@@ -190,6 +195,32 @@ class TrashableTest(MicroTestCase):
         self.assertFalse(cat.trashed)
         self.assertEqual(cat.activity[0].type, 'trashable-restore')
 
+async def _analyze(self: Analyzer, url: str) -> Resource:
+    # pylint: disable=unused-argument; part of API
+    return Resource(url, content_type='text/html')
+
+@patch('micro.resource.Analyzer.analyze', autospec=True, side_effect=_analyze) # type: ignore
+class WithContentTest(MicroTestCase):
+    @gen_test # type: ignore
+    async def test_process_attrs(self, analyze) -> None:
+        # pylint: disable=unused-argument; part of API
+        attrs = await WithContent.process_attrs({'text': '  ', 'resource': 'http://example.org/'},
+                                                app=self.app)
+        self.assertIsNone(attrs['text'])
+        resource = attrs.get('resource')
+        assert isinstance(resource, Resource)
+        self.assertEqual(resource.url, 'http://example.org/')
+
+    @gen_test # type: ignore
+    async def test_edit(self, analyze) -> None:
+        # pylint: disable=unused-argument; part of API
+        cat = self.app.cats.create()
+        await cat.edit(resource='http://example.org/', asynchronous=ON)
+        await cat.edit(text='Meow!', resource='http://example.org/', asynchronous=ON)
+        self.assertEqual(cat.text, 'Meow!')
+        assert cat.resource
+        self.assertEqual(cat.resource.url, 'http://example.org/')
+
 class CollectionTest(MicroTestCase):
     def make_cats(self, *, check=None):
         objects = [Cat.make(name='Happy', app=self.app), Cat.make(name='Grumpy', app=self.app),
@@ -284,7 +315,7 @@ class ActivityTest(MicroTestCase):
     def make_activity(self) -> Activity:
         return Activity('Activity:more', self.app, subscriber_ids=[])
 
-    @patch('micro.User.notify', autospec=True)
+    @patch('micro.User.notify', autospec=True) # type: ignore
     def test_publish(self, notify):
         activity = self.make_activity()
         activity.subscribe()

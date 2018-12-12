@@ -12,7 +12,12 @@
 # You should have received a copy of the GNU Lesser General Public License along with this program.
 # If not, see <http://www.gnu.org/licenses/>.
 
-"""Various utilities."""
+"""Various utilities.
+
+.. data:: ON
+
+   Indicates that something is enabled. Useful for feature flags in connection with overloading.
+"""
 
 import argparse
 from argparse import ArgumentParser
@@ -23,9 +28,18 @@ import random
 import re
 import string
 import sys
-from typing import Optional
+from typing import Coroutine, Optional, Type, TypeVar, cast
 
 from tornado.log import LogFormatter
+
+from .jsonredis import ExpectFunc, expect_type # pylint: disable=unused-import; export
+
+class OnType:
+    """Type of :data:`ON`."""
+
+ON = OnType()
+
+_T = TypeVar('_T')
 
 def str_or_none(str: str) -> Optional[str]:
     """Return *str* unmodified if it has content, otherwise return ``None``.
@@ -126,6 +140,25 @@ def setup_logging(debug=False):
     logger.setLevel(logging.INFO)
     if not debug:
         getLogger('tornado.access').setLevel(logging.ERROR)
+
+def run_instant(coro: Coroutine[object, object, _T]) -> _T:
+    """Run the coroutine *coro* at once and return the result.
+
+    If *coro* does not return instantly, i.e. awaits something, a :exc:`ValueError` is raised.
+    """
+    try:
+        coro.send(None)
+        raise ValueError('Awaiting coro')
+    except StopIteration as e:
+        return cast(_T, e.value)
+
+def expect_opt_type(cls: Type[_T]) -> ExpectFunc[Optional[object], Optional[_T]]:
+    """Return a function that asserts a given *obj* is an instance of *cls* or ``None``."""
+    def _f(obj: Optional[object]) -> Optional[_T]:
+        if obj is not None and not isinstance(obj, cls):
+            raise TypeError()
+        return obj
+    return _f
 
 def version(v):
     """Decorator for creating a versioned function.

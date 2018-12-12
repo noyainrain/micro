@@ -37,8 +37,11 @@
             <ul class="hello-start-greetings" data-content="list greetings 'greeting'">
                 <template>
                     <li data-id="makeGreetingHash greeting" class="micro-quick-nav" tabindex="0">
-                        <span><micro-user data-user="greeting.authors.0"></micro-user>:</span>
-                        <q data-content="greeting.text"></q>
+                        <header class="micro-panel">
+                            <p><micro-user data-user="greeting.authors.0"></micro-user>:</p>
+                        </header>
+                        <div data-content="renderResource greeting.resource"></div>
+                        <p data-content="greeting.text"></p>
                     </li>
                 </template>
             </ul>
@@ -62,26 +65,33 @@
             }
 
             .hello-start-greetings {
+                --micro-link-max-height: calc(1.5em * 5);
+                --micro-image-max-height: calc(1.5em * 5);
                 padding: 0;
                 list-style: none;
             }
 
             .hello-start-greetings > li {
-                padding: calc(1.5em / 2) 0;
-                border-top: 1px solid #ddd;
+                padding: 1px 0;
+                border-top: 1px solid var(--micro-color-delimiter);
             }
 
-            .hello-start-greetings > li span {
-                color: #888;
+            .hello-start-greetings > li > div,
+            .hello-start-greetings > li > p {
+                margin: 0 0 var(--micro-size-rxs) 0;
             }
 
-            .hello-start-greetings > li > q {
-                quotes: "«" "»";
+            .hello-start-greetings > li > header {
+                margin: 0;
             }
 
-            .hello-start-greetings > li > q::before,
-            .hello-start-greetings > li > q::after {
-                color: #888;
+            .hello-start-greetings > li > header > p {
+                padding-left: 0;
+                font-weight: bold;
+            }
+
+            .hello-start-greetings > li > div:empty {
+                display: none;
             }
         </style>
 

@@ -302,6 +302,10 @@ Returned for value-related errors.
 
    Error string providing more information about the problem.
 
+   .. deprecated:: 0.27.0
+
+      Use :attr:`message` instead.
+
 .. _InputError:
 
 InputError

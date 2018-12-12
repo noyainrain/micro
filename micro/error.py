@@ -31,10 +31,13 @@ class ValueError(builtins.ValueError, Error):
     """
 
     @property
-    def code(self):
+    def code(self) -> object:
         # pylint: disable=missing-docstring; already documented
-        return self.args[0] if self.args else None
+        return self.args[0] if self.args else None # type: ignore
+
+    def json(self) -> Dict[str, object]:
+        # Compatibility for code (deprecated since 0.27.0)
+        return {**super().json(), 'code': self.code}
 
 class CommunicationError(Error):
     """See :ref:`CommunicationError`."""
-    pass

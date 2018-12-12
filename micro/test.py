@@ -20,10 +20,11 @@ from urllib.parse import urljoin
 from tornado.httpclient import AsyncHTTPClient
 from tornado.testing import AsyncTestCase
 
-from .jsonredis import JSONRedis, RedisList, expect_type
+from .jsonredis import JSONRedis, RedisList
 from .micro import (Activity, Application, Collection, Editable, Object, Orderable, Settings,
-                    Trashable)
-from .util import randstr
+                    Trashable, WithContent)
+from .resource import Resource
+from .util import expect_opt_type, expect_type, randstr
 
 class ServerTestCase(AsyncTestCase):
     """Subclass API: Server test case.
@@ -84,11 +85,17 @@ class CatApp(Application):
         r = JSONRedis(self.r.r)
         r.caching = False
 
-        # Deprecated since 0.14.0
-        cat = r.oget('Cat')
-        if cat and 'activity' not in cat:
-            cat['activity'] = Activity('Cat.activity', app=self, subscriber_ids=[]).json()
-            r.oset(cat['id'], cat)
+        cats = r.omget(r.lrange('cats', 0, -1))
+        for cat in cats:
+            # Deprecated since 0.14.0
+            if 'activity' not in cat:
+                cat['activity'] = Activity(
+                    '{}.activity'.format(cat['id']), app=self, subscriber_ids=[]).json()
+            # Deprecated since 0.27.0
+            if 'text' not in cat:
+                cat['text'] = None
+                cat['resource'] = None
+        r.omset({cat['id']: cat for cat in cats})
 
     def create_settings(self):
         # pylint: disable=unexpected-keyword-arg; decorated
@@ -103,30 +110,34 @@ class CatApp(Application):
         user = self.login()
         auth_request = user.set_email('happy@example.org')
         self.r.set('auth_request', auth_request.id)
-        self.cats.create()
 
-class Cat(Object, Editable, Trashable):
+class Cat(Object, Editable, Trashable, WithContent):
     """Cute cat."""
 
     @staticmethod
     def make(*, name: str = None, app: Application) -> 'Cat':
         """Create a :class:`Cat` object."""
         id = 'Cat:{}'.format(randstr())
-        return Cat(id=id, app=app, authors=[], trashed=False, name=name,
+        return Cat(id=id, app=app, authors=[], trashed=False, text=None, resource=None, name=name,
                    activity=Activity(id='{}.activity'.format(id), app=app, subscriber_ids=[]))
 
-    def __init__(self, id: str, app: Application, authors: List[str], trashed: bool,
-                 name: Optional[str], activity: Activity) -> None:
+    def __init__(
+            self, *, id: str, app: Application, authors: List[str], trashed: bool,
+            text: Optional[str], resource: Optional[Resource], name: Optional[str],
+            activity: Activity) -> None:
         super().__init__(id, app)
         Editable.__init__(self, authors, activity)
         Trashable.__init__(self, trashed, activity)
+        WithContent.__init__(self, text=text, resource=resource)
         self.name = name
         self.activity = activity
         self.activity.host = self
 
-    def do_edit(self, **attrs):
+    async def do_edit(self, **attrs: object) -> None:
+        attrs = await WithContent.pre_edit(self, attrs)
+        WithContent.do_edit(self, **attrs)
         if 'name' in attrs:
-            self.name = attrs['name']
+            self.name = expect_opt_type(str)(attrs['name'])
 
     def json(self, restricted=False, include=False):
         return {

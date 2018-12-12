@@ -77,6 +77,7 @@
         features.es6TemplateLiteral = false;
     }
     features.html5Constraints = "validity" in document.createElement("input");
+    features.html5ErrorEvent = "error" in new ErrorEvent("error");
     features.html5History = "pushState" in history;
     features.html5Storage = "localStorage" in window;
     features.html5Template = "content" in document.createElement("template");

@@ -20,14 +20,15 @@ import builtins
 from datetime import datetime
 from email.message import EmailMessage
 import errno
+from inspect import isawaitable
 import json
 from logging import getLogger
 import os
 import re
 from smtplib import SMTP
 import sys
-from typing import (AsyncIterator, Callable, Coroutine, Dict, Generic, Iterator, List, Optional,
-                    Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload)
+from typing import (AsyncIterator, Awaitable, Callable, Coroutine, Dict, Generic, Iterator, List,
+                    Optional, Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload)
 from urllib.parse import urlparse
 from warnings import catch_warnings
 
@@ -42,9 +43,11 @@ from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
 from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
-                             RedisSequence, expect_type)
+                             RedisSequence)
 from .error import CommunicationError, ValueError
-from .util import check_email, randstr, parse_isotime, str_or_none, version
+from .resource import Analyzer, Image, Resource
+from .util import (OnType, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
+                   run_instant, str_or_none, version)
 
 _PUSH_TTL = 24 * 60 * 60
 
@@ -67,7 +70,16 @@ class JSONifiable(Protocol):
         :attr:`Application.user` are excluded. If *include* is ``True``, additional fields that may
         be of interest to the caller are included.
         """
-        pass
+
+class JSONifiableWithParse(JSONifiable, Protocol):
+    # pylint: disable=missing-docstring; semi-public
+
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> JSONifiable:
+        """Parse the given JSON *data* into an object.
+
+        Additional keyword arguments *args* are passed to the constructor.
+        """
 
 class Application:
     """Social micro web app.
@@ -101,6 +113,10 @@ class Application:
     .. attribute:: r
 
        :class:`Redis` database. More precisely a :class:`JSONRedis` instance.
+
+    .. attribute:: analyzer
+
+       Web resource analyzer.
     """
 
     def __init__(
@@ -124,7 +140,9 @@ class Application:
             'Settings': Settings,
             'Activity': Activity,
             'Event': Event,
-            'AuthRequest': AuthRequest
+            'AuthRequest': AuthRequest,
+            'Resource': Resource,
+            'Image': Image
         } # type: Dict[str, Type[JSONifiable]]
         self.user = None # type: Optional[User]
         self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)
@@ -132,6 +150,7 @@ class Application:
         self.email = email
         self.smtp_url = smtp_url
         self.render_email_auth_message = render_email_auth_message
+        self.analyzer = Analyzer()
 
     @property
     def settings(self):
@@ -230,7 +249,6 @@ class Application:
         May be overridden by subclass. Called by :meth:`update`, which takes care of updating (or
         initializing) micro specific data. The default implementation does nothing.
         """
-        pass
 
     def create_settings(self) -> 'Settings':
         """Subclass API: Create and return the app :class:`Settings`.
@@ -308,12 +326,15 @@ class Application:
     def _decode(self, json: Dict[str, object]) -> Union[JSONifiable, Dict[str, object]]:
         # pylint: disable=redefined-outer-name; good name
         try:
-            type = self.types[str(json.pop('__type__'))]
+            type = self.types[str(json['__type__'])]
         except KeyError:
             return json
+        if hasattr(type, 'parse'):
+            return cast(JSONifiableWithParse, type).parse(json, app=self)
         # Compatibility for Settings without icon_large (deprecated since 0.13.0)
         if issubclass(type, Settings):
             json['v'] = 2
+        del json['__type__']
         return type(app=self, **json)
 
     @staticmethod
@@ -367,7 +388,8 @@ class Editable:
     app = None # type: Application
     trashed = None # type: bool
 
-    def __init__(self, authors: List[str], activity: 'Activity' = None) -> None:
+    def __init__(self, authors: List[str],
+                 activity: Union['Activity', Callable[[], 'Activity']] = None) -> None:
         self._authors = authors
         self.__activity = activity
 
@@ -376,23 +398,42 @@ class Editable:
         # pylint: disable=missing-docstring; already documented
         return self.app.r.omget(self._authors, default=AssertionError, expect=expect_type(User))
 
-    def edit(self, **attrs):
+    @overload
+    def edit(self, *, asynchronous: None, **attrs: object) -> None:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def edit(self, *, asynchronous: OnType, **attrs: object) -> Awaitable[None]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    def edit(self, *, asynchronous: OnType = None, **attrs: object) -> Optional[Awaitable[None]]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        # Compatibility for synchronous edit (deprecated since 0.27.0)
+        coro = self._edit(**attrs)
+        if asynchronous is None:
+            run_instant(coro)
+            return None
+        return coro
+
+    async def _edit(self, **attrs: object) -> None:
         """See :http:post:`/api/(object-url)`."""
         if not self.app.user:
             raise PermissionError()
         if isinstance(self, Trashable) and self.trashed:
             raise ValueError('object_trashed')
 
-        self.do_edit(**attrs)
+        coro = self.do_edit(**attrs)
+        if isawaitable(coro):
+            await cast(Awaitable[None], coro)
         if not self.app.user.id in self._authors:
             self._authors.append(self.app.user.id)
         self.app.r.oset(self.id, self)
 
         if self.__activity is not None:
             activity = self.__activity() if callable(self.__activity) else self.__activity
-            activity.publish(Event.create('editable-edit', self, app=self.app))
+            activity.publish(Event.create('editable-edit', self, app=self.app)) # type: ignore
 
-    def do_edit(self, **attrs):
+    def do_edit(self, **attrs: object) -> Optional[Awaitable[None]]:
         """Subclass API: Perform the edit operation.
 
         More precisely, validate and then set the given *attrs*.
@@ -410,7 +451,8 @@ class Trashable:
     """Mixin for :class:`Object` which can be trashed and restored."""
     # pylint: disable=no-member; mixin
 
-    def __init__(self, trashed: bool, activity: 'Activity' = None) -> None:
+    def __init__(self, trashed: bool,
+                 activity: Union['Activity', Callable[[], 'Activity']] = None) -> None:
         self.trashed = trashed
         self.__activity = activity
 
@@ -444,6 +486,49 @@ class Trashable:
         """Subclass API: Return a JSON representation of the trashable part of the object."""
         # pylint: disable=unused-argument; part of subclass API
         return {'trashed': self.trashed}
+
+class WithContent:
+    """:class:`Editable` :class:`Object` with content."""
+
+    app = None # type: Application
+
+    @staticmethod
+    async def process_attrs(attrs: Dict[str, object], *, app: Application) -> Dict[str, object]:
+        """Pre-Process the given attributes *attrs* for editing."""
+        if 'text' in attrs:
+            text = attrs['text']
+            if text is not None:
+                attrs['text'] = str_or_none(expect_type(str)(text))
+        if 'resource' in attrs:
+            url = attrs['resource']
+            if url is not None:
+                attrs['resource'] = await app.analyzer.analyze(expect_type(str)(url))
+        return attrs
+
+    def __init__(self, *, text: str = None, resource: Resource = None) -> None:
+        self.text = text
+        self.resource = resource
+
+    async def pre_edit(self, attrs: Dict[str, object]) -> Dict[str, object]:
+        """Prepare the edit operation.
+
+        More precisely, validate and pre-process the given *attrs*.
+        """
+        if 'resource' in attrs and self.resource and attrs['resource'] == self.resource.url:
+            del attrs['resource']
+        return await self.process_attrs(attrs, app=self.app)
+
+    def do_edit(self, **attrs: object) -> Optional[Awaitable[None]]: # type: ignore
+        """See :meth:`Editable.do_edit`."""
+        if 'text' in attrs:
+            self.text = expect_opt_type(str)(attrs['text'])
+        if 'resource' in attrs:
+            self.resource = expect_opt_type(Resource)(attrs['resource'])
+
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
+        """See :meth:`JSONifiable.json`."""
+        # pylint: disable=unused-argument; part of API
+        return {'text': self.text, 'resource': self.resource.json() if self.resource else None}
 
 class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
     """See :ref:`Collection`.
@@ -1208,12 +1293,9 @@ class InputError(ValueError):
 
 class AuthenticationError(Exception):
     """See :ref:`AuthenticationError`."""
-    pass
 
 class PermissionError(Exception):
     """See :ref:`PermissionError`."""
-    pass
 
 class EmailError(Exception):
     """Raised if communication with the SMTP server fails."""
-    pass

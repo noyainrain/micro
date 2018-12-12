@@ -37,13 +37,22 @@ from tornado.simple_httpclient import HTTPStreamClosedError, HTTPTimeoutError
 
 from . import error
 from .error import CommunicationError, Error
-from .util import str_or_none
+from .util import expect_opt_type, expect_type, str_or_none
 
 HandleResourceFunc = Callable[[str, str, bytes, 'Analyzer'],
                               Union[Optional['Resource'], Awaitable[Optional['Resource']]]]
 
 class Resource:
     """See :ref:`Resource`."""
+
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> 'Resource':
+        """See :meth:`JSONifiableWithParse.parse`."""
+        # pylint: disable=unused-argument; part of API
+        return Resource(
+            expect_type(str)(data['url']), expect_type(str)(data['content_type']),
+            description=expect_opt_type(str)(data['description']),
+            image=expect_opt_type(Image)(data['image']))
 
     def __init__(self, url: str, content_type: str, *, description: str = None,
                  image: 'Image' = None) -> None:
@@ -56,8 +65,9 @@ class Resource:
         self.description = str_or_none(description) if description else None
         self.image = image
 
-    def json(self) -> Dict[str, object]:
-        """Return a JSON representation of the resource."""
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
+        """See :meth:`JSONifiable.json`."""
+        # pylint: disable=unused-argument; part of API
         return {
             '__type__': type(self).__name__,
             'url': self.url,
@@ -68,6 +78,13 @@ class Resource:
 
 class Image(Resource):
     """See :ref:`Image`."""
+
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> 'Image':
+        """See :meth:`JSONifiableWithParse.parse`."""
+        # pylint: disable=unused-argument; part of API
+        resource = Resource.parse(data)
+        return Image(resource.url, resource.content_type, description=resource.description)
 
     def __init__(self, url: str, content_type: str, *, description: str = None) -> None:
         super().__init__(url, content_type, description=description)
@@ -194,10 +211,7 @@ async def handle_webpage(url: str, content_type: str, data: bytes,
     parser.feed(html)
     parser.close()
 
-    title = str_or_none(parser.meta.get('og:title') or parser.meta.get('title') or '')
-    text = str_or_none(parser.meta.get('og:description') or parser.meta.get('description') or '')
-    description = '{} - {}'.format(title, text) if title and text else title or text
-
+    description = str_or_none(parser.meta.get('og:title') or parser.meta.get('title') or '')
     image = None
     image_url = (parser.meta.get('og:image') or parser.meta.get('og:image:url') or
                  parser.meta.get('og:image:secure_url'))
@@ -217,19 +231,15 @@ async def handle_webpage(url: str, content_type: str, data: bytes,
 
 class AnalysisError(Error):
     """See :ref:`AnalysisError`."""
-    pass
 
 class NoResourceError(AnalysisError):
     """See :ref:`NoResourceError`."""
-    pass
 
 class ForbiddenResourceError(AnalysisError):
     """See :ref:`ForbiddenResourceError`."""
-    pass
 
 class BrokenResourceError(AnalysisError):
     """See :ref:`BrokenResourceError`."""
-    pass
 
 class _LoopError(Exception):
     pass

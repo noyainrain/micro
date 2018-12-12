@@ -68,8 +68,9 @@ describe("UI", function() {
         input = await form.findElement({name: "text"});
         await input.sendKeys("Meow!");
         await form.findElement({css: "button"}).click();
-        await browser.wait(untilElementTextLocated({css: "hello-start-page li q"}, "Meow!"),
-                           timeout);
+        await browser.wait(
+            untilElementTextLocated({css: ".hello-start-greetings > li > p"}, "Meow!"), timeout
+        );
 
         // Edit user
         await browser.findElement({css: ".micro-ui-header-user"}).click();

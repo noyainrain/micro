@@ -1814,6 +1814,26 @@ micro.ActivityPage = class extends micro.Page {
     }
 };
 
+/** Render the given web :ref:`Resource` *resource*. */
+micro.bind.transforms.renderResource = function(ctx, resource) {
+    if (!resource) {
+        return "";
+    }
+    let elem;
+    switch (resource.__type__) {
+    case "Image":
+        elem = document.createElement("micro-image");
+        elem.image = resource;
+        break;
+    default:
+        elem = document.createElement("micro-link");
+        console.log(micro.components);
+        elem.resource = resource;
+        break;
+    }
+    return elem;
+};
+
 document.registerElement("micro-ui", {prototype: micro.UI.protoype, extends: "body"});
 document.registerElement("micro-simple-notification", micro.SimpleNotification);
 document.registerElement("micro-error-notification", micro.ErrorNotification);

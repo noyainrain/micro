@@ -55,11 +55,23 @@ hello.StartPage = class extends micro.Page {
 
             createGreeting: async() => {
                 try {
-                    let form = this.querySelector("form");
-                    await ui.call("POST", "/api/greetings", {text: form.elements.text.value});
+                    const form = this.querySelector("form");
+                    const text = form.elements.text.value;
+                    const match = text.match(/^https?:\/\/\S+/u);
+                    const resource = match ? match[0] : null;
+                    await ui.call("POST", "/api/greetings", {text, resource});
                     form.reset();
                 } catch (e) {
-                    ui.handleCallError(e);
+                    if (
+                        [
+                            "CommunicationError", "NoResourceError", "ForbiddenResourceError",
+                            "BrokenResourceError"
+                        ].includes(e.error.__type__)
+                    ) {
+                        ui.notify("Oops, there was a problem opening the link. Please try again in a few moments.");
+                    } else {
+                        ui.handleCallError(e);
+                    }
                 }
             },
 

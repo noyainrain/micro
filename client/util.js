@@ -24,7 +24,7 @@ self.micro = self.micro || {};
 micro.util = {};
 
 /** Thrown if network communication failed. */
-micro.NetworkError = class extends TypeError {};
+micro.NetworkError = class NetworkError extends TypeError {};
 
 /**
  * Thrown for HTTP JSON REST API errors.
@@ -37,9 +37,9 @@ micro.NetworkError = class extends TypeError {};
  *
  *    The associated HTTP status code.
  */
-micro.APIError = class extends Error {
+micro.APIError = class APIError extends Error {
     constructor(error, status) {
-        super(error.__type__);
+        super(`${error.__type__}: ${error.message}`);
         this.error = error;
         this.status = status;
     }
@@ -71,9 +71,10 @@ micro.call = async function(method, url, args) {
         response = await fetch(url, options);
         result = await response.json();
     } catch (e) {
-        if (e instanceof TypeError || e instanceof SyntaxError) {
-            // Consider invalid JSON an IO error as well
-            throw new micro.NetworkError();
+        if (e instanceof TypeError) {
+            throw new micro.NetworkError(`${e.message} for ${method} ${url}`);
+        } else if (e instanceof SyntaxError) {
+            throw new micro.NetworkError(`Bad response format for ${method} ${url}`);
         }
         throw e;
     }
@@ -258,16 +259,15 @@ micro.util.importCSS = function(url) {
 micro.util.watchErrors = function() {
     async function report(e) {
         await micro.call("POST", "/log-client-error", {
-            type: e.name,
-            stack: e.stack,
+            type: e.constructor.name,
+            // Stack traces may be truncated for security reasons, resulting in an empty string at
+            // worst
+            stack: e.stack || "?",
             url: location.pathname,
             message: e.message
         });
     }
-    addEventListener("error", event => {
-        report(event.error ||
-               {name: "Error", stack: `${event.filename}:${event.lineno}`, message: event.message});
-    });
+    addEventListener("error", event => report(event.error));
 
     /**
      * Catch unhandled rejections.

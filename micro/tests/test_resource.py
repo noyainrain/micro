@@ -53,7 +53,7 @@ class AnalyzerTestCase(AsyncHTTPTestCase):
         webpage = await analyzer.analyze(self.get_url('/static/webpage.html'))
         self.assertIsInstance(webpage, Resource)
         self.assertEqual(webpage.content_type, 'text/html')
-        self.assertEqual(webpage.description, 'Happy Blog - Weblog of Happy Cat')
+        self.assertEqual(webpage.description, 'Happy Blog')
         assert isinstance(webpage.image, Image)
         self.assertRegex(webpage.image.url, '/static/image.svg$')
 
