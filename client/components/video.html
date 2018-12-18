@@ -1,0 +1,75 @@
+<script>
+micro.components = micro.components || {};
+
+micro.components.VideoElement = class extends HTMLElement {
+    createdCallback() {
+        this._video = null;
+        this.appendChild(
+            document.importNode(document.querySelector("#micro-video-template").content, true)
+        );
+    }
+
+                // TODO: parse the videoID better
+                //https://www.youtube.com/watch?v=MdHmp5EX5bE&t=10
+                //const match = this._data.video.url.match(/\?v=(\S+)$/)
+                //const videoId = match[1];
+
+    attachedCallback() {
+        (async() => {
+            window.onYouTubeIframeAPIReady = () => {
+                const url = new URL(this._video.url);
+                const videoId = url.searchParams.get("v");
+                this._player = new yt.Player(
+                    this.querySelector("div"), {width: 480, height: 270, videoId}
+                );
+                this._player.addEventListener("onStateChange", event => {
+                    if (event.data === 2 || event.data === 0) {
+                        this.dispatchEvent(new CustomEvent("pause"));
+                    } else if (event.data === 1) {
+                        this.dispatchEvent(new CustomEvent("play"));
+                    }
+                });
+            };
+            const yt = await micro.util.import("https://www.youtube.com/iframe_api", "YT");
+        })().catch(micro.util.catch);
+    }
+
+    get video() {
+        return this._video;
+    }
+
+    set video(value) {
+        this._video = value;
+    }
+
+    play() {
+        this._player.playVideo();
+    }
+
+    pause() {
+        this._player.pauseVideo();
+    }
+
+    get duration() {
+        return this._player.getDuration();
+    }
+
+    get time() {
+        return this._player.getCurrentTime();
+    }
+}
+
+document.addEventListener(
+    "DOMContentLoaded", () => document.registerElement("micro-video", micro.components.VideoElement)
+);
+</script>
+
+<template id="micro-video-template">
+    <div></div>
+</template>
+
+<style>
+micro-video {
+    display: inline-block;
+}
+</style>
