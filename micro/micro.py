@@ -45,7 +45,7 @@ from typing_extensions import Protocol
 from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
                              RedisSequence)
 from .error import CommunicationError, ValueError
-from .resource import Analyzer, Image, Resource
+from .resource import Analyzer, Image, Resource, Video
 from .util import (OnType, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
                    run_instant, str_or_none, version)
 
@@ -142,7 +142,8 @@ class Application:
             'Event': Event,
             'AuthRequest': AuthRequest,
             'Resource': Resource,
-            'Image': Image
+            'Image': Image,
+            'Video': Video
         } # type: Dict[str, Type[JSONifiable]]
         self.user = None # type: Optional[User]
         self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)

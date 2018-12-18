@@ -89,6 +89,13 @@ class Image(Resource):
     def __init__(self, url: str, content_type: str, *, description: str = None) -> None:
         super().__init__(url, content_type, description=description)
 
+class Video(Resource):
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> 'Video':
+        resource = Resource.parse(data)
+        return Video(resource.url, resource.content_type, description=resource.description,
+                     image=resource.image)
+
 class Analyzer:
     """Web resource analyzer.
 
@@ -105,7 +112,7 @@ class Analyzer:
             self, *, handlers: List[HandleResourceFunc] = None,
             _cache: 'OrderedDict[str, Tuple[Resource, datetime]]' = None,
             _stack: List[str] = None) -> None:
-        self.handlers = ([handle_image, handle_webpage] if handlers is None
+        self.handlers = ([handle_youtube, handle_image, handle_webpage] if handlers is None
                          else list(handlers)) # type: List[HandleResourceFunc]
         self._cache = OrderedDict() if _cache is None else _cache
         self._stack = [] if _stack is None else _stack
@@ -195,6 +202,12 @@ def handle_image(url: str, content_type: str, data: bytes, analyzer: Analyzer) -
     # https://en.wikipedia.org/wiki/Comparison_of_web_browsers#Image_format_support
     if content_type in {'image/bmp', 'image/gif', 'image/jpeg', 'image/png', 'image/svg+xml'}:
         return Image(url, content_type)
+    return None
+
+def handle_youtube(url: str, content_type: str, data: bytes, analyzer: Analyzer) -> Optional[Video]:
+    if url.startswith('https://www.youtube.com/watch'):
+        # NOTE Get description, duration, cover from YouTube API
+        return Video(url, content_type)
     return None
 
 async def handle_webpage(url: str, content_type: str, data: bytes,
