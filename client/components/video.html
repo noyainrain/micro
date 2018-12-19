@@ -45,7 +45,10 @@ micro.components.VideoElement = class extends HTMLElement {
         this._video = value;
     }
 
-    play() {
+    play({reset = false} = {}) {
+        if (reset) {
+            this._player.seekTo(0);
+        }
         this._player.playVideo();
     }
 
