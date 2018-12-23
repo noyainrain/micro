@@ -365,10 +365,14 @@ legend::after {
 
 .micro-panel > .link:focus,
 .micro-panel > .link:hover,
+.micro-panel > .action:focus,
+.micro-panel > .action:hover,
 .micro-panel > [tabindex]:focus,
 .micro-panel > [tabindex]:hover,
 .micro-panel > div > .link:focus,
 .micro-panel > div > .link:hover,
+.micro-panel > div > .action:focus,
+.micro-panel > div > .action:hover,
 .micro-panel > div > [tabindex]:focus,
 .micro-panel > div > [tabindex]:hover {
     background: var(--micro-color-delimiter);
@@ -376,15 +380,30 @@ legend::after {
 }
 
 .micro-panel > .link,
-.micro-panel > div > .link {
+.micro-panel > .action,
+.micro-panel > div > .link,
+.micro-panel > div > .action {
     display: block;
     padding: var(--micro-size-xs);
-    color: inherit;
+    border: none;
+    border-radius: 0;
+    line-height: inherit;
+    background: transparent;
 }
 
 .micro-panel > .link i,
 .micro-panel > div > .link i {
     color: var(--micro-color-text-subtle);
+}
+
+.micro-panel > .action,
+.micro-panel > div > .action {
+    color: var(--micro-color-primary);
+}
+
+.micro-panel > .action:focus,
+.micro-panel > div > .action:focus {
+    box-shadow: var(--micro-focus-shadow);
 }
 
 /* ---- Entity list ---- */
@@ -694,7 +713,7 @@ body:not(.micro-ui-user-is-staff) .micro-ui-activity {
 }
 
 main {
-    padding-top: calc(1.5 * 1.5rem);
+    padding: calc(1.5 * 1.5rem) 0;
 }
 
 .micro-ui-progress {
