@@ -506,6 +506,7 @@ legend::after {
     padding: calc(1.5em / 4);
     border-radius: 0;
     line-height: 1;
+    white-space: nowrap;
 }
 
 [is=micro-menu] li:first-child .link,
@@ -543,6 +544,7 @@ legend::after {
     text-decoration: none;
 }
 
+[is=micro-menu] li .link i,
 [is=micro-menu] li .link .fa {
     color: #888;
 }
