@@ -855,6 +855,10 @@ micro.OL = class extends HTMLOListElement {
 micro.Button = class extends HTMLButtonElement {
     createdCallback() {
         this.run = null;
+        /*this.addEventListener("mousedown", event => {
+            // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#Clicking_and_focus
+            event.preventDefault();
+        });*/
         this.addEventListener("click", event => {
             if (this.form && this.type === "submit") {
                 if (this.form.checkValidity()) {

@@ -7,6 +7,8 @@ micro.components.VideoElement = class extends HTMLElement {
         this.appendChild(
             document.importNode(document.querySelector("#micro-video-template").content, true)
         );
+
+        this.ready = new micro.util.PromiseWhen();
     }
 
     attachedCallback() {
@@ -20,21 +22,28 @@ micro.components.VideoElement = class extends HTMLElement {
             return micro.components.VideoElement._yt;
         }
 
-        (async() => {
+        this.ready.when((async() => {
             const yt = await importYt();
-            const url = new URL(this._video.url);
-            const videoId = url.searchParams.get("v");
-            this._player = new yt.Player(
-                this.querySelector("div"), {width: 480, height: 270, videoId}
-            );
-            this._player.addEventListener("onStateChange", event => {
-                if (event.data === 2 || event.data === 0) {
-                    this.dispatchEvent(new CustomEvent("pause"));
-                } else if (event.data === 1) {
-                    this.dispatchEvent(new CustomEvent("play"));
-                }
+            await new Promise(resolve => {
+                const url = new URL(this._video.url);
+                const videoId = url.searchParams.get("v");
+                const onReady = event => {
+                    this._player = event.target;
+                    resolve();
+                };
+                const onStateChange = event => {
+                    if (event.data === 2 || event.data === 0) {
+                        this.dispatchEvent(new CustomEvent("pause"));
+                    } else if (event.data === 1) {
+                        this.dispatchEvent(new CustomEvent("play"));
+                    }
+                };
+                new yt.Player(
+                    this.querySelector("div"),
+                    {width: 480, height: 270, videoId, events: {onReady, onStateChange}}
+                );
             });
-        })().catch(micro.util.catch);
+        })().catch(micro.util.catch));
     }
 
     get video() {
@@ -46,22 +55,28 @@ micro.components.VideoElement = class extends HTMLElement {
     }
 
     play({reset = false} = {}) {
-        if (reset) {
-            this._player.seekTo(0);
-        }
-        this._player.playVideo();
+        (async() => {
+            await this.ready;
+            if (reset) {
+                this._player.seekTo(0);
+            }
+            this._player.playVideo();
+         })().catch(micro.util.catch);
     }
 
     pause() {
-        this._player.pauseVideo();
+        (async() => {
+            await this.ready;
+            this._player.pauseVideo();
+        })().catch(micro.util.catch);
     }
 
     get duration() {
-        return this._player.getDuration();
+        return this._player ? this._player.getDuration() : 0;
     }
 
     get time() {
-        return this._player.getCurrentTime();
+        return this._player ? this._player.getCurrentTime() : 0;
     }
 }
 
