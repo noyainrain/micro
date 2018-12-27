@@ -7,11 +7,18 @@ micro.components.VideoElement = class extends HTMLElement {
         this.appendChild(
             document.importNode(document.querySelector("#micro-video-template").content, true)
         );
+        this._data = {play: () => this.play()};
+        micro.bind.bind(this.children, this._data);
 
-        this.ready = new micro.util.PromiseWhen();
+        this._p = null;
+        this._player = null;
     }
 
-    attachedCallback() {
+    ready() {
+        if (this._p) {
+            return this._p;
+        }
+
         function importYt() {
             if (!micro.components.VideoElement._yt) {
                 micro.components.VideoElement._yt = new Promise(resolve => {
@@ -22,7 +29,7 @@ micro.components.VideoElement = class extends HTMLElement {
             return micro.components.VideoElement._yt;
         }
 
-        this.ready.when((async() => {
+        this._p = (async() => {
             const yt = await importYt();
             await new Promise(resolve => {
                 const url = new URL(this._video.url);
@@ -34,6 +41,11 @@ micro.components.VideoElement = class extends HTMLElement {
                 const onStateChange = event => {
                     if (event.data === 2 || event.data === 0) {
                         this.dispatchEvent(new CustomEvent("pause"));
+                        if (event.data == 0) {
+                            this._player.destroy();
+                            this._player = null;
+                            this._p = null;
+                        }
                     } else if (event.data === 1) {
                         this.dispatchEvent(new CustomEvent("play"));
                     }
@@ -43,7 +55,9 @@ micro.components.VideoElement = class extends HTMLElement {
                     {width: 480, height: 270, videoId, events: {onReady, onStateChange}}
                 );
             });
-        })().catch(micro.util.catch));
+        })().catch(micro.util.catch);
+
+        return this._p;
     }
 
     get video() {
@@ -56,7 +70,7 @@ micro.components.VideoElement = class extends HTMLElement {
 
     play({reset = false} = {}) {
         (async() => {
-            await this.ready;
+            await this.ready();
             if (reset) {
                 this._player.seekTo(0);
             }
@@ -65,10 +79,9 @@ micro.components.VideoElement = class extends HTMLElement {
     }
 
     pause() {
-        (async() => {
-            await this.ready;
+        if (this._player) {
             this._player.pauseVideo();
-        })().catch(micro.util.catch);
+        }
     }
 
     get duration() {
@@ -86,10 +99,27 @@ document.addEventListener(
 </script>
 
 <template id="micro-video-template">
-    <div></div>
+    <div data-onclick="play"><i class="fas fa-play"></i></div>
 </template>
 
 <style>
+micro-video div {
+    background: black;
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    bottom: 0;
+    cursor: pointer;
+}
+
+micro-video i {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    color: white;
+}
+
 micro-video {
     position: relative;
     padding-top: calc(9 / 16 * 100%);
