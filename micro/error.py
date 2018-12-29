@@ -41,3 +41,6 @@ class ValueError(builtins.ValueError, Error):
 
 class CommunicationError(Error):
     """See :ref:`CommunicationError`."""
+
+class RateLimitError(Error):
+    pass

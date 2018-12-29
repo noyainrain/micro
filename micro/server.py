@@ -37,6 +37,7 @@ from .micro import (Activity, AuthRequest, Collection, JSONifiable, Object, User
                     AuthenticationError, CommunicationError, PermissionError)
 from .util import str_or_none, parse_slice, check_polyglot
 from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
+from .error import RateLimitError
 
 LIST_LIMIT = 100
 SLICE_URL = r'(?:/(\d*:\d*))?'
@@ -208,6 +209,7 @@ class Endpoint(RequestHandler):
         auth_secret = self.get_cookie('auth_secret')
         if auth_secret:
             self.current_user = self.app.authenticate(auth_secret)
+            self.current_user.ip = self.request.remote_ip
 
         if self.request.body:
             try:
@@ -253,7 +255,8 @@ class Endpoint(RequestHandler):
                 CommunicationError: http.client.BAD_GATEWAY,
                 NoResourceError: http.client.NOT_FOUND,
                 ForbiddenResourceError: http.client.FORBIDDEN,
-                BrokenResourceError: http.client.BAD_REQUEST
+                BrokenResourceError: http.client.BAD_REQUEST,
+                RateLimitError: http.client.TOO_MANY_REQUESTS
             }
             self.set_status(status[exc_info[0]])
             self.write(exc_info[1].json())

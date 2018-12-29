@@ -27,6 +27,7 @@ import os
 import re
 from smtplib import SMTP
 import sys
+import time
 from typing import (AsyncIterator, Awaitable, Callable, Coroutine, Dict, Generic, Iterator, List,
                     Optional, Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload)
 from urllib.parse import urlparse
@@ -44,7 +45,7 @@ from typing_extensions import Protocol
 
 from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
                              RedisSequence)
-from .error import CommunicationError, ValueError
+from .error import CommunicationError, ValueError, RateLimitError
 from .resource import Analyzer, Image, Resource, Video
 from .util import (OnType, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
                    run_instant, str_or_none, version)
@@ -152,6 +153,7 @@ class Application:
         self.smtp_url = smtp_url
         self.render_email_auth_message = render_email_auth_message
         self.analyzer = Analyzer()
+        self.rate_limiter = RateLimiter()
 
     @property
     def settings(self):
@@ -724,6 +726,7 @@ class User(Object, Editable):
         self.auth_secret = auth_secret
         self.device_notification_status = device_notification_status
         self.push_subscription = push_subscription
+        self.ip = None
 
     def store_email(self, email):
         """Update the user's *email* address.
@@ -1266,6 +1269,24 @@ class Location:
     def json(self) -> Dict[str, object]:
         """Return a JSON representation of the location."""
         return {'name': self.name, 'coords': list(self.coords) if self.coords else None}
+
+class RateLimiter:
+    LIMIT = 15 * 60
+
+    def __init__(self) -> None:
+        self._counts = {} # type: Dict[str, int]
+        self._current_window = 0
+
+    def count(self, ip: str):
+        window = int(time.time()) // self.LIMIT
+        if self._current_window != window:
+            self._counts = {}
+            self._current_window = window
+        if ip not in self._counts:
+            self._counts[ip] = 0
+        if self._counts[ip] >= 3:
+            raise RateLimitError()
+        self._counts[ip] += 1
 
 class InputError(ValueError):
     """See :ref:`InputError`.
