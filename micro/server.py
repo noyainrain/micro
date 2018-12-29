@@ -153,7 +153,7 @@ class Server:
         self._server = HTTPServer(Application(
             self.handlers, compress_response=True, template_path=self.client_path,
             static_path=self.client_path, static_handler_class=_Static, debug=self.debug,
-            server=self))
+            server=self), xheaders=True)
         self._message_templates = DictLoader(templates.MESSAGE_TEMPLATES, autoescape=None)
         self._micro_templates = Loader(os.path.join(self.client_path, self.client_modules_path,
                                                     '@noyainrain/micro'))
