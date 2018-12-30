@@ -96,7 +96,8 @@ micro.UI = class extends HTMLBodyElement {
         this.pages = [
             {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.EditUserPage.make},
             {url: "^/settings/edit$", page: micro.EditSettingsPage.make},
-            {url: "^/activity$", page: micro.ActivityPage.make}
+            {url: "^/activity$", page: micro.ActivityPage.make},
+            {url: "^/share$", page: "micro-share-page"}
         ];
 
         this.renderEvent = {

@@ -1,0 +1,38 @@
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+micro.components.SharePage = class extends micro.Page {
+    createdCallback() {
+        super.createdCallback();
+        this.caption = "Add to list";
+        this.appendChild(
+            document.importNode(document.querySelector("#micro-share-page-template").content, true)
+        );
+        const searchParams = new URLSearchParams(location.search);
+        this._data = new micro.bind.Watchable({
+            title: searchParams.get("title"),
+            text: searchParams.get("text"),
+            url: searchParams.get("url")
+        });
+        micro.bind.bind(this.firstElementChild, this._data);
+    }
+}
+
+document.registerElement("micro-share-page", micro.components.SharePage);
+
+});
+</script>
+
+<template id="micro-share-page-template">
+<div>
+    <h1>Add to list</h1>
+    <p>
+        Share "<span data-content="title"></span> | <span data-content="text"></span> |
+        <span data-content="url"></span>"
+    </p>
+    <p>Here should be an overview of your list and you could pick one</p>
+</div>
+</template>
+
+<style>
+</style>

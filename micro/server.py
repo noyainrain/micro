@@ -460,7 +460,11 @@ class _Manifest(RequestHandler):
                 {'src': cast(str, self._server.app.settings.icon_large), 'sizes': '192x192'}
             ],
             'name': cast(str, self._server.app.settings.title),
-            'start_url': '/'
+            'start_url': '/',
+            'share_target': {
+                "action": "/share",
+                "params": {"title": "title", "text": "text", "url": "url"}
+            }
         })
 
 class _LogClientErrorEndpoint(Endpoint):
