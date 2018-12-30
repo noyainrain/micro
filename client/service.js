@@ -126,6 +126,10 @@ micro.service.Service = class {
                 await clients.openWindow(event.notification.data.url);
             })().catch(micro.util.catch));
         });
+
+        addEventListener("fetch", () => {
+            // TODO
+        });
     }
 
     /**

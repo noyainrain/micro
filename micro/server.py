@@ -132,6 +132,7 @@ class Server:
             return self.app.activity
         self.handlers = [
             # UI
+            (r'/manifest.json$', _Manifest),
             (r'/log-client-error$', _LogClientErrorEndpoint),
             (r'/(?!api/).*$', _UI),
             # API
@@ -442,6 +443,26 @@ class _UI(RequestHandler):
 
     def _render_micro_templates(self) -> str:
         return self._templates.load('templates.html').generate(**self.get_template_namespace())
+
+class _Manifest(RequestHandler):
+    def initialize(self) -> None:
+        server = self.application.settings['server']
+        assert isinstance(server, Server)
+        self._server = server
+
+    def get(self) -> None:
+        self.write({
+            'name': 'Listling',
+            'theme_color': '#4d8dd9', # TODO server config
+            'display': 'standalone',
+            # TODO 'description': '',
+            'icons': [
+                {'src': cast(str, self._server.app.settings.icon_small)},
+                {'src': cast(str, self._server.app.settings.icon_large), 'sizes': '192x192'}
+            ],
+            'name': cast(str, self._server.app.settings.title),
+            'start_url': '/'
+        })
 
 class _LogClientErrorEndpoint(Endpoint):
     def post(self):
