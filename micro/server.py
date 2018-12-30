@@ -667,6 +667,11 @@ class _WebManifest(RequestHandler):
             'background_color': 'white',
             'start_url': '/',
             'display': 'standalone',
+            # TODO: read URL from client_config, make optional if not set
+            'share_target': {
+                "action": "/share",
+                "params": {"title": "title", "text": "text", "url": "url"}
+            }
         }
 
         self.set_header('Cache-Control', 'no-cache')
