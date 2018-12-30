@@ -156,9 +156,9 @@ class Application:
         self.rate_limiter = RateLimiter()
 
     @property
-    def settings(self):
+    def settings(self) -> 'Settings':
         """App :class:`Settings`."""
-        return self.r.oget('Settings')
+        return self.r.oget('Settings', default=AssertionError, expect=expect_type(Settings))
 
     @property
     def activity(self) -> 'Activity':
