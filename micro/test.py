@@ -144,6 +144,7 @@ class Cat(Object, Editable, Trashable, WithContent):
             **super().json(restricted, include),
             **Editable.json(self, restricted, include),
             **Trashable.json(self, restricted, include),
+            **WithContent.json(self, restricted, include),
             'name': self.name,
             'activity': self.activity.json(restricted)
         }

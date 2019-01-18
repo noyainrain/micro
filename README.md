@@ -42,8 +42,13 @@ Simply copy the files from `boilerplate` over to the new repository and substitu
 
 ## Public domain components
 
-While micro is covered by the [LGPL](https://www.gnu.org/licenses/lgpl.html), the jsonredis module
-is released into the public domain.
+While micro is covered by the [LGPL](https://www.gnu.org/licenses/lgpl.html), the following modules
+are released into the public domain:
+
+* [jsonredis](https://github.com/noyainrain/micro/blob/master/micro/jsonredis.py)
+* [webapi](https://github.com/noyainrain/micro/blob/master/micro/webapi.py)
+* [bind.js](https://github.com/noyainrain/micro/blob/master/client/bind.js)
+* [keyboard.js](https://github.com/noyainrain/micro/blob/master/client/keyboard.js)
 
 ## Contributors
 

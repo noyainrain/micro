@@ -3,9 +3,12 @@ import datetime
 from numbers import Integral
 from typing import Dict, Optional, Sequence, Tuple, Type, Union
 
+from .httputil import HTTPServerRequest
+
 _HeaderTypes = Union[bytes, str, int, Integral, datetime.datetime]
 
 class RequestHandler:
+    request: HTTPServerRequest
     application: Application
     current_user: Optional[object]
 

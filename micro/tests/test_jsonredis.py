@@ -1,7 +1,6 @@
 # jsonredis
-# https://github.com/NoyaInRain/micro/blob/master/jsonredis.py
-# part of Micro
-# released into the public domain
+# Released into the public domain
+# https://github.com/noyainrain/micro/blob/master/micro/jsonredis.py
 
 # pylint: disable=missing-docstring; test module
 

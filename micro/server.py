@@ -35,8 +35,8 @@ from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandle
 from . import micro, templates, error
 from .micro import (Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError,
                     AuthenticationError, CommunicationError, PermissionError)
-from .util import str_or_none, parse_slice, check_polyglot
 from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
+from .util import str_or_none, parse_slice, check_polyglot
 
 LIST_LIMIT = 100
 SLICE_URL = r'(?:/(\d*:\d*))?'
@@ -247,10 +247,12 @@ class Endpoint(RequestHandler):
                 'code': exc_info[1].code,
                 'errors': exc_info[1].errors
             })
+        elif issubclass(exc_info[0], CommunicationError):
+            self.set_status(http.client.BAD_GATEWAY)
+            self.write({'__type__': exc_info[0].__name__, 'message': str(exc_info[1])})
         elif issubclass(exc_info[0], error.Error):
             status = {
                 error.ValueError: http.client.BAD_REQUEST,
-                CommunicationError: http.client.BAD_GATEWAY,
                 NoResourceError: http.client.NOT_FOUND,
                 ForbiddenResourceError: http.client.FORBIDDEN,
                 BrokenResourceError: http.client.BAD_REQUEST
@@ -262,7 +264,9 @@ class Endpoint(RequestHandler):
 
     def log_exception(self, typ, value, tb):
         # These errors are handled specially and there is no need to log them as exceptions
-        if issubclass(typ, (KeyError, AuthenticationError, PermissionError, error.Error)):
+        if issubclass(
+                typ,
+                (KeyError, AuthenticationError, PermissionError, CommunicationError, error.Error)):
             return
         super().log_exception(typ, value, tb)
 

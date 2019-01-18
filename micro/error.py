@@ -17,6 +17,8 @@
 import builtins
 from typing import Dict
 
+from . import webapi
+
 class Error(Exception):
     """Base for micro errors."""
 
@@ -40,4 +42,11 @@ class ValueError(builtins.ValueError, Error):
         return {**super().json(), 'code': self.code}
 
 class CommunicationError(Error):
-    """See :ref:`CommunicationError`."""
+    """See :ref:`CommunicationError`.
+
+    .. deprecated:: 0.28.0
+
+       Use :exc:`webapi.CommunicationError` instead.
+    """
+# Compatibility for micro CommunicationError (deprecated since 0.28.0)
+webapi.CommunicationError = CommunicationError # type: ignore

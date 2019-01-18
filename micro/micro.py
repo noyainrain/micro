@@ -19,26 +19,22 @@ from asyncio import Queue
 import builtins
 from datetime import datetime
 from email.message import EmailMessage
-import errno
 from inspect import isawaitable
 import json
 from logging import getLogger
-import os
 import re
 from smtplib import SMTP
 import sys
 from typing import (AsyncIterator, Awaitable, Callable, Coroutine, Dict, Generic, Iterator, List,
                     Optional, Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload)
 from urllib.parse import urlparse
-from warnings import catch_warnings
 
 from pywebpush import WebPusher, WebPushException
 from py_vapid import Vapid
 from py_vapid.utils import b64urlencode
 from redis import StrictRedis
 from redis.exceptions import ResponseError
-from tornado.httpclient import AsyncHTTPClient, HTTPResponse
-from tornado.simple_httpclient import HTTPStreamClosedError, HTTPTimeoutError
+from tornado.httpclient import HTTPResponse
 from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
@@ -48,6 +44,7 @@ from .error import CommunicationError, ValueError
 from .resource import Analyzer, Image, Resource
 from .util import (OnType, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
                    run_instant, str_or_none, version)
+from .webapi import fetch
 
 _PUSH_TTL = 24 * 60 * 60
 
@@ -918,11 +915,8 @@ class User(Object, Editable):
             'sub': 'mailto:{}'.format(email)
         })
 
-        try:
-            response = await pusher.send(json.dumps(event.json(restricted=True, include=True)),
-                                         headers, ttl=_PUSH_TTL)
-        except OSError as e:
-            raise CommunicationError(str(e))
+        response = await pusher.send(json.dumps(event.json(restricted=True, include=True)), headers,
+                                     ttl=_PUSH_TTL)
         if response.code in (404, 410):
             raise ValueError('push_subscription_invalid')
         if response.code != 201:
@@ -938,20 +932,8 @@ class User(Object, Editable):
         async def post(endpoint: str, data: bytes, headers: Dict[str, str],
                        timeout: float) -> HTTPResponse:
             # pylint: disable=unused-argument, missing-docstring; part of API
-            try:
-                # raise_error=False triggers a deprecation warning in Tornado 5. Reraise suppressed
-                # IO errors to match the future behavior.
-                with catch_warnings(record=True):
-                    response = await AsyncHTTPClient().fetch(
-                        endpoint, method='POST', headers=headers, body=data, raise_error=False)
-                    if response.code == 599:
-                        assert response.error is not None
-                        raise response.error
-                    return response
-            except HTTPStreamClosedError:
-                raise BrokenPipeError(errno.ESHUTDOWN, os.strerror(errno.ESHUTDOWN))
-            except HTTPTimeoutError:
-                raise TimeoutError(errno.ETIMEDOUT, os.strerror(errno.ETIMEDOUT))
+            return await fetch(endpoint, raise_error=False, method='POST', headers=headers,
+                               body=data)
 
 class Settings(Object, Editable):
     """See :ref:`Settings`.

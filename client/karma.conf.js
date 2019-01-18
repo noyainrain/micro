@@ -39,7 +39,7 @@ module.exports = function(config) {
             "sauce-safari": {
                 base: "SauceLabs",
                 browserName: "safari",
-                platform: "macOS 10.12"
+                platform: "macOS 10.13"
             }
         },
         browsers: ["FirefoxHeadless"]

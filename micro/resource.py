@@ -25,19 +25,17 @@
 
 from collections import OrderedDict
 from datetime import datetime, timedelta
-import errno
 from html.parser import HTMLParser
 from inspect import isawaitable
-import os
 from typing import Awaitable, Callable, Dict, List, Optional, Tuple, Union, cast
 from urllib.parse import urljoin
 
-from tornado.httpclient import AsyncHTTPClient, HTTPClientError, HTTPResponse
-from tornado.simple_httpclient import HTTPStreamClosedError, HTTPTimeoutError
+from tornado.httpclient import HTTPClientError, HTTPResponse
 
 from . import error
 from .error import CommunicationError, Error
 from .util import expect_opt_type, expect_type, str_or_none
+from .webapi import fetch
 
 HandleResourceFunc = Callable[[str, str, bytes, 'Analyzer'],
                               Union[Optional['Resource'], Awaitable[Optional['Resource']]]]
@@ -156,13 +154,9 @@ class Analyzer:
         :meth:`analyze`.
         """
         try:
-            return await AsyncHTTPClient().fetch(request)
+            return await fetch(request)
         except ValueError:
             raise error.ValueError('Bad url scheme {!r}'.format(request))
-        except HTTPStreamClosedError:
-            raise CommunicationError('{} for GET {}'.format(os.strerror(errno.ESHUTDOWN), request))
-        except HTTPTimeoutError:
-            raise CommunicationError('{} for GET {}'.format(os.strerror(errno.ETIMEDOUT), request))
         except HTTPClientError as e:
             if e.code in (404, 410):
                 raise NoResourceError('No resource at {}'.format(request))
@@ -170,8 +164,6 @@ class Analyzer:
                 raise ForbiddenResourceError('Forbidden resource at {}'.format(request))
             raise CommunicationError(
                 'Unexpected response status {} for GET {}'.format(e.code, request))
-        except OSError as e:
-            raise CommunicationError('{} for GET {}'.format(e, request))
 
     def _get_cache(self, url: str) -> Resource:
         resource, expires = self._cache[url]
