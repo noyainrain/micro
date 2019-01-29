@@ -48,6 +48,7 @@ describe("OptionsElement", function() {
         `;
         // Custom elements are upgraded in the next iteration
         await new Promise(resolve => setTimeout(resolve, 0));
+        // await new Promise(resolve => setTimeout(resolve, 100));
         let elem = main.lastElementChild;
         elem.options = options;
         return [elem, main.firstElementChild];
@@ -59,8 +60,10 @@ describe("OptionsElement", function() {
 
     describe("activate()", function() {
         it("should present options", async function() {
+            console.log("SHOULD PRESENT OPTIONS TEST");
             let [elem] = await setupDOM();
             elem.limit = 2;
+            console.log("ELEM TO ACTIVATE", elem, elem.activate);
             elem.activate();
             await new Promise(resolve => setTimeout(resolve, 0));
             expect(getPresentedOptions(elem)).to.deep.equal(["Long", "Happy"]);
