@@ -28,14 +28,14 @@ from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from inspect import isawaitable
 from typing import Awaitable, Callable, Dict, List, Optional, Tuple, Union, cast
-from urllib.parse import urljoin
+from urllib.parse import parse_qsl, urljoin, urlsplit
 
 from tornado.httpclient import HTTPClientError, HTTPResponse
 
 from . import error
 from .error import CommunicationError, Error
 from .util import expect_opt_type, expect_type, str_or_none
-from .webapi import fetch
+from .webapi import WebAPI, fetch
 
 HandleResourceFunc = Callable[[str, str, bytes, 'Analyzer'],
                               Union[Optional['Resource'], Awaitable[Optional['Resource']]]]
@@ -79,13 +79,20 @@ class Image(Resource):
 
     @staticmethod
     def parse(data: Dict[str, object], **args: object) -> 'Image':
-        """See :meth:`JSONifiableWithParse.parse`."""
-        # pylint: disable=unused-argument; part of API
-        resource = Resource.parse(data)
+        resource = Resource.parse(data, **args)
         return Image(resource.url, resource.content_type, description=resource.description)
 
     def __init__(self, url: str, content_type: str, *, description: str = None) -> None:
         super().__init__(url, content_type, description=description)
+
+class Video(Resource):
+    """See :ref:`Video`."""
+
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> 'Video':
+        resource = Resource.parse(data, **args)
+        return Video(resource.url, resource.content_type, description=resource.description,
+                     image=resource.image)
 
 class Analyzer:
     """Web resource analyzer.
@@ -220,6 +227,36 @@ async def handle_webpage(url: str, content_type: str, data: bytes,
         image = resource
 
     return Resource(url, content_type, description=description, image=image)
+
+def handle_youtube(key: str) -> HandleResourceFunc:
+    """Return a function which processes a YouTube video.
+
+    *key* is a YouTube API key. Can be retrieved from
+    https://console.developers.google.com/apis/credentials.
+    """
+    youtube = WebAPI('https://www.googleapis.com/youtube/v3/', query={'key': key})
+
+    async def _f(url: str, content_type: str, data: bytes,
+                 analyzer: Analyzer) -> Optional[Resource]:
+        # pylint: disable=unused-argument; part of API
+        if not url.startswith('https://www.youtube.com/watch'):
+            return None
+
+        video_id = dict(parse_qsl(urlsplit(url).query)).get('v', '')
+        result = await youtube.call('GET', 'videos', query={'id': video_id, 'part': 'snippet'})
+        try:
+            items = expect_type(list)(result['items'])
+            if not items:
+                return None
+            description = expect_type(str)(items[0]['snippet']['title']) # type: ignore
+            image_url = expect_type(str)(
+                items[0]['snippet']['thumbnails']['high']['url']) # type: ignore
+            image = expect_type(Image)(await analyzer.analyze(image_url))
+        except (TypeError, LookupError, AnalysisError):
+            raise CommunicationError(
+                'Bad result for GET {}videos?id={}'.format(youtube.url, video_id))
+        return Video(url, content_type, description=description, image=image)
+    return _f
 
 class AnalysisError(Error):
     """See :ref:`AnalysisError`."""

@@ -288,6 +288,15 @@ Note that the *image* representation is always ``null``.
 
 .. include:: micro/resource-attributes.inc
 
+.. _Video:
+
+Video
+-----
+
+Video :ref:`Resource` description.
+
+.. include:: micro/resource-attributes.inc
+
 Errors
 ------
 
