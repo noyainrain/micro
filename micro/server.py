@@ -451,16 +451,18 @@ class _Manifest(RequestHandler):
         self._server = server
 
     def get(self) -> None:
+        self.set_header('Cache-Control', 'no-cache')
         self.write({
-            'name': 'Listling',
+            'name': cast(str, self._server.app.settings.title),
+            # 'short_name': cast(str, self._server.app.settings.title),
             'theme_color': '#4d8dd9', # TODO server config
             'display': 'standalone',
             # TODO 'description': '',
             'icons': [
-                {'src': cast(str, self._server.app.settings.icon_small)},
+                # without sizes firefox will not pick this up
+                {'src': cast(str, self._server.app.settings.icon_small), 'sizes': '16x16'},
                 {'src': cast(str, self._server.app.settings.icon_large), 'sizes': '192x192'}
             ],
-            'name': cast(str, self._server.app.settings.title),
             'start_url': '/'
         })
 
