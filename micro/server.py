@@ -207,12 +207,12 @@ class Endpoint(RequestHandler):
     def prepare(self):
         self.app.user = None
         auth_secret = self.get_cookie('auth_secret')
+        print('do we have a request body', self.request.body)
         print('AUTH SECRET', auth_secret)
         if auth_secret:
             self.current_user = self.app.authenticate(auth_secret)
         print('USER', self.current_user, self.current_user.auth_secret if self.current_user else '-')
 
-        print('do we have a request body', self.request.body)
         if self.request.body:
             try:
                 self.args = json.loads(self.request.body.decode())
