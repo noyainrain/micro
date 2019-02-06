@@ -112,14 +112,21 @@ micro.UI = class extends HTMLBodyElement {
             }
         };
 
-        window.addEventListener("error", event => {
+        addEventListener("error", event => {
             // Work around bogus EventSource polyfill errors
             if (event.message.startsWith("EventSource")) {
                 return;
             }
             this.notify(document.createElement("micro-error-notification"));
         });
-        window.addEventListener("popstate", () => this._navigate().catch(micro.util.catch));
+        addEventListener("unhandledrejection", event => {
+            console.log("unhandledrejection / ui", event);
+            if (event.reason instanceof Error) {
+                this.notify(document.createElement("micro-error-notification"));
+            }
+        });
+
+        addEventListener("popstate", () => this._navigate().catch(micro.util.catch));
         this.addEventListener("click", event => {
             let a = micro.findAncestor(event.target, e => e instanceof HTMLAnchorElement, this);
             if (a && a.origin === location.origin) {

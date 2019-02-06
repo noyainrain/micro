@@ -301,32 +301,52 @@ micro.util.importCSS = function(url) {
  */
 micro.util.watchErrors = function() {
     async function report(e) {
-        await micro.call("POST", "/log-client-error", {
-            type: e.constructor.name,
-            // Stack traces may be truncated for security reasons, resulting in an empty string at
-            // worst
-            stack: e.stack || "?",
-            url: location.pathname,
-            message: e.message
-        });
+        try {
+            await micro.call("POST", "/log-client-error", {
+                type: e.constructor.name,
+                // Stack traces may be truncated for security reasons, resulting in an empty string
+                // at worst
+                stack: e.stack || "?",
+                url: location.pathname,
+                message: e.message
+            });
+        } catch (exc) {
+            // ignore to prevent unhandledrejection loop
+        }
     }
     addEventListener("error", event => report(event.error));
+    addEventListener("unhandledrejection", event => {
+        console.log("unhandledrejection / watch", event);
+        if (event.reason instanceof Error) {
+            report(event.reason);
+        }
+    });
+};
 
-    /**
-     * Catch unhandled rejections.
-     *
-     * Use it whenever an asynchronous function / :class:`Promise`
-     *
-     * - Is called without `await`
-     * - Is passed to non-micro code
-     */
-    micro.util.catch = e => {
-        report(e);
-        throw e;
-    };
-    // NOTE: Once cross-browser support for unhandled rejection events exists, the above can be
-    // replaced with:
-    // addEventListener("unhandledrejection", event => {
-    //     report(event.reason);
-    // });
+/** TODO */
+micro.util.PromiseRejectionEvent = class extends Event {
+    constructor(type, options) {
+        super(type);
+        this.promise = options.promise;
+        this.reason = options.reason;
+    }
+};
+
+/**
+ * Catch unhandled rejections.
+ *
+ * Use it whenever an asynchronous function / :class:`Promise`
+ *
+ * - Is called without `await`
+ * - Is passed to non-micro code
+ */
+micro.util.catch = function(reason) {
+    console.log("micro.util.catch", this, reason);
+    if (!("PromiseRejectionEvent" in window)) {
+        console.log("DISPATCHING PSEUDO EVENT", this, reason);
+        dispatchEvent(
+            new micro.util.PromiseRejectionEvent("unhandledrejection", {promise: null, reason})
+        );
+    }
+    return Promise.reject(reason);
 };
