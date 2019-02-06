@@ -49,8 +49,9 @@ class Hello(Application):
             return greeting
 
     def __init__(self, redis_url='', email='bot@localhost', smtp_url='',
-                 render_email_auth_message=None):
-        super().__init__(redis_url, email, smtp_url, render_email_auth_message)
+                 render_email_auth_message=None, *, video_service_keys={}):
+        super().__init__(redis_url, email, smtp_url, render_email_auth_message,
+                         video_service_keys=video_service_keys)
         self.types.update({'Greeting': Greeting})
         self.greetings = Hello.Greetings(RedisList('greetings', self.r.r), app=self)
 
@@ -89,9 +90,9 @@ class Greeting(Object, Editable, WithContent):
         }
 
 def make_server(port=8080, url=None, client_path='.', debug=False, redis_url='', smtp_url='',
-                client_map_service_key=None):
+                video_service_keys={}, client_map_service_key=None):
     """Create a Hello server."""
-    app = Hello(redis_url, smtp_url=smtp_url)
+    app = Hello(redis_url, smtp_url=smtp_url, video_service_keys=video_service_keys)
     handlers = [
         (r'/api/greetings$', _GreetingsEndpoint, {'get_collection': lambda *args: app.greetings})
     ]
@@ -113,6 +114,9 @@ def main(args):
     *args* is the list of command line arguments.
     """
     args = make_command_line_parser().parse_args(args[1:])
+    if 'video_service_keys' in args:
+        values = iter(args.video_service_keys)
+        args.video_service_keys = dict(zip(values, values))
     setup_logging(args.debug if 'debug' in args else False)
     make_server(**vars(args)).run()
     return 0

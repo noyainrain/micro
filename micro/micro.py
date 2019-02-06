@@ -1,5 +1,4 @@
 # micro
-
 # Copyright (C) 2018 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
@@ -41,7 +40,8 @@ from typing_extensions import Protocol
 from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
                              RedisSequence)
 from .error import CommunicationError, ValueError
-from .resource import Analyzer, Image, Resource
+from .resource import (Analyzer, HandleResourceFunc, Image, Resource, Video, handle_image,
+                       handle_webpage, handle_youtube)
 from .util import (OnType, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
                    run_instant, str_or_none, version)
 from .webapi import fetch
@@ -107,6 +107,10 @@ class Application:
        for rendering an email message for the authentication request *auth_request*. *email* is the
        email address to authenticate and *auth* is the secret authentication code.
 
+    .. attribute:: video_service_keys
+
+       See ``--video-service-keys`` command line option.
+
     .. attribute:: r
 
        :class:`Redis` database. More precisely a :class:`JSONRedis` instance.
@@ -118,7 +122,8 @@ class Application:
 
     def __init__(
             self, redis_url: str = '', email: str = 'bot@localhost', smtp_url: str = '',
-            render_email_auth_message: Callable[[str, 'AuthRequest', str], str] = None) -> None:
+            render_email_auth_message: Callable[[str, 'AuthRequest', str], str] = None, *,
+            video_service_keys: Dict[str, str] = {}) -> None:
         check_email(email)
         try:
             # pylint: disable=pointless-statement; port errors are only triggered on access
@@ -139,7 +144,8 @@ class Application:
             'Event': Event,
             'AuthRequest': AuthRequest,
             'Resource': Resource,
-            'Image': Image
+            'Image': Image,
+            'Video': Video
         } # type: Dict[str, Type[JSONifiable]]
         self.user = None # type: Optional[User]
         self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)
@@ -147,7 +153,12 @@ class Application:
         self.email = email
         self.smtp_url = smtp_url
         self.render_email_auth_message = render_email_auth_message
-        self.analyzer = Analyzer()
+
+        self.video_service_keys = video_service_keys
+        handlers = [handle_image, handle_webpage] # type: List[HandleResourceFunc]
+        if 'youtube' in self.video_service_keys:
+            handlers.insert(0, handle_youtube(self.video_service_keys['youtube']))
+        self.analyzer = Analyzer(handlers=handlers)
 
     @property
     def settings(self):

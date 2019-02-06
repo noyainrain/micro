@@ -15,7 +15,6 @@
 # pylint: disable=missing-docstring; test module
 
 from asyncio import sleep
-import configparser
 from configparser import ConfigParser
 import json
 import sys
@@ -31,11 +30,10 @@ class NotificationTest(MicroTestCase):
 
         config = ConfigParser()
         config.read('test.cfg')
-        try:
-            self.push_vapid_private_key = config.get('notification', 'push_vapid_private_key')
-            self.push_subscription = config.get('notification', 'push_subscription')
-        except configparser.Error:
-            self.skipTest('Failed to parse test.cfg')
+        if 'notification' not in config:
+            self.skipTest('No notification test configuration')
+        self.push_vapid_private_key = config['notification']['push_vapid_private_key']
+        self.push_subscription = config['notification']['push_subscription']
 
         self.settings = self.app.settings
         self.settings.push_vapid_private_key = self.push_vapid_private_key

@@ -123,6 +123,9 @@ def make_command_line_parser() -> ArgumentParser:
         '--smtp-url',
         help='URL of the SMTP server to use for outgoing email. Only host and port are considered, which default to localhost and 25 respectively.')
     parser.add_argument(
+        '--video-service-keys', nargs='*', metavar='ID KEY',
+        help='Map of video service keys, required for video content from streaming platforms. Available services are "youtube". Keys can be retrieved from https://console.developers.google.com/apis/credentials (YouTube).')
+    parser.add_argument(
         '--client-map-service-key',
         help='Public Mapbox access token, required for location related features. Can be retrieved from https://www.mapbox.com/account/access-tokens.')
     return parser

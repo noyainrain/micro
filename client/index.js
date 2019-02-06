@@ -1831,6 +1831,10 @@ micro.bind.transforms.renderResource = function(ctx, resource) {
         elem = document.createElement("micro-image");
         elem.image = resource;
         break;
+    case "Video":
+        elem = document.createElement("micro-video");
+        elem.video = resource;
+        break;
     default:
         elem = document.createElement("micro-link");
         console.log(micro.components);

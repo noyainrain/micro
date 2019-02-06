@@ -107,6 +107,39 @@ micro.util.PromiseWhen = function() {
 };
 
 /**
+ * Promise which can be aborted.
+ *
+ * *executor* is a promise executor with an additional argument *signal*, which indicates if the
+ * execution should be aborted.
+ *
+ * .. method:: abort()
+ *
+ *    Abort the promise.
+ */
+micro.util.AbortablePromise = function(executor) {
+    const signal = {aborted: false};
+    const p = new Promise((resolve, reject) => executor(resolve, reject, signal));
+    p.abort = () => {
+        signal.aborted = true;
+    };
+    return p;
+};
+
+/**
+ * Return an asynchronous function which can be aborted.
+ *
+ * *f* is the asynchronous function to run. It is called with an additional argument *signal*
+ * prepended, which indicates if the execution should be aborted.
+ */
+micro.util.abortable = function(f) {
+    return function(...args) {
+        return new micro.util.AbortablePromise(
+            (resolve, reject, signal) => f(signal, ...args).then(resolve, reject)
+        );
+    };
+};
+
+/**
  * Dispatch an *event* at the specified *target*.
  *
  * If defined, the related on-event handler is called.
@@ -220,19 +253,29 @@ micro.util.formatFragment = function(str, args) {
  * script, if any. If given, the namespace is returned.
  */
 micro.util.import = function(url, namespace = null) {
-    return new Promise((resolve, reject) => {
-        let script = document.head.querySelector(`script[src='${url}']`);
-        if (script) {
-            resolve(window[namespace]);
-            return;
-        }
-        script = document.createElement("script");
+    // eslint-disable-next-line no-underscore-dangle
+    const imports = micro.util.import._imports;
+    if (imports.has(url)) {
+        return imports.get(url);
+    }
+
+    const p = new Promise((resolve, reject) => {
+        const script = document.createElement("script");
         script.src = url;
         script.addEventListener("load", () => resolve(window[namespace]));
-        script.addEventListener("error", reject);
+        script.addEventListener("error", () => {
+            script.remove();
+            reject(new micro.NetworkError(`Error for GET ${url}`));
+        });
         document.head.appendChild(script);
     });
+
+    imports.set(url, p);
+    p.catch(() => imports.delete(url));
+    return p;
 };
+// eslint-disable-next-line no-underscore-dangle
+micro.util.import._imports = new Map();
 
 /**
  * Import the stylesheet located at *url*.
