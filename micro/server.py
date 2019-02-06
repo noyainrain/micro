@@ -47,7 +47,7 @@ Client error occurred
 Stack:
 %s
 URL: %s
-User: %s (%s)
+User: %s
 Device info: %s"""
 
 _LOGGER = getLogger(__name__)
@@ -207,8 +207,11 @@ class Endpoint(RequestHandler):
     def prepare(self):
         self.app.user = None
         auth_secret = self.get_cookie('auth_secret')
+        print('do we have a request body', self.request.body)
+        print('AUTH SECRET', auth_secret)
         if auth_secret:
             self.current_user = self.app.authenticate(auth_secret)
+        print('USER', self.current_user, self.current_user.auth_secret if self.current_user else '-')
 
         if self.request.body:
             try:
@@ -468,8 +471,7 @@ class _Manifest(RequestHandler):
 
 class _LogClientErrorEndpoint(Endpoint):
     def post(self):
-        if not self.app.user:
-            raise micro.PermissionError()
+        print('LOG CLIENT ERROR')
 
         args = self.check_args({
             'type': str,
@@ -487,11 +489,11 @@ class _LogClientErrorEndpoint(Endpoint):
         e.trigger()
 
         message = str_or_none(args.get('message'))
+        user = '{} ({})'.format(self.app.user.name, self.app.user.id) if self.app.user else '-'
         message_part = ': ' + message if message else ''
         _LOGGER.error(
             _CLIENT_ERROR_LOG_TEMPLATE, args['type'], message_part, args['stack'].strip(),
-            args['url'], self.app.user.name, self.app.user.id,
-            self.request.headers.get('user-agent', '-'))
+            args['url'], user, self.request.headers.get('user-agent', '-'))
         self.write({})
 
 class _ListEndpoint(Endpoint):

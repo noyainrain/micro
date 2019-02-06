@@ -199,6 +199,7 @@ micro.UI = class extends HTMLBodyElement {
                 this._progressElem.style.display = "block";
                 await Promise.resolve(this.update());
                 this.user = JSON.parse(localStorage.microUser);
+                document.querySelector(".micro-ui-beta").textContent = `COOKIE: ${document.cookie} | USER: ${JSON.stringify(this.user)}`;
 
                 // If requested, log in with code
                 let match = /^#login=(.+)$/u.exec(location.hash);
