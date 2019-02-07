@@ -926,8 +926,10 @@ class User(Object, Editable):
             'sub': 'mailto:{}'.format(email)
         })
 
+        # Firefox does not yet support aes128gcm encoding (see
+        # https://bugzilla.mozilla.org/show_bug.cgi?id=1525872)
         response = await pusher.send(json.dumps(event.json(restricted=True, include=True)), headers,
-                                     ttl=_PUSH_TTL)
+                                     ttl=_PUSH_TTL, content_encoding='aesgcm')
         if response.code in (404, 410):
             raise ValueError('push_subscription_invalid')
         if response.code != 201:

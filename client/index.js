@@ -423,7 +423,12 @@ micro.UI = class extends HTMLBodyElement {
             atob(this.settings.push_vapid_public_key.replace(/-/ug, "+").replace(/_/ug, "/")),
             c => c.codePointAt(0));
 
-        let subscription;
+        // Subscribing fails with an InvalidStateError if there is an existing subscription and we
+        // pass a different VAPID public key (after a database reset)
+        let subscription = await this.service.pushManager.getSubscription();
+        if (subscription) {
+            await subscription.unsubscribe();
+        }
         try {
             subscription = await this.service.pushManager.subscribe(
                 {userVisibleOnly: true, applicationServerKey});
