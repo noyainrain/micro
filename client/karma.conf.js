@@ -5,6 +5,7 @@
 module.exports = function(config) {
     let tag = process.env.SUBJECT ? ` [${process.env.SUBJECT}]` : "";
     config.set({
+        //logLevel: config.LOG_DEBUG,
         frameworks: ["mocha"],
         files: [
             "node_modules/whatwg-fetch/fetch.js",

@@ -963,7 +963,7 @@ micro.Menu = class extends HTMLUListElement {
 micro.OptionsElement = class extends HTMLElement {
     createdCallback() {
         try {
-        console.log("CONSTRUCTION OPTIONS");
+        console.log("XXX OptionsElement.createdCallback()");
         this.delay = 0;
         this._input = null;
         this._options = [];
@@ -1006,9 +1006,9 @@ micro.OptionsElement = class extends HTMLElement {
 
         // The input should not loose focus when interacting with the options
         this.addEventListener("mousedown", event => event.preventDefault());
-        console.log("END CONSTRUCTION OPTIONS");
+        console.log("XXX END OptionsElement.createdCallback()");
         } catch (e) {
-            console.log("ERROR WHILE CONSTR OPTIONS", e);
+            console.log("XXX ERROR OptionsElement.createdCallback()", e);
         }
     }
 
@@ -1111,6 +1111,7 @@ micro.OptionsElement = class extends HTMLElement {
         this._data.generating = false;
     }
 };
+console.log("XXX register micro-options");
 document.registerElement("micro-options", micro.OptionsElement);
 
 /**

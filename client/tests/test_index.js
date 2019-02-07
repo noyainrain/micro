@@ -22,6 +22,12 @@
 
 window.expect = window.expect || chai.expect;
 
+console.log("XXX test_index.js", document.readyState);
+document.addEventListener("readystatechange", () => console.log("XXX readystatechange", document.readyState));
+document.addEventListener("DOMContentLoaded", () => console.log("XXX DOMContentLoaded"));
+document.addEventListener("HTMLImportsLoaded", () => console.log("XXX HTMLImportsLoaded"));
+window.addEventListener("WebComponentsReady", () => console.log("XXX WebComponentsReady"));
+
 before(async function() {
     let templates = document.createElement("div");
     let response = await fetch("/base/templates.html");
@@ -40,6 +46,7 @@ afterEach(function() {
 describe("OptionsElement", function() {
     async function setupDOM({options = ["Long", "Happy", "Grumpy"], templateHTML = ""} = {}) {
         let main = document.querySelector("main");
+        console.log("XXX innerHTML=<micro-options>");
         main.innerHTML = `
             <input />
             <micro-options>
@@ -47,6 +54,7 @@ describe("OptionsElement", function() {
             </micro-options>
         `;
         // Custom elements are upgraded in the next iteration
+        await new Promise(resolve => setTimeout(resolve, 0));
         await new Promise(resolve => setTimeout(resolve, 0));
         // await new Promise(resolve => setTimeout(resolve, 100));
         let elem = main.lastElementChild;
@@ -60,23 +68,23 @@ describe("OptionsElement", function() {
 
     describe("activate()", function() {
         it("should present options", async function() {
-            console.log("SHOULD PRESENT OPTIONS TEST");
+            console.log("XXX should present options", document.readyState);
             let [elem] = await setupDOM();
             elem.limit = 2;
-            console.log("ELEM TO ACTIVATE", elem, elem.activate);
+            console.log("XXX elem.activate()", elem, elem.activate);
             elem.activate();
             await new Promise(resolve => setTimeout(resolve, 0));
             expect(getPresentedOptions(elem)).to.deep.equal(["Long", "Happy"]);
         });
 
-        it("should present options for dynamic options", async function() {
+        xit("should present options for dynamic options", async function() {
             let [elem] = await setupDOM({options: () => ["Long", "Happy"]});
             elem.activate();
             await new Promise(resolve => setTimeout(resolve, 0));
             expect(getPresentedOptions(elem)).to.deep.equal(["Long", "Happy"]);
         });
 
-        it("should present options for template", async function() {
+        xit("should present options for template", async function() {
             let [elem] = await setupDOM({
                 options: [{name: "Long"}, {name: "Happy"}],
                 templateHTML: `
@@ -95,7 +103,7 @@ describe("OptionsElement", function() {
     });
 
     describe("on input", function() {
-        it("should present matching options", async function() {
+        xit("should present matching options", async function() {
             let [elem, input] = await setupDOM();
             input.value = "pY";
             input.dispatchEvent(new Event("input"));
@@ -105,7 +113,7 @@ describe("OptionsElement", function() {
     });
 
     describe("on option click", function() {
-        it("should set input value", async function() {
+        xit("should set input value", async function() {
             let [elem, input] = await setupDOM();
             elem.activate();
             await new Promise(resolve => setTimeout(resolve, 0));
@@ -115,7 +123,7 @@ describe("OptionsElement", function() {
     });
 });
 
-describe("LocationInputElement", function() {
+xdescribe("LocationInputElement", function() {
     async function setupDOM() {
         let main = document.querySelector("main");
         main.innerHTML = "<micro-location-input></micro-location-input>";
