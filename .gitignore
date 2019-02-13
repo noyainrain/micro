@@ -1,4 +1,6 @@
 __pycache__
 /test.cfg
-/micro.egg-info/
 /.mypy_cache/
+/build/
+/dist/
+/noyainrain.micro.egg-info/

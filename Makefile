@@ -70,11 +70,13 @@ show-deprecated:
 .PHONY: release
 release:
 	scripts/release.sh
+	$(PYTHON) -m setup bdist_wheel
+	twine upload dist/noyainrain.micro-$(VERSION)-py3-none-any.whl
 	cd client && npm publish
 
 .PHONY: clean
 clean:
-	rm -rf $(find . -name __pycache__) .mypy_cache
+	rm -rf $(find . -name __pycache__) .mypy_cache build dist
 	$(NPM) $(NPMFLAGS) -C client run clean
 	$(NPM) $(NPMFLAGS) -C hello run clean
 

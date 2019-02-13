@@ -23,7 +23,7 @@ git diff --cached --quiet && false
 # Bump version
 bump_version setup.py "^\( *version='\)\(.*\)\(',\)$"
 bump_version client/package.json '^\( *"version": "\)\(.*\)\(",\)$'
-bump_version boilerplate/requirements.txt "^\(.*micro.git@\)\(.*\)\(\)$"
+bump_version boilerplate/requirements.txt "^\(noyainrain.micro ~= \)\(.*\)\(\)$"
 (VERSION=$(echo $VERSION | cut -d . -f -2) bump_version \
     boilerplate/client/package.json '^\( *"@noyainrain\/micro": "\^\)\(.*\)\("\)$')
 

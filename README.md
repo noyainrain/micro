@@ -52,6 +52,6 @@ are released into the public domain:
 
 ## Contributors
 
-* Sven James &lt;sven.jms AT gmail.com>
+* Sven James &lt;sven AT inrain.org>
 
 Copyright (C) 2018 micro contributors
