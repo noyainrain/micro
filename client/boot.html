@@ -81,6 +81,7 @@
     features.html5History = "pushState" in history;
     features.html5Storage = "localStorage" in window;
     features.html5Template = "content" in document.createElement("template");
+    features.fetch = "fetch" in window;
 
     var compatible = Object.keys(features).reduce(
         function(p, c) { return p && features[c]; }, true);

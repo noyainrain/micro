@@ -5,7 +5,7 @@
 # pylint: disable=missing-docstring; test module
 
 from collections import OrderedDict
-from itertools import chain, count
+from itertools import count
 import json
 from unittest import TestCase
 from unittest.mock import Mock
@@ -178,7 +178,7 @@ class RedisListTest(JSONRedisTestCase, RedisSequenceTest):
 
 class RedisSortedSetTest(JSONRedisTestCase, RedisSequenceTest):
     def do_make_seq(self, items):
-        self.r.zadd('seq', *chain(*enumerate(items)))
+        self.r.zadd('seq', {item: i for i, item in enumerate(items)})
         return RedisSortedSet('seq', self.r.r)
 
 class JSONRedisSequenceTest(JSONRedisTestCase):

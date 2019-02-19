@@ -26,7 +26,7 @@ from smtplib import SMTP
 import sys
 from typing import (AsyncIterator, Awaitable, Callable, Coroutine, Dict, Generic, Iterator, List,
                     Optional, Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload)
-from urllib.parse import urlparse
+from urllib.parse import SplitResult, urlparse, urlsplit
 
 from pywebpush import WebPusher, WebPushException
 from py_vapid import Vapid
@@ -133,7 +133,12 @@ class Application:
 
         self.redis_url = redis_url
         try:
-            self.r = JSONRedis(StrictRedis.from_url(self.redis_url), self._encode, self._decode)
+            urlparts = urlsplit(self.redis_url)
+            url = SplitResult(
+                urlparts.scheme or 'redis', urlparts.netloc or 'localhost', urlparts.path,
+                urlparts.query, urlparts.fragment
+            ).geturl()
+            self.r = JSONRedis(StrictRedis.from_url(url), self._encode, self._decode)
         except builtins.ValueError:
             raise ValueError('redis_url_invalid')
 
@@ -1140,8 +1145,9 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
         # pylint: disable=arguments-differ; extension
         return {
             **super().json(restricted, include),
+            **({'subscriber_ids': self._subscriber_ids} if not restricted else {}),
             **({'user_subscribed': self.app.user and self.app.user.id in self._subscriber_ids}
-               if restricted else {'subscriber_ids': self._subscriber_ids}),
+               if restricted else {}),
             **({'items': event.json(True, True) for event in self[slice]} if slice else {})
         }
 

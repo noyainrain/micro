@@ -118,7 +118,7 @@ def make_command_line_parser() -> ArgumentParser:
     parser.add_argument('--debug', action='store_true', help='Debug mode.')
     parser.add_argument(
         '--redis-url',
-        help='URL of the Redis database. Only host, port and path (representing the database index) are considered, which default to localhost, 6379 and 0 respectively.')
+        help='URL of the Redis database, where path represents the database index. May be relative to redis://localhost/. Defaults to redis://localhost/0.')
     parser.add_argument(
         '--smtp-url',
         help='URL of the SMTP server to use for outgoing email. Only host and port are considered, which default to localhost and 25 respectively.')

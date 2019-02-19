@@ -8,7 +8,7 @@
         "@noyainrain/micro": "file:../client"
     },
     "devDependencies": {
-        "eslint": "~5.3",
+        "eslint": "~5.14",
         "mocha": "^5.1",
         "chai": "^4.1"
     },

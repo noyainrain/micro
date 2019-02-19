@@ -73,7 +73,8 @@ class JSONRedis(Generic[T]):
         self._cache = WeakValueDictionary() # type: WeakValueDictionary[str, T]
 
     @overload
-    def oget(self, key: str, *, default: None = None, expect: None = None) -> Optional[T]:
+    def oget(self, key: str, *, default: None = None, # type: ignore
+             expect: None = None) -> Optional[T]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
@@ -81,7 +82,8 @@ class JSONRedis(Generic[T]):
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
-    def oget(self, key: str, *, default: None = None, expect: ExpectFunc[T, U]) -> Optional[U]:
+    def oget(self, key: str, *, default: None = None, # type: ignore
+             expect: ExpectFunc[T, U]) -> Optional[U]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
@@ -123,7 +125,7 @@ class JSONRedis(Generic[T]):
         self.set(key, json.dumps(object, default=self.encode))
 
     @overload
-    def omget(self, keys: Sequence[str], *, default: None = None,
+    def omget(self, keys: Sequence[str], *, default: None = None, # type: ignore
               expect: None = None) -> List[Optional[T]]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
@@ -133,7 +135,7 @@ class JSONRedis(Generic[T]):
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
-    def omget(self, keys: Sequence[str], *, default: None = None,
+    def omget(self, keys: Sequence[str], *, default: None = None, # type: ignore
               expect: ExpectFunc[T, U]) -> List[Optional[U]]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass

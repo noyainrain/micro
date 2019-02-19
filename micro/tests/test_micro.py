@@ -33,7 +33,11 @@ from micro.util import ON
 
 SETUP_DB_SCRIPT = """\
 from micro.test import CatApp
-app = CatApp(redis_url='15')
+
+# Forward compatibility for redis-py 3 (deprecated since 0.30.0)
+redis_url = 'redis://localhost/15'
+
+app = CatApp(redis_url=redis_url)
 app.r.flushdb()
 app.update()
 app.sample()
