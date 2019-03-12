@@ -7,16 +7,19 @@
 from collections import OrderedDict
 from itertools import count
 import json
+from threading import Thread
+from time import sleep, time
+from typing import Dict, List, Tuple
 from unittest import TestCase
 from unittest.mock import Mock
 
 from redis import StrictRedis
 from redis.exceptions import ResponseError
 from micro.jsonredis import (JSONRedis, RedisList, RedisSortedSet, JSONRedisSequence,
-                             JSONRedisMapping)
+                             JSONRedisMapping, expect_type, bzpoptimed, zpoptimed)
 
 class JSONRedisTestCase(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.r = JSONRedis(StrictRedis(db=15), encode=Cat.encode, decode=Cat.decode)
         self.r.flushdb()
 
@@ -233,12 +236,63 @@ class JSONRedisMappingTest(JSONRedisTestCase):
         self.assertTrue('cat:0' in self.cats)
         self.assertFalse('foo' in self.cats)
 
+class ZPopTimedTest(JSONRedisTestCase):
+    def make_queue(self, t: float) -> List[Tuple[bytes, float]]:
+        members = [(value, t + 0.25 * i) for i, value in enumerate([b'a', b'b', b'c'])]
+        self.r.r.zadd('queue', dict(members))
+        return members
+
+    def test_zpoptimed(self) -> None:
+        members = self.make_queue(time() - 0.25)
+        result = zpoptimed(self.r.r, 'queue')
+        queue = self.r.r.zrange('queue', 0, -1, withscores=True)
+        self.assertEqual(result, members[0])
+        self.assertEqual(queue, members[1:])
+
+    def test_zpoptimed_future_member(self) -> None:
+        members = self.make_queue(time() + 0.25)
+        result = zpoptimed(self.r.r, 'queue')
+        queue = self.r.r.zrange('queue', 0, -1, withscores=True)
+        self.assertEqual(result, members[0][1])
+        self.assertEqual(queue, members)
+
+    def test_zpoptimed_empty_set(self) -> None:
+        result = zpoptimed(self.r.r, 'queue')
+        queue = self.r.r.zrange('queue', 0, -1, withscores=True)
+        self.assertEqual(result, float('inf'))
+        self.assertFalse(queue)
+
+    def test_bzpoptimed(self) -> None:
+        members = self.make_queue(time() - 0.25)
+        member = bzpoptimed(self.r.r, 'queue')
+        self.assertEqual(member, members[0])
+
+    def test_bzpoptimed_future_member(self) -> None:
+        members = self.make_queue(time() + 0.25)
+        member = bzpoptimed(self.r.r, 'queue')
+        self.assertEqual(member, members[0])
+
+    def test_bzpoptimed_empty_set(self) -> None:
+        member = bzpoptimed(self.r.r, 'queue', timeout=0.25)
+        self.assertIsNone(member)
+
+    def test_bzpoptimed_on_set_update(self) -> None:
+        new = (b'x', time() + 0.5)
+        def _add() -> None:
+            sleep(0.25)
+            self.r.r.zadd('queue', {new[0]: new[1]})
+        thread = Thread(target=_add)
+        thread.start()
+        member = bzpoptimed(self.r.r, 'queue')
+        thread.join()
+        self.assertEqual(member, new)
+
 class Cat:
     # We use an instance id generator instead of id() because "two objects with non-overlapping
     # lifetimes may have the same id() value"
     instance_ids = count()
 
-    def __init__(self, id, name):
+    def __init__(self, id: str, name: str) -> None:
         self.id = id
         self.name = name
         self.instance_id = next(self.instance_ids)
@@ -247,10 +301,10 @@ class Cat:
         return self.id == other.id and self.name == other.name
 
     @staticmethod
-    def encode(object):
+    def encode(object: 'Cat') -> Dict[str, object]:
         return {'id': object.id, 'name': object.name}
 
     @staticmethod
-    def decode(json):
+    def decode(json: Dict[str, object]) -> 'Cat':
         # pylint: disable=redefined-outer-name; good name
-        return Cat(**json)
+        return Cat(id=expect_type(str)(json['id']), name=expect_type(str)(json['name']))

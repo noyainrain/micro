@@ -13,18 +13,41 @@ Also includes :class:`JSONRedisMapping`, an utility map interface for JSON objec
 """
 
 import json
+from math import isinf
 import sys
+from time import time
 from typing import (Callable, Dict, Generic, Iterator, List, Mapping, Optional, Sequence, Set,
                     Tuple, Type, TypeVar, Union, cast, overload)
-from weakref import WeakValueDictionary
+from weakref import WeakKeyDictionary, WeakValueDictionary, WeakSet
 
-from redis import StrictRedis
+from redis import Redis
+from redis.client import Script
 from redis.exceptions import ResponseError
+from typing_extensions import Literal
 
 T = TypeVar('T')
 U = TypeVar('U')
 
 ExpectFunc = Callable[[T], U]
+
+_ZPOPTIMED_SCRIPT = """\
+redis.replicate_commands()
+local key = KEYS[1]
+local result = redis.call("zrange", key, 0, 0, "withscores")
+if result[1] then
+    local value, t = result[1], result[2]
+    local now = redis.call("time")
+    now = string.format("%d.%06d", now[1], now[2])
+    if tonumber(now) >= tonumber(t) then
+        redis.call("zrem", key, value)
+        return {value, t}
+    end
+    return t
+end
+return "+inf"
+"""
+_ZPOPTIMED_CACHE = WeakKeyDictionary() # type: WeakKeyDictionary[Redis, Script]
+_BZPOPTIMED_CACHE = WeakSet() # type: WeakSet[Redis]
 
 class JSONRedis(Generic[T]):
     """Extended :class:`Redis` client for convenient use with JSON objects.
@@ -63,7 +86,7 @@ class JSONRedis(Generic[T]):
     """
 
     def __init__(
-            self, r: StrictRedis, encode: Callable[[T], Dict[str, object]] = None,
+            self, r: Redis, encode: Callable[[T], Dict[str, object]] = None,
             decode: Callable[[Dict[str, object]], Union[T, Dict[str, object]]] = None,
             caching: bool = True) -> None:
         self.r = r
@@ -178,7 +201,7 @@ class RedisSequence(Sequence[bytes]):
        Underlying Redis client.
     """
 
-    def __init__(self, key: str, r: StrictRedis) -> None:
+    def __init__(self, key: str, r: Redis) -> None:
         self.key = key
         self.r = r
 
@@ -357,6 +380,60 @@ class JSONRedisMapping(Generic[T, U], Mapping[str, T]):
 
     def __repr__(self):
         return str(dict(self))
+
+def zpoptimed(r: Redis, key: str) -> Union[Tuple[bytes, float], float]:
+    """Remove and return the earliest available member (with score) in the sorted set at *key*.
+
+    The score is considered to be the POSIX time a member is available. If no member is available
+    yet, the time of the next one is returned or infinity if the set is empty. *r* is the Redis
+    client to use.
+    """
+    if r not in _ZPOPTIMED_CACHE:
+        _ZPOPTIMED_CACHE[r] = r.register_script(_ZPOPTIMED_SCRIPT)
+    f = _ZPOPTIMED_CACHE[r]
+
+    result = f(keys=[key])
+    if isinstance(result, list):
+        return (expect_type(bytes)(result[0]), float(result[1]))
+    if isinstance(result, bytes):
+        return float(result)
+    raise TypeError()
+
+@overload
+def bzpoptimed(r: Redis, key: str, *, timeout: Literal[0]=0) -> Tuple[bytes, float]:
+    # pylint: disable=function-redefined,missing-docstring,unused-argument; overload
+    pass
+@overload
+def bzpoptimed(r: Redis, key: str, *, timeout: Union[float, int]) -> Optional[Tuple[bytes, float]]:
+    # pylint: disable=function-redefined,missing-docstring,unused-argument; overload
+    pass
+def bzpoptimed(r: Redis, key: str, *,
+               timeout: Union[float, int] = 0) -> Optional[Tuple[bytes, float]]:
+    # pylint: disable=function-redefined,missing-docstring,unused-argument; overload
+    """Pop the earliest member (with score) in the sorted set at *key* as soon as it is available.
+
+    Blocking variant of :meth:`zpoptimed`. *timeout* is the maximum number of seconds to block
+    before returning ``None``, with ``0`` blocking indefinitely.
+    """
+    if r not in _BZPOPTIMED_CACHE:
+        flags = set(r.config_get()['notify-keyspace-events']) | set('Kz')
+        r.config_set('notify-keyspace-events', ''.join(flags))
+        _BZPOPTIMED_CACHE.add(r)
+
+    deadline = time() + timeout if timeout else float('inf')
+    p = r.pubsub()
+    p.subscribe('__keyspace@{}__:{}'.format(r.connection_pool.connection_kwargs['db'], key))
+    while True:
+        result = zpoptimed(r, key)
+        if isinstance(result, tuple):
+            p.close()
+            return result
+        now = time()
+        if now >= deadline:
+            return None
+        sleep = max(min(result, deadline) - now, 0)
+        # get_message() doesn't provide a way to block indefinitely, so just sleep very long
+        p.get_message(timeout=60 * 60 if isinf(sleep) else sleep)
 
 def redis_range(slc: slice) -> Tuple[int, int]:
     """Convert the slice *slc* to Redis range indices."""
