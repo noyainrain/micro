@@ -1280,7 +1280,7 @@ class InputError(ValueError):
            # ...
     """
 
-    def __init__(self, errors={}):
+    def __init__(self, errors: Dict[str, str] = {}) -> None:
         super().__init__('input_invalid')
         self.errors = dict(errors)
 

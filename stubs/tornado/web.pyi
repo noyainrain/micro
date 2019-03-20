@@ -24,6 +24,8 @@ class RequestHandler:
 
     def flush(self, include_footers: bool = ...) -> Future[None]: ...
 
+    def write_error(self, status_code: int, **kwargs: object) -> None: ...
+
 class Application:
     settings: Dict[str, object]
 

@@ -14,9 +14,11 @@
 
 # pylint: disable=abstract-method; Tornado handlers define a semi-abstract data_received()
 # pylint: disable=arguments-differ; Tornado handler arguments are defined by URLs
+# pylint: disable=missing-docstring; Tornado handlers are documented globally
 
 """Server components."""
 
+from asyncio import get_event_loop, ensure_future
 from collections import Mapping
 import http.client
 import json
@@ -28,7 +30,6 @@ from urllib.parse import urlparse
 
 from mypy_extensions import VarArg
 from tornado.httpserver import HTTPServer
-from tornado.ioloop import IOLoop
 from tornado.template import DictLoader, Loader, filter_whitespace
 from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
 
@@ -166,7 +167,7 @@ class Server:
         """Start the server and run it continuously."""
         self.start()
         try:
-            IOLoop.current().start()
+            get_event_loop().run_forever()
         except KeyboardInterrupt:
             pass
 
@@ -230,37 +231,38 @@ class Endpoint(RequestHandler):
         # Pass through future to support async methods
         return op(*args, **kwargs)
 
-    def write_error(self, status_code, exc_info):
-        if issubclass(exc_info[0], KeyError):
+    def write_error(self, status_code: int, **kwargs: object) -> None:
+        e = cast(Tuple[Type[BaseException], BaseException, object], kwargs['exc_info'])[1]
+        if isinstance(e, KeyError):
             self.set_status(http.client.NOT_FOUND)
             self.write({'__type__': 'NotFoundError'})
-        elif issubclass(exc_info[0], AuthenticationError):
+        elif isinstance(e, AuthenticationError):
             self.set_status(http.client.BAD_REQUEST)
-            self.write({'__type__': exc_info[0].__name__})
-        elif issubclass(exc_info[0], PermissionError):
+            self.write({'__type__': type(e).__name__})
+        elif isinstance(e, PermissionError):
             self.set_status(http.client.FORBIDDEN)
-            self.write({'__type__': exc_info[0].__name__})
-        elif issubclass(exc_info[0], InputError):
+            self.write({'__type__': type(e).__name__})
+        elif isinstance(e, InputError):
             self.set_status(http.client.BAD_REQUEST)
             self.write({
-                '__type__': exc_info[0].__name__,
-                'code': exc_info[1].code,
-                'errors': exc_info[1].errors
+                '__type__': type(e).__name__,
+                'code': e.code,
+                'errors': e.errors
             })
-        elif issubclass(exc_info[0], CommunicationError):
+        elif isinstance(e, CommunicationError):
             self.set_status(http.client.BAD_GATEWAY)
-            self.write({'__type__': exc_info[0].__name__, 'message': str(exc_info[1])})
-        elif issubclass(exc_info[0], error.Error):
+            self.write({'__type__': type(e).__name__, 'message': str(e)})
+        elif isinstance(e, error.Error):
             status = {
                 error.ValueError: http.client.BAD_REQUEST,
                 NoResourceError: http.client.NOT_FOUND,
                 ForbiddenResourceError: http.client.FORBIDDEN,
                 BrokenResourceError: http.client.BAD_REQUEST
             }
-            self.set_status(status[exc_info[0]])
-            self.write(exc_info[1].json())
+            self.set_status(status[type(e)])
+            self.write(e.json())
         else:
-            super().write_error(status_code, exc_info=exc_info)
+            super().write_error(status_code, **kwargs)
 
     def log_exception(self, typ, value, tb):
         # These errors are handled specially and there is no need to log them as exceptions
@@ -362,7 +364,7 @@ class ActivityStreamEndpoint(Endpoint):
 
     def on_connection_close(self) -> None:
         if self._stream:
-            IOLoop.current().add_callback(self._stream.aclose)
+            ensure_future(self._stream.aclose())
 
 def make_list_endpoints(
         url: str, get_list: Callable[[VarArg(str)], Sequence[JSONifiable]]) -> List[Handler]:
@@ -434,13 +436,13 @@ class _UI(RequestHandler):
             'index.html', micro_dependencies=self._render_micro_dependencies,
             micro_boot=self._render_micro_boot, micro_templates=self._render_micro_templates)
 
-    def _render_micro_dependencies(self) -> str:
+    def _render_micro_dependencies(self) -> bytes:
         return self._templates.load('dependencies.html').generate(**self.get_template_namespace())
 
-    def _render_micro_boot(self) -> str:
+    def _render_micro_boot(self) -> bytes:
         return self._templates.load('boot.html').generate(**self.get_template_namespace())
 
-    def _render_micro_templates(self) -> str:
+    def _render_micro_templates(self) -> bytes:
         return self._templates.load('templates.html').generate(**self.get_template_namespace())
 
 class _LogClientErrorEndpoint(Endpoint):

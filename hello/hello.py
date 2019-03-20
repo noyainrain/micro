@@ -102,6 +102,7 @@ def make_server(port=8080, url=None, client_path='.', debug=False, redis_url='',
 class _GreetingsEndpoint(CollectionEndpoint):
     # pylint: disable=abstract-method; Tornado handlers define a semi-abstract data_received()
     # pylint: disable=arguments-differ; Tornado handler arguments are defined by URLs
+    # pylint: disable=missing-docstring; Tornado handlers are documented globally
 
     async def post(self):
         args = self.check_args({'text': (str, None), 'resource': (str, None)})

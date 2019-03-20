@@ -1,9 +1,0 @@
-from typing import Callable
-
-class IOLoop:
-    @staticmethod
-    def current() -> IOLoop: ...
-
-    def start(self) -> None: ...
-
-    def add_callback(self, callback: Callable, *args: object, **kwargs: object) -> None: ...
