@@ -72,6 +72,13 @@ setting the email address::
         ...
     }
 
+.. _Gone:
+
+Gone
+----
+
+Former object that does not exist anymore.
+
 .. _Collection:
 
 Collection

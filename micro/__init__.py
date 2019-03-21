@@ -26,7 +26,7 @@ import os
 
 # Compatibility for old location of CommunicationError and ValueError (deprecated since 0.25.0)
 from micro.micro import (
-    Application, Object, Editable, Trashable, Collection, Orderable, User, Settings, Activity,
+    Application, Object, Gone, Editable, Trashable, Collection, Orderable, User, Settings, Activity,
     Event, AuthRequest, Location, ValueError, InputError, AuthenticationError, PermissionError,
     CommunicationError, EmailError, WithContent)
 

@@ -18,13 +18,14 @@
 
 """Server components."""
 
-from asyncio import get_event_loop, ensure_future
+from asyncio import CancelledError, Task, get_event_loop, ensure_future
 from collections import Mapping
 import http.client
 import json
 from logging import getLogger
 import os
 import re
+from signal import SIGINT
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 from urllib.parse import urlparse
 
@@ -154,6 +155,7 @@ class Server:
             self.handlers, compress_response=True, template_path=self.client_path,
             static_path=self.client_path, static_handler_class=_Static, debug=self.debug,
             server=self))
+        self._empty_trash_task = None # type: Optional[Task[None]]
         self._message_templates = DictLoader(templates.MESSAGE_TEMPLATES, autoescape=None)
         self._micro_templates = Loader(os.path.join(self.client_path, self.client_modules_path,
                                                     '@noyainrain/micro'))
@@ -161,15 +163,30 @@ class Server:
     def start(self) -> None:
         """Start the server."""
         self.app.update() # type: ignore
+        self._empty_trash_task = self.app.start_empty_trash()
         self._server.listen(self.port)
+
+    async def stop(self) -> None:
+        """Stop the server."""
+        self._server.stop()
+        if self._empty_trash_task:
+            try:
+                self._empty_trash_task.cancel()
+                await self._empty_trash_task
+            except CancelledError:
+                pass
 
     def run(self) -> None:
         """Start the server and run it continuously."""
         self.start()
-        try:
-            get_event_loop().run_forever()
-        except KeyboardInterrupt:
-            pass
+        loop = get_event_loop()
+        def _on_sigint() -> None:
+            async def _stop() -> None:
+                await self.stop()
+                loop.stop()
+            ensure_future(_stop())
+        loop.add_signal_handler(SIGINT, _on_sigint)
+        loop.run_forever()
 
     def _render_email_auth_message(self, email, auth_request, auth):
         template = self._message_templates.load('email_auth')

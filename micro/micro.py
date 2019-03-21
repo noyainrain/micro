@@ -14,10 +14,12 @@
 
 """Core parts of micro."""
 
-from asyncio import Queue
+from asyncio import (CancelledError, Task, Queue, # pylint: disable=unused-import; typing
+                     ensure_future, get_event_loop, shield)
 import builtins
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
+from functools import partial
 from inspect import isawaitable
 import json
 from logging import getLogger
@@ -37,9 +39,9 @@ from tornado.httpclient import HTTPResponse
 from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
-from micro.jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
-                             RedisSequence)
 from .error import CommunicationError, ValueError
+from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
+                        RedisSequence, bzpoptimed)
 from .resource import (Analyzer, HandleResourceFunc, Image, Resource, Video, handle_image,
                        handle_webpage, handle_youtube)
 from .util import (OnType, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
@@ -194,7 +196,7 @@ class Application:
             self.r.oset(settings.id, settings)
             activity = Activity(id='Activity', app=self, subscriber_ids=[])
             self.r.oset(activity.id, activity)
-            self.r.set('micro_version', 7)
+            self.r.set('micro_version', 8)
             self.do_update()
             return
 
@@ -253,6 +255,14 @@ class Application:
                 r.rpush('Activity.items', *ids)
                 r.delete('activity')
             r.set('micro_version', 7)
+
+        # Deprecated since 0.33.0
+        if v < 8:
+            for obj in self._scan_objects(r, Trashable):
+                if obj['trashed']:
+                    t = (datetime.now(timezone.utc) + Trashable.RETENTION).timestamp()
+                    r.zadd('micro_trash', {obj['id'].encode(): t})
+            r.set('micro_version', 8)
 
         self.do_update()
 
@@ -332,6 +342,39 @@ class Application:
         if not (self.user and self.user.id in self.settings._staff): # type: ignore
             raise PermissionError()
 
+    def start_empty_trash(self) -> 'Task[None]':
+        """Start the empty trash job."""
+        async def _empty_trash() -> None:
+            loop = get_event_loop()
+            while True:
+                coro = cast(
+                    Awaitable[Tuple[bytes, float]],
+                    loop.run_in_executor(None, partial(bzpoptimed, self.r.r, 'micro_trash')))
+                try:
+                    id, _ = await shield(coro)
+                except CancelledError:
+                    # Note that we assume there is only a single consumer of micro_trash
+                    self.r.r.zadd('micro_trash', {b'int': 0})
+                    await coro
+                    raise
+
+                obj = self.r.oget(id.decode(), default=AssertionError,
+                                  expect=expect_type(Trashable))
+                # pylint: disable=broad-except; catch unhandled exceptions
+                try:
+                    obj.delete()
+                except Exception as e:
+                    t = (
+                        datetime.now(timezone.utc) + Trashable.RETENTION).timestamp() # type: ignore
+                    self.r.r.zadd('micro_trash', {id: t})
+                    loop.call_exception_handler(
+                        cast(Dict[str, object], {
+                            'message': 'Unexpected exception in delete()',
+                            'exception': e
+                        }))
+                del obj
+        return cast('Task[None]', ensure_future(_empty_trash()))
+
     @staticmethod
     def _encode(object: JSONifiable) -> Dict[str, object]:
         return object.json()
@@ -350,15 +393,16 @@ class Application:
         del json['__type__']
         return type(app=self, **json)
 
-    @staticmethod
-    def _scan_objects(r: JSONRedis[Dict[str, object]]) -> Iterator[Dict[str, object]]:
+    def _scan_objects(self, r: JSONRedis[Dict[str, object]],
+                      cls: 'Type[Object]' = None) -> Iterator[Dict[str, object]]:
         for key in cast(List[bytes], r.keys('*')):
             try:
-                obj = r.oget(key.decode())
+                obj = r.oget(key.decode(), default=AssertionError)
             except ResponseError:
                 pass
             else:
-                if isinstance(obj, dict) and '__type__' in obj:
+                if ('__type__' in obj and
+                        issubclass(self.types[expect_type(str)(obj['__type__'])], cls or Object)):
                     yield obj
 
     @staticmethod
@@ -393,6 +437,14 @@ class Object:
 
     def __repr__(self):
         return '<{}>'.format(self.id)
+
+class Gone:
+    """See :ref:`Gone`."""
+
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
+        """See :meth:`JSONifiable.json`."""
+        # pylint: disable=unused-argument; part of API
+        return {'__type__': type(self).__name__}
 
 class Editable:
     """:class:`Object` that can be edited."""
@@ -461,15 +513,28 @@ class Editable:
         return {'authors': [a.json(restricted) for a in self.authors] if include else self._authors}
 
 class Trashable:
-    """Mixin for :class:`Object` which can be trashed and restored."""
-    # pylint: disable=no-member; mixin
+    """Mixin for :class:`Object` which can be trashed and restored.
+
+    .. attribute:: RETENTION
+
+       Duration after a trashed object will permanently be deleted.
+    """
+
+    RETENTION = timedelta(days=7)
+
+    id = None # type: str
+    app = None # type: Application
 
     def __init__(self, trashed: bool,
                  activity: Union['Activity', Callable[[], 'Activity']] = None) -> None:
         self.trashed = trashed
         self.__activity = activity
 
-    def trash(self):
+    def delete(self) -> None:
+        """Subclass API: Permanently delete the object."""
+        raise NotImplementedError()
+
+    def trash(self) -> None:
         """See :http:post:`/api/(object-url)/trash`."""
         if not self.app.user:
             raise PermissionError()
@@ -478,11 +543,14 @@ class Trashable:
 
         self.trashed = True
         self.app.r.oset(self.id, self)
+        self.app.r.r.zadd(
+            'micro_trash',
+            {self.id.encode(): (datetime.now(timezone.utc) + Trashable.RETENTION).timestamp()})
         if self.__activity is not None:
             activity = self.__activity() if callable(self.__activity) else self.__activity
-            activity.publish(Event.create('trashable-trash', self, app=self.app))
+            activity.publish(Event.create('trashable-trash', cast(Object, self), app=self.app))
 
-    def restore(self):
+    def restore(self) -> None:
         """See :http:post:`/api/(object-url)/restore`."""
         if not self.app.user:
             raise PermissionError()
@@ -491,9 +559,10 @@ class Trashable:
 
         self.trashed = False
         self.app.r.oset(self.id, self)
+        self.app.r.r.zrem('micro_trash', self.id.encode())
         if self.__activity is not None:
             activity = self.__activity() if callable(self.__activity) else self.__activity
-            activity.publish(Event.create('trashable-restore', self, app=self.app))
+            activity.publish(Event.create('trashable-restore', cast(Object, self), app=self.app))
 
     def json(self, restricted=False, include=False):
         """Subclass API: Return a JSON representation of the trashable part of the object."""
@@ -1148,15 +1217,17 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
             **({'subscriber_ids': self._subscriber_ids} if not restricted else {}),
             **({'user_subscribed': self.app.user and self.app.user.id in self._subscriber_ids}
                if restricted else {}),
-            **({'items': event.json(True, True) for event in self[slice]} if slice else {})
+            **({'items': [event.json(True, True) for event in self[slice]]} if slice else {})
         }
 
 class Event(Object):
     """See :ref:`Event`."""
 
     @staticmethod
-    def create(type, object, detail={}, app=None):
+    def create(type: str, object: Optional[Object], detail: Dict[str, object] = {},
+               app: Application = None) -> 'Event':
         """Create an event."""
+        assert app
         if not app.user:
             raise PermissionError()
         if not str_or_none(type):
@@ -1174,43 +1245,46 @@ class Event(Object):
             id='Event:' + randstr(), type=type, object=object.id if object else None,
             user=app.user.id, time=datetime.utcnow().isoformat() + 'Z', detail=transformed, app=app)
 
-    def __init__(self, id: str, type: str, object: str, user: str, time: str,
+    def __init__(self, id: str, type: str, object: Optional[str], user: str, time: str,
                  detail: Dict[str, object], app: Application) -> None:
         super().__init__(id, app)
         self.type = type
-        self.time = parse_isotime(time) if time else None
+        self.time = parse_isotime(time)
         self._object_id = object
         self._user_id = user
         self._detail = detail
 
     @property
-    def object(self):
+    def object(self) -> Optional[Union[Object, Gone]]:
         # pylint: disable=missing-docstring; already documented
-        return self.app.r.oget(self._object_id) if self._object_id else None
+        return (
+            self.app.r.oget(self._object_id, expect=expect_type(Object)) or Gone()
+            if self._object_id else None)
 
     @property
-    def user(self):
+    def user(self) -> User:
         # pylint: disable=missing-docstring; already documented
         return self.app.users[self._user_id]
 
     @property
-    def detail(self):
+    def detail(self) -> Dict[str, builtins.object]:
         # pylint: disable=missing-docstring; already documented
         detail = {}
         for key, value in self._detail.items():
             if key.endswith('_id'):
+                assert isinstance(value, str)
                 key = key[:-3]
-                value = self.app.r.oget(value)
+                value = self.app.r.oget(value) or Gone()
             detail[key] = value
         return detail
 
-    def json(self, restricted=False, include=False):
-        obj = self._object_id
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, builtins.object]:
+        obj = self._object_id # type: Optional[Union[str, Dict[str, object]]]
         detail = self._detail
         if include:
             obj = self.object.json(restricted, include) if self.object else None
-            detail = {k: v.json(restricted, include) if isinstance(v, Object) else v for k, v
-                      in self.detail.items()}
+            detail = {k: v.json(restricted, include) if isinstance(v, (Object, Gone)) else v
+                      for k, v in self.detail.items()}
         return {
             **super().json(restricted, include),
             'type': self.type,

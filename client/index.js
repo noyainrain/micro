@@ -1797,14 +1797,14 @@ micro.ActivityPage = class extends micro.Page {
     async _showMore() {
         let events;
         try {
-            events = await ui.call("GET", `/api/activity/${this._start}:`);
+            events = await ui.call("GET", `/api/activity/v2/${this._start}:`);
         } catch (e) {
             ui.handleCallError(e);
             return;
         }
 
         let ul = this.querySelector(".micro-timeline");
-        for (let event of events) {
+        for (let event of events.items) {
             let li = document.createElement("li");
             let time = document.createElement("time");
             time.dateTime = event.time;
@@ -1814,7 +1814,7 @@ micro.ActivityPage = class extends micro.Page {
             li.appendChild(ui.renderEvent[event.type](event));
             ul.appendChild(li);
         }
-        this.classList.toggle("micro-activity-all", events.length < micro.LIST_LIMIT);
+        this.classList.toggle("micro-activity-all", events.items.length < micro.LIST_LIMIT);
         this._start += micro.LIST_LIMIT;
     }
 };

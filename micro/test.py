@@ -114,6 +114,8 @@ class CatApp(Application):
 class Cat(Object, Editable, Trashable, WithContent):
     """Cute cat."""
 
+    app = None # type: CatApp
+
     @staticmethod
     def make(*, name: str = None, app: Application) -> 'Cat':
         """Create a :class:`Cat` object."""
@@ -132,6 +134,10 @@ class Cat(Object, Editable, Trashable, WithContent):
         self.name = name
         self.activity = activity
         self.activity.host = self
+
+    def delete(self) -> None:
+        self.app.r.r.lrem(self.app.cats.ids.key, 1, self.id.encode())
+        self.app.r.r.delete(self.id)
 
     async def do_edit(self, **attrs: object) -> None:
         attrs = await WithContent.pre_edit(self, attrs)

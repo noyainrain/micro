@@ -15,17 +15,18 @@
 # pylint: disable=missing-docstring; test module
 
 from asyncio import sleep
-from subprocess import check_call
+from datetime import timedelta
+import subprocess
 from tempfile import mkdtemp
 from unittest.mock import Mock, patch
 
-from typing import List
+from typing import List, Tuple, cast
 
 from redis.exceptions import RedisError
 from tornado.testing import AsyncTestCase, gen_test
 
 import micro
-from micro import Activity, Collection, Event, Location, WithContent
+from micro import Activity, Collection, Event, Gone, Location, Trashable, WithContent
 from micro.jsonredis import RedisList
 from micro.resource import Analyzer, Resource
 from micro.test import CatApp, Cat
@@ -58,10 +59,12 @@ app.settings.edit(provider_url='https://meow.example.com/')
 # Compatibility for app without cats (deprecated since 0.6.0)
 if not hasattr(app, 'cats'):
     from micro.test import Cat
-    app.r.oset('Cat', Cat(id='Cat', trashed=False, app=app, authors=[], name=None))
-    app.r.rpush('cats', 'Cat')
+    app.r.oset('Cat:0', Cat(id='Cat:0', trashed=False, app=app, authors=[], name=None))
+    app.r.oset('Cat:1', Cat(id='Cat:1', trashed=True, app=app, authors=[], name=None))
+    app.r.rpush('cats', 'Cat:0', 'Cat:1')
 else:
     app.cats.create()
+    app.cats.create().trash()
 """
 
 class MicroTestCase(AsyncTestCase):
@@ -108,11 +111,12 @@ class ApplicationTest(MicroTestCase):
 
 class ApplicationUpdateTest(AsyncTestCase):
     @staticmethod
-    def setup_db(tag):
+    def setup_db(tag: str) -> None:
         d = mkdtemp()
-        check_call(['git', '-c', 'advice.detachedHead=false', 'clone', '-q', '--single-branch',
-                    '--branch', tag, '.', d])
-        check_call(['python3', '-c', SETUP_DB_SCRIPT], cwd=d)
+        clone = ['git', '-c', 'advice.detachedHead=false', 'clone', '-q', '--single-branch',
+                 '--branch', tag, '.', d]
+        subprocess.run(clone, check=True)
+        subprocess.run(cast(List[str], ['python3', '-c', SETUP_DB_SCRIPT]), cwd=d, check=True)
 
     def test_update_db_fresh(self):
         app = CatApp(redis_url='15')
@@ -120,16 +124,23 @@ class ApplicationUpdateTest(AsyncTestCase):
         app.update()
         self.assertEqual(app.settings.title, 'CatApp')
 
-    def test_update_db_version_previous(self):
-        self.setup_db('0.24.0')
+    @gen_test
+    async def test_update_db_version_previous(self) -> None:
+        Trashable.RETENTION = timedelta(seconds=0.2)
+        self.setup_db('0.32.0')
         app = CatApp(redis_url='15')
-        app.update()
+        app.update() # type: ignore
 
-        app.user = app.settings.staff[0]
-        self.assertEqual([event.type for event in app.activity],
-                         ['editable-edit', 'editable-edit', 'meow'])
+        cats = list(app.cats.values())
+        app.start_empty_trash()
+        await sleep(0.1)
+        self.assertEqual(list(app.cats.values()), cats) # type: ignore
+        await sleep(0.3)
+        self.assertEqual(list(app.cats.values()), cats[:1]) # type: ignore
 
-    def test_update_db_version_first(self):
+    @gen_test
+    async def test_update_db_version_first(self):
+        Trashable.RETENTION = timedelta(seconds=0.2)
         # NOTE: Tag tmp can be removed on next database update
         self.setup_db('tmp')
         app = CatApp(redis_url='15')
@@ -139,7 +150,7 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertFalse(app.settings.provider_description)
         # Update to version 4
         self.assertNotIn('trashed', app.settings.json())
-        self.assertFalse(app.r.oget('Cat').trashed)
+        self.assertFalse(app.cats[0].trashed)
         # Update to version 5
         self.assertFalse(hasattr(app.settings, 'favicon'))
         self.assertIsNone(app.settings.icon_small)
@@ -155,6 +166,13 @@ class ApplicationUpdateTest(AsyncTestCase):
         app.user = app.settings.staff[0]
         self.assertEqual([event.type for event in app.activity],
                          ['editable-edit', 'editable-edit', 'meow'])
+        # Update to version 8
+        cats = list(app.cats.values())
+        app.start_empty_trash()
+        await sleep(0.1)
+        self.assertEqual(list(app.cats.values()), cats)
+        await sleep(0.3)
+        self.assertEqual(list(app.cats.values()), cats[:1])
 
 class EditableTest(MicroTestCase):
     def setUp(self):
@@ -178,26 +196,42 @@ class EditableTest(MicroTestCase):
         with self.assertRaises(micro.PermissionError):
             self.cat.edit(name='Happy')
 
+@patch('micro.test.Cat.delete', autospec=True)
 class TrashableTest(MicroTestCase):
-    def test_trash(self):
+    def setUp(self) -> None:
+        super().setUp()
+        Trashable.RETENTION = timedelta(seconds=0.2)
+        self.app.start_empty_trash()
+
+    @gen_test # type: ignore
+    async def test_trash(self, delete: Mock) -> None:
         cat = self.app.cats.create()
         cat.trash()
         self.assertTrue(cat.trashed)
-        self.assertEqual(cat.activity[0].type, 'trashable-trash')
+        self.assertEqual(cast(Event, cat.activity[0]).type, 'trashable-trash')
+        await sleep(0.1)
+        # Work around missing assert_not_called() (see https://bugs.python.org/issue28380)
+        self.assertEqual(delete.call_count, 0) # type: ignore
+        await sleep(0.3)
+        delete.assert_called_once_with(cat) # type: ignore
 
-    def test_trash_trashed(self):
+    def test_trash_trashed(self, delete: Mock) -> None:
+        # pylint: disable=unused-argument; patch
         cat = self.app.cats.create()
         cat.trash()
         cat.trash()
         self.assertTrue(cat.trashed)
         self.assertEqual(len(cat.activity), 1)
 
-    def test_restore(self):
+    @gen_test # type: ignore
+    async def test_restore(self, delete: Mock) -> None:
         cat = self.app.cats.create()
         cat.trash()
         cat.restore()
         self.assertFalse(cat.trashed)
-        self.assertEqual(cat.activity[0].type, 'trashable-restore')
+        self.assertEqual(cast(Event, cat.activity[0]).type, 'trashable-restore')
+        await sleep(0.3)
+        self.assertEqual(delete.call_count, 0) # type: ignore
 
 async def _analyze(self: Analyzer, url: str) -> Resource:
     # pylint: disable=unused-argument; part of API
@@ -371,6 +405,24 @@ class ActivityTest(MicroTestCase):
         activity.subscribe()
         activity.unsubscribe()
         self.assertNotIn(self.user, activity.subscribers)
+
+class EventTest(MicroTestCase):
+    def make_event(self) -> Tuple[Event, Cat]:
+        cat = self.app.cats.create()
+        event = Event.create('meow', cat, app=self.app)
+        return event, cat
+
+    def test_get_object(self) -> None:
+        event, cat = self.make_event()
+        self.assertEqual(event.object, cat)
+
+    def test_get_object_deleted(self) -> None:
+        event, cat = self.make_event()
+        cat.delete()
+        # Break reference cycle
+        cat.activity.host = None
+        del cat
+        self.assertIsInstance(event.object, Gone)
 
 class LocationTest(MicroTestCase):
     def test_parse(self):
