@@ -246,7 +246,8 @@ Event about an action on an *object* by an *user*.
 
 .. attribute:: object
 
-   Object for which the event happened. ``null`` if it is a global event.
+   Object for which the event happened. :ref:`Gone` if the object does not exist anymore. ``null``
+   if the event is global.
 
 .. attribute:: user
 

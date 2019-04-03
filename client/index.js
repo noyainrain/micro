@@ -971,7 +971,7 @@ micro.OptionsElement = class extends HTMLElement {
         this._input = null;
         this._options = [];
         this._limit = 5;
-        this._toText = null;
+        this._toText = option => option.toString();
         this._job = null;
         Object.defineProperty(this, "onselect", micro.util.makeOnEvent("select"));
 
@@ -987,10 +987,13 @@ micro.OptionsElement = class extends HTMLElement {
             footerTemplate,
             active: false,
             generating: false,
-            toText: (ctx, option) => typeof option === "string" ? option : this._toText(option),
+            toText: (ctx, option) => this._toText(option),
 
             onClick: option => {
-                this._input.value = this._data.toText(null, option);
+                this._input.value = this._toText(option);
+                if ("valueAsObject" in this._input) {
+                    this._input.valueAsObject = option;
+                }
                 this.deactivate();
                 this.dispatchEvent(new CustomEvent("select", {detail: {option}}));
             }
@@ -1037,6 +1040,11 @@ micro.OptionsElement = class extends HTMLElement {
                 );
             }
         );
+        if (this._input.readOnly) {
+            // Listen for mouseup to prevent reopening if the element is inside a label (as clicking
+            // on label content will trigger a click event on the input)
+            this._input.addEventListener("mouseup", () => this.activate());
+        }
         this._input.addEventListener("blur", () => this.deactivate());
     }
 
@@ -1048,8 +1056,8 @@ micro.OptionsElement = class extends HTMLElement {
      * generates a list of options to present from the user input *query*. *limit* is the maximum
      * number of results. May be async.
      *
-     * An option may either be a string or an arbitrary object, in which case :attr:`toText` must be
-     * set.
+     * An option may be an arbitrary object. If a text representation is needed (e.g. for input
+     * matching), :attr:`toText` is used.
      */
     get options() {
         return this._options;
@@ -1071,8 +1079,8 @@ micro.OptionsElement = class extends HTMLElement {
     }
 
     /**
-     * Function of the form *toText(option)* that returns a text representation of *option*. May be
-     * ``null``.
+     * Function of the form *toText(option)* that returns a text representation of *option*. By
+     * default :meth:`Object.toString()` is called.
      */
     get toText() {
         return this._toText;
@@ -1100,13 +1108,13 @@ micro.OptionsElement = class extends HTMLElement {
         }
         this._data.generating = true;
         let generate = (query, limit) => this.options.filter(
-            option => this._data.toText(null, option).toLowerCase()
-                .includes(query.trim().toLowerCase())
+            option => this._toText(option).toLowerCase().includes(query.trim().toLowerCase())
         ).slice(0, limit);
         if (this.options instanceof Function) {
             generate = this.options;
         }
-        this._data.options = await Promise.resolve(generate(this._input.value, this._limit));
+        const query = this._input.readOnly ? "" : this._input.value;
+        this._data.options = await Promise.resolve(generate(query, this._limit));
         this._data.generating = false;
     }
 };

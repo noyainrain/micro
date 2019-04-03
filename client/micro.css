@@ -341,10 +341,6 @@ legend {
     padding: 0;
 }
 
-legend::after {
-    content: ':';
-}
-
 /* ---- Panel ---- */
 
 .micro-panel {
@@ -360,6 +356,13 @@ legend::after {
     margin: 0;
 }
 
+.micro-panel > p > small,
+.micro-panel > .link > small,
+.micro-panel > div > p > small,
+.micro-panel > div > .link > small {
+    display: block;
+}
+
 .micro-panel > h1,
 .micro-panel > .link > h1 {
     border-bottom: none;
@@ -368,20 +371,28 @@ legend::after {
 }
 
 .micro-panel > .link:focus,
-.micro-panel > .link:hover,
+.micro-panel > .link:not(:disabled):hover,
 .micro-panel > .action:focus,
-.micro-panel > .action:hover,
+.micro-panel > .action:not(:disabled):hover,
 .micro-panel > [tabindex]:focus,
-.micro-panel > [tabindex]:hover,
+.micro-panel > [tabindex]:not(:disabled):hover,
 .micro-panel > div > .link:focus,
-.micro-panel > div > .link:hover,
+.micro-panel > div > .link:not(:disabled):hover,
 .micro-panel > div > .action:focus,
-.micro-panel > div > .action:hover,
+.micro-panel > div > .action:not(:disabled):hover,
 .micro-panel > div > [tabindex]:focus,
-.micro-panel > div > [tabindex]:hover {
-    box-shadow: var(--micro-focus-shadow);
+.micro-panel > div > [tabindex]:not(:disabled):hover {
     background: var(--micro-color-delimiter);
     text-decoration: none;
+}
+
+.micro-panel > .link:focus,
+.micro-panel > .action:focus,
+.micro-panel > [tabindex]:focus,
+.micro-panel > div > .link:focus,
+.micro-panel > div > .action:focus,
+.micro-panel > div > [tabindex]:focus {
+    box-shadow: var(--micro-focus-shadow);
 }
 
 .micro-panel > .link,
@@ -651,9 +662,10 @@ legend::after {
 }
 
 .micro-ui-inside {
+    position: relative;
     box-sizing: content-box;
     max-width: 70ch;
-    padding: 0 1.5rem;
+    padding: 0 var(--micro-size-rm);
     margin: 0 auto;
 }
 
