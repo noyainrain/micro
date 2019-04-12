@@ -247,6 +247,31 @@ micro.util.formatFragment = function(str, args) {
 };
 
 /**
+ * Parse an ISO 6709 representation of geographic coordinates *str* into a latitude-longitude pair.
+ *
+ * Units and hemisphere indicators are optional. Only latitude and longitude, without elevation, are
+ * supported. Additonally, negative coordinates are allowed.
+ */
+micro.util.parseCoords = function(str) {
+    const part = "(\\d+(?:\\.\\d+)?)[^.NSEW]?";
+    const coord = `(-)?${part}(?:\\s*${part})?(?:\\s*${part})?(?:\\s*([NSEW]))?`;
+    const pattern = new RegExp(`^\\s*${coord}\\s+${coord}\\s*$`, "u");
+    const match = str.match(pattern);
+    if (!match) {
+        throw new SyntaxError(`Bad str format "${str}"`);
+    }
+    const coords = [match.slice(1, 6), match.slice(6, 11)].map(groups => {
+        const [d, m, s] = groups.slice(1, 4).map(p => parseFloat(p) || 0);
+        return (d + m / 60 + s / (60 * 60)) * (groups[0] ? -1 : 1) *
+            ("SW".includes(groups[4]) ? -1 : 1);
+    });
+    if (!(coords[0] >= -90 && coords[0] <= 90 && coords[1] >= -180 && coords[1] <= 180)) {
+        throw new RangeError(`Out of range str coordinates "${str}"`);
+    }
+    return coords;
+};
+
+/**
  * Import the script located at *url*.
  *
  * *namespace* is the identifier of the namespace (i.e. global variable) created by the imported

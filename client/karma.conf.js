@@ -15,7 +15,7 @@ module.exports = function(config) {
             "util.js",
             "index.js",
             "!(node_modules)/**/test*.js",
-            "templates.html"
+            {pattern: "templates.html", included: false}
         ],
         sauceLabs: {
             testName: `[micro]${tag} Unit tests`

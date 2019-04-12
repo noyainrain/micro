@@ -45,3 +45,28 @@ describe("makeOnEvent()", function() {
         });
     });
 });
+
+describe("parseCoords()", function() {
+    it("should parse", function() {
+        const coords = micro.util.parseCoords("52°6′3.6″N 13°12′7.2″W");
+        expect(coords).to.deep.equal([52.101, -13.202]);
+    });
+
+    it("should parse decimal str", function() {
+        const coords = micro.util.parseCoords("-52.101 13.202");
+        expect(coords).to.deep.equal([-52.101, 13.202]);
+    });
+
+    it("should parse approximate str", function() {
+        const coords = micro.util.parseCoords(" 52.9 30x -13 S");
+        expect(coords).to.deep.equal([53.4, 13]);
+    });
+
+    it("should fail for bad str format", function() {
+        expect(() => micro.util.parseCoords("42")).to.throw(SyntaxError);
+    });
+
+    it("should fail for out of range str coordinates", function() {
+        expect(() => micro.util.parseCoords("92 -182")).to.throw(RangeError);
+    });
+});

@@ -1284,6 +1284,10 @@ document.registerElement("micro-map", micro.MapElement);
 /**
  * Input for entering a location, e.g. an address or POI.
  *
+ * When converting text to a :ref:`Location`, *name* matches the input value. Additionally *coords*
+ * are set if the input value represents geographic coordinates (ISO-6709-like). On :ref:`Location`
+ * to text conversion, *name* is used.
+ *
  * Mapbox is used for geocoding. :attr:`micro.UI.mapServiceKey` must be set.
  *
  * .. attribute:: nativeInput
@@ -1293,7 +1297,7 @@ document.registerElement("micro-map", micro.MapElement);
  */
 micro.LocationInputElement = class extends HTMLElement {
     createdCallback() {
-        this._value = null;
+        this._valueAsObject = null;
 
         this.appendChild(
             document.importNode(
@@ -1305,12 +1309,24 @@ micro.LocationInputElement = class extends HTMLElement {
                 if (!query) {
                     return [];
                 }
-                // Semicolon is interpreted as separator for batch geocoding
-                query = encodeURIComponent(query.slice(0, 256).replace(";", ","));
-                let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?limit=${limit}&access_token=${ui.mapServiceKey}`;
+                let limitArg;
                 try {
-                    let result = await micro.call("GET", url);
-                    return result.features.map(
+                    // Reverse geocoding
+                    query = micro.util.parseCoords(query).reverse().join(",");
+                    limitArg = 0;
+                } catch (e) {
+                    if (!(e instanceof SyntaxError || e instanceof RangeError)) {
+                        throw e;
+                    }
+                    // Forward geocoding
+                    // Comma and semicolon are special characters for reverse and batch geocoding
+                    query = encodeURIComponent(query.slice(0, 256).replace(/[,;]/ug, " "));
+                    limitArg = limit;
+                }
+                const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?limit=${limitArg}&access_token=${ui.mapServiceKey}`;
+                try {
+                    const result = await micro.call("GET", url);
+                    return result.features.slice(0, limit).map(
                         feature => ({
                             name: feature.matching_place_name || feature.place_name,
                             coords: [
@@ -1329,32 +1345,76 @@ micro.LocationInputElement = class extends HTMLElement {
 
             locationToText(loc) {
                 return loc.name;
-            },
-
-            onSelect: event => {
-                this._value = event.detail.option;
             }
         });
         micro.bind.bind(this.children, this._data);
+
+        function parse(value) {
+            if (!value) {
+                return null;
+            }
+            try {
+                return {name: value, coords: micro.util.parseCoords(value)};
+            } catch (e) {
+                if (!(e instanceof SyntaxError || e instanceof RangeError)) {
+                    throw e;
+                }
+                return {name: value, coords: null};
+            }
+        }
 
         this.nativeInput = this.querySelector("input");
         this.nativeInput.wrapper = this;
         this.nativeInput.name = this.getAttribute("name") || "";
         this.nativeInput.placeholder = this.getAttribute("placeholder") || "";
         this.nativeInput.addEventListener("input", () => {
-            this._value =
-                this.nativeInput.value ? {name: this.nativeInput.value, coords: null} : null;
+            this._valueAsObject = parse(this.nativeInput.value);
+        });
+
+        Object.defineProperty(this.nativeInput, "value", {
+            get: Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").get,
+
+            set: value => {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(
+                    this.nativeInput, value
+                );
+                this._valueAsObject = parse(value);
+            }
+        });
+
+        Object.defineProperty(this.nativeInput, "valueAsObject", {
+            get: () => this._valueAsObject,
+
+            set: value => {
+                this._valueAsObject = value;
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(
+                    this.nativeInput, value ? value.name : ""
+                );
+            }
         });
     }
 
-    /** Current value as :ref:`Location`. May be ``null``. */
+    /**
+     * Current value as :ref:`Location`. May be ``null``.
+     *
+     * .. deprecated:: 0.35.0
+     *
+     *    Use :attr:`valueAsObject` instead.
+     */
     get value() {
-        return this._value;
+        return this.valueAsObject;
     }
 
     set value(value) {
-        this._value = value;
-        this.nativeInput.value = value ? value.name : "";
+        this.valueAsObject = value;
+    }
+
+    get valueAsObject() {
+        return this.nativeInput.valueAsObject;
+    }
+
+    set valueAsObject(value) {
+        this.nativeInput.valueAsObject = value;
     }
 
     /** See :attr:`HTMLInputElement.name`. */

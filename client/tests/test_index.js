@@ -113,6 +113,9 @@ describe("OptionsElement", function() {
 });
 
 describe("LocationInputElement", function() {
+    const BERLIN_COORDS = [52.504043, 13.393236];
+    const BERLIN_COORDS_STR = "52°30′14.5548″N 13°23′35.6496″E";
+
     async function setupDOM() {
         let main = document.querySelector("main");
         main.innerHTML = "<micro-location-input></micro-location-input>";
@@ -121,19 +124,26 @@ describe("LocationInputElement", function() {
     }
 
     describe("on set value", function() {
-        it("should set native input value", async function() {
-            let input = await setupDOM();
-            input.value = {name: "Berlin", coords: [52.504043, 13.393236]};
-            expect(input.nativeInput.value).to.equal("Berlin");
+        it("should update valueAsObject", async function() {
+            const input = await setupDOM();
+            input.nativeInput.value = "Berlin";
+            expect(input.valueAsObject).to.deep.equal({name: "Berlin", coords: null});
+        });
+
+        it("should update valueAsObject for geographic coordinates value", async function() {
+            const input = await setupDOM();
+            input.nativeInput.value = BERLIN_COORDS_STR;
+            expect(input.valueAsObject).to.deep.equal(
+                {name: BERLIN_COORDS_STR, coords: BERLIN_COORDS}
+            );
         });
     });
 
-    describe("on input", function() {
-        it("should set value", async function() {
-            let input = await setupDOM();
-            input.nativeInput.value = "Berlin";
-            input.nativeInput.dispatchEvent(new Event("input"));
-            expect(input.value).to.deep.equal({name: "Berlin", coords: null});
+    describe("on set valueAsObject", function() {
+        it("should update value", async function() {
+            const input = await setupDOM();
+            input.valueAsObject = {name: "Berlin", coords: BERLIN_COORDS};
+            expect(input.nativeInput.value).to.equal("Berlin");
         });
     });
 });

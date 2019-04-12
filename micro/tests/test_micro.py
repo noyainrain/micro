@@ -426,6 +426,7 @@ class EventTest(MicroTestCase):
 
 class LocationTest(MicroTestCase):
     def test_parse(self):
-        location = Location.parse({'name': 'Berlin', 'coords': [52.504043, 13.393236]})
+        # coords may be float or int
+        location = Location.parse({'name': 'Berlin', 'coords': [52.504043, 13]})
         self.assertEqual(location.name, 'Berlin')
-        self.assertEqual(location.coords, (52.504043, 13.393236))
+        self.assertEqual(location.coords, (52.504043, 13))

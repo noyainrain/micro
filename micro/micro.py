@@ -1332,9 +1332,9 @@ class Location:
             raise TypeError()
         if coords is not None:
             if not (isinstance(coords, Sequence) and len(coords) == 2 and
-                    all(isinstance(value, float) for value in coords)):
+                    all(isinstance(value, (float, int)) for value in coords)):
                 raise TypeError()
-            coords = cast(Tuple[float, float], tuple(coords))
+            coords = (float(coords[0]), float(coords[1]))
         return Location(name, coords)
 
     def json(self) -> Dict[str, object]:
