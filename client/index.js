@@ -154,19 +154,26 @@ micro.UI = class extends HTMLBodyElement {
             document.importNode(this.querySelector(".micro-ui-template").content, true),
             this.querySelector("main"));
         this._data = new micro.bind.Watchable({
-            settings: {title: document.title},
+            user: null,
+            settings: null,
             offline: false
         });
         micro.bind.bind(this.children, this._data);
 
         let update = () => {
             document.querySelector('link[rel=icon][sizes="16x16"]').href =
-                this._data.settings.icon_small || "";
+                this._data.settings && this._data.settings.icon_small || "";
             document.querySelector('link[rel=icon][sizes="192x192"]').href =
-                this._data.settings.icon_large || "";
+                this._data.settings && this._data.settings.icon_large || "";
+            this.classList.toggle("micro-ui-user-is-staff",
+                                  this._data.settings && this._data.user && this.staff);
+            this.classList.toggle("micro-ui-settings-have-icon-small",
+                                  this._data.settings && this._data.settings.icon_small);
+            this.classList.toggle("micro-ui-settings-have-feedback-url",
+                                  this._data.settings && this._data.settings.feedback_url);
             this.classList.toggle("micro-ui-offline", this._data.offline);
         };
-        ["settings", "offline"].forEach(prop => this._data.watch(prop, update));
+        ["user", "settings", "offline"].forEach(prop => this._data.watch(prop, update));
 
         this.features = {
             es6TypedArray: "ArrayBuffer" in window,
@@ -180,17 +187,23 @@ micro.UI = class extends HTMLBodyElement {
         this.classList.toggle("micro-ui-map-service-enabled", this.mapServiceKey);
 
         this.service = null;
-        if (this.features.push && this.features.serviceWorkers && this.features.es6TypedArray) {
+        if (this.features.serviceWorkers) {
             let url = document.querySelector("link[rel=service]").href;
             (async() => {
                 this.service = await navigator.serviceWorker.register(url, {scope: "/"});
             })().catch(micro.util.catch);
         }
 
-        let version = localStorage.microVersion || null;
+        const version = parseInt(localStorage.microVersion) || null;
         if (!version) {
             this._storeUser(null);
-            localStorage.microVersion = 1;
+            localStorage.microSettings = JSON.stringify(null);
+            localStorage.microVersion = 2;
+        }
+        // Deprecated since 0.36.0
+        if (version < 2) {
+            localStorage.microSettings = JSON.stringify(null);
+            localStorage.microVersion = 2;
         }
 
         // Go!
@@ -198,7 +211,8 @@ micro.UI = class extends HTMLBodyElement {
             try {
                 this._progressElem.style.display = "block";
                 await Promise.resolve(this.update());
-                this.user = JSON.parse(localStorage.microUser);
+                this._data.user = JSON.parse(localStorage.microUser);
+                this._data.settings = JSON.parse(localStorage.microSettings);
 
                 // If requested, log in with code
                 let match = /^#login=(.+)$/u.exec(location.hash);
@@ -219,19 +233,20 @@ micro.UI = class extends HTMLBodyElement {
                     this._storeUser(await ui.call("POST", "/api/login"));
                 }
 
-                this._data.settings = await ui.call("GET", "/api/settings");
-                this._update();
+                if (!this.settings) {
+                    this._data.settings = await ui.call("GET", "/api/settings");
+                    localStorage.microSettings = JSON.stringify(this._data.settings);
+                }
 
-                // Update the user details
+                // Update user details and settings
                 (async() => {
                     try {
-                        let user = await ui.call("GET", `/api/users/${this.user.id}`);
+                        const user = await ui.call("GET", `/api/users/${this.user.id}`);
                         this.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
+                        const settings = await ui.call("GET", "/api/settings");
+                        this.dispatchEvent(new CustomEvent("settings-edit", {detail: {settings}}));
                     } catch (e) {
-                        if (e instanceof micro.NetworkError || e instanceof micro.APIError &&
-                            e.error.__type__ === "AuthenticationError") {
-                            // Pass
-                        } else {
+                        if (!(e instanceof micro.NetworkError)) {
                             throw e;
                         }
                     }
@@ -245,10 +260,8 @@ micro.UI = class extends HTMLBodyElement {
             } catch (e) {
                 if (e instanceof micro.NetworkError) {
                     this._progressElem.style.display = "none";
+                    this._data.settings = {title: document.title};
                     this.page = document.createElement("micro-offline-page");
-                } else if (e instanceof micro.APIError &&
-                           e.error.__type__ === "AuthenticationError") {
-                    // Pass
                 } else {
                     throw e;
                 }
@@ -286,6 +299,11 @@ micro.UI = class extends HTMLBodyElement {
             micro.Page.prototype.attachedCallback.call(this._page);
             this._updateTitle();
         }
+    }
+
+    /** Current :ref:`User`. */
+    get user() {
+        return this._data.user;
     }
 
     /**
@@ -526,26 +544,8 @@ micro.UI = class extends HTMLBodyElement {
         document.title = [this.page.caption, this._data.settings.title].filter(p => p).join(" - ");
     }
 
-    _update() {
-        this.classList.toggle("micro-ui-user-is-staff", this.staff);
-        this.classList.toggle("micro-ui-settings-have-feedback-url",
-                              this._data.settings.feedback_url);
-        this.querySelector(".micro-ui-logo-text").textContent = this._data.settings.title;
-        let img = this.querySelector(".micro-ui-logo img");
-        if (this._data.settings.icon_small) {
-            img.src = this._data.settings.icon_small;
-            img.style.display = "";
-        } else {
-            img.style.display = "none";
-        }
-        this.querySelector(".micro-ui-feedback a").href = this._data.settings.feedback_url;
-
-        this.querySelector(".micro-ui-header micro-user").user = this.user;
-        this.querySelector(".micro-ui-edit-settings").style.display = this.staff ? "" : "none";
-    }
-
     _storeUser(user) {
-        this.user = user;
+        this._data.user = user;
         if (user) {
             localStorage.microUser = JSON.stringify(user);
             document.cookie =
@@ -572,11 +572,10 @@ micro.UI = class extends HTMLBodyElement {
     handleEvent(event) {
         if (event.target === this && event.type === "user-edit") {
             this._storeUser(event.detail.user);
-            this._update();
 
         } else if (event.target === this && event.type === "settings-edit") {
             this._data.settings = event.detail.settings;
-            this._update();
+            localStorage.microSettings = JSON.stringify(event.detail.settings);
         }
     }
 };

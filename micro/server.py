@@ -18,19 +18,23 @@
 
 """Server components."""
 
-from asyncio import CancelledError, Task, get_event_loop, ensure_future
-from collections import Mapping
+from asyncio import (CancelledError, Future, Task, gather, # pylint: disable=unused-import; typing
+                     get_event_loop, ensure_future)
+from collections.abc import Mapping
 import http.client
 import json
 from logging import getLogger
 import os
+from pathlib import Path
 import re
 from signal import SIGINT
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
+from typing import Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 from urllib.parse import urlparse
 
-from mypy_extensions import VarArg
+from mypy_extensions import TypedDict, VarArg
+from tornado.httpclient import AsyncHTTPClient, HTTPResponse # pylint: disable=unused-import; typing
 from tornado.httpserver import HTTPServer
+from tornado.httputil import HTTPServerRequest
 from tornado.template import DictLoader, Loader, filter_whitespace
 from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
 
@@ -38,7 +42,7 @@ from . import micro, templates, error
 from .micro import (Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError,
                     AuthenticationError, CommunicationError, PermissionError)
 from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
-from .util import str_or_none, parse_slice, check_polyglot
+from .util import look_up_files, str_or_none, parse_slice, check_polyglot
 
 LIST_LIMIT = 100
 SLICE_URL = r'(?:/(\d*:\d*))?'
@@ -57,8 +61,18 @@ _LOGGER = getLogger(__name__)
 Handler = Union[Tuple[str, Type[RequestHandler]],
                 Tuple[str, Type[RequestHandler], Dict[str, object]]]
 
+_ApplicationSettings = TypedDict('_ApplicationSettings', # pylint: disable=invalid-name; type alias
+                                 {'static_path': str, 'server': 'Server'})
+
 class Server:
     """Server for micro apps.
+
+    The server may optionally serve the client in :attr:`client_path`. All files from
+    :attr:`client_modules_path`, `manifest.js` and the script at :attr:`client_service_path` are
+    delivered, with a catch-all for `index.html`.
+
+    Also, the server may act as a dynamic build system for the client. `index.html` is rendered as
+    template and a build manifest `manifest.js` is generated (see :attr:`client_shell`).
 
     .. attribute:: app
 
@@ -87,6 +101,10 @@ class Server:
 
        Location of client service worker script. Defaults to the included micro service worker.
 
+    .. attribute: client_shell
+
+       Set of files that make up the client shell. See :func:`micro.util.look_up_files`.
+
     .. attribute:: client_map_service_key
 
        See ``--client-map-service-key`` command line option.
@@ -104,7 +122,7 @@ class Server:
             self, app: micro.Application, handlers: Sequence[Handler], port: int = 8080,
             url: str = None, client_path: str = 'client', client_modules_path: str = '.',
             client_service_path: str = None, debug: bool = False, *,
-            client_map_service_key: str = None) -> None:
+            client_shell: Sequence[str] = [], client_map_service_key: str = None) -> None:
         url = url or 'http://localhost:{}'.format(port)
         try:
             urlparts = urlparse(url)
@@ -123,6 +141,7 @@ class Server:
         self.client_service_path = (
             client_service_path or
             os.path.join(client_modules_path, '@noyainrain/micro/service.js'))
+        self.client_shell = list(client_shell)
         self.client_map_service_key = client_map_service_key
         self.debug = debug
 
@@ -133,9 +152,6 @@ class Server:
             # pylint: disable=unused-argument; part of API
             return self.app.activity
         self.handlers = [
-            # UI
-            (r'/log-client-error$', _LogClientErrorEndpoint),
-            (r'/(?!api/).*$', _UI),
             # API
             (r'/api/login$', _LoginEndpoint),
             (r'/api/users/([^/]+)$', _UserEndpoint),
@@ -148,13 +164,22 @@ class Server:
             *make_list_endpoints(r'/api/activity(?:/v1)?', get_activity),
             (r'/api/activity/stream', ActivityStreamEndpoint,
              {'get_activity': cast(object, get_activity)}),
-            *handlers
-        ]
+            *handlers,
+            # UI
+            (r'/log-client-error$', _LogClientErrorEndpoint),
+            (r'/manifest.js$', _Manifest), # type: ignore
+            (r'/static/{}$'.format(self.client_service_path), _Service), # type: ignore
+            (r'/static/(.*)$', _Static, {'path': self.client_path}), # type: ignore
+            (r'/.*$', _UI), # type: ignore
+        ] # type: List[Handler]
 
-        self._server = HTTPServer(Application(
-            self.handlers, compress_response=True, template_path=self.client_path,
-            static_path=self.client_path, static_handler_class=_Static, debug=self.debug,
-            server=self))
+        application = Application( # type: ignore
+            self.handlers, compress_response=True, template_path=self.client_path, debug=self.debug,
+            server=self)
+        # Install static file handler manually to allow pre-processing
+        cast(_ApplicationSettings, application.settings).update({'static_path': self.client_path})
+        self._server = HTTPServer(application)
+
         self._empty_trash_task = None # type: Optional[Task[None]]
         self._message_templates = DictLoader(templates.MESSAGE_TEMPLATES, autoescape=None)
         self._micro_templates = Loader(os.path.join(self.client_path, self.client_modules_path,
@@ -213,11 +238,14 @@ class Endpoint(RequestHandler):
 
     current_user = None # type: Optional[User]
 
+    def __init__(self, application: Application, request: HTTPServerRequest,
+                 **kwargs: object) -> None:
+        # Erase Any from kwargs
+        super().__init__(application, request, **kwargs)
+
     def initialize(self, **args: object) -> None:
         # pylint: disable=unused-argument; part of subclass API
-        server = self.application.settings['server']
-        assert isinstance(server, Server)
-        self.server = server
+        self.server = cast(_ApplicationSettings, self.application.settings)['server']
         self.app = self.server.app
         self.args = {} # type: Dict[str, object]
 
@@ -252,23 +280,23 @@ class Endpoint(RequestHandler):
         e = cast(Tuple[Type[BaseException], BaseException, object], kwargs['exc_info'])[1]
         if isinstance(e, KeyError):
             self.set_status(http.client.NOT_FOUND)
-            self.write({'__type__': 'NotFoundError'})
+            self.write({'__type__': 'NotFoundError'}) # type: ignore
         elif isinstance(e, AuthenticationError):
             self.set_status(http.client.BAD_REQUEST)
-            self.write({'__type__': type(e).__name__})
+            self.write({'__type__': type(e).__name__}) # type: ignore
         elif isinstance(e, PermissionError):
             self.set_status(http.client.FORBIDDEN)
-            self.write({'__type__': type(e).__name__})
+            self.write({'__type__': type(e).__name__}) # type: ignore
         elif isinstance(e, InputError):
             self.set_status(http.client.BAD_REQUEST)
-            self.write({
+            self.write({ # type: ignore
                 '__type__': type(e).__name__,
                 'code': e.code,
                 'errors': e.errors
             })
         elif isinstance(e, CommunicationError):
             self.set_status(http.client.BAD_GATEWAY)
-            self.write({'__type__': type(e).__name__, 'message': str(e)})
+            self.write({'__type__': type(e).__name__, 'message': str(e)}) # type: ignore
         elif isinstance(e, error.Error):
             status = {
                 error.ValueError: http.client.BAD_REQUEST,
@@ -346,7 +374,7 @@ class CollectionEndpoint(Endpoint):
     def get(self, *args: str) -> None:
         collection = self.get_collection(*args)
         try:
-            slc = parse_slice(self.get_query_argument('slice', ':'), limit=LIST_LIMIT)
+            slc = parse_slice(cast(str, self.get_query_argument('slice', ':')), limit=LIST_LIMIT)
         except ValueError:
             raise micro.ValueError('bad_slice_format')
         self.write(collection.json(restricted=True, include=True, slc=slc))
@@ -431,9 +459,7 @@ class _Static(StaticFileHandler):
 
 class _UI(RequestHandler):
     def initialize(self) -> None:
-        server = self.application.settings['server']
-        assert isinstance(server, Server)
-        self._server = server
+        self._server = cast(_ApplicationSettings, self.application.settings)['server']
         # pylint: disable=protected-access; Server is a friend
         self._templates = self._server._micro_templates
         if self._server.debug:
@@ -441,7 +467,7 @@ class _UI(RequestHandler):
 
     def get_template_namespace(self) -> Dict[str, object]:
         return {
-            **super().get_template_namespace(),
+            **cast(Dict[str, object], super().get_template_namespace()),
             'modules_path': self._server.client_modules_path,
             'service_path': self._server.client_service_path,
             'map_service_key': self._server.client_map_service_key
@@ -461,6 +487,72 @@ class _UI(RequestHandler):
 
     def _render_micro_templates(self) -> bytes:
         return self._templates.load('templates.html').generate(**self.get_template_namespace())
+
+class _Manifest(RequestHandler):
+    _MICRO_CLIENT_SHELL = [
+        '{}/@noyainrain/micro/*.js',
+        '!{}/@noyainrain/micro/service.js',
+        '!{}/@noyainrain/micro/karma.conf.js',
+        '{}/@noyainrain/micro/micro.css',
+        '{}/@noyainrain/micro/images',
+        '{}/webcomponents.js/webcomponents-lite.min.js',
+        '{}/event-source-polyfill/src/eventsource.min.js',
+        '{}/leaflet/dist/leaflet.js',
+        '{}/leaflet/dist/leaflet.css',
+        '{}/typeface-open-sans/files/open-sans-latin-[346]00.woff',
+        '{}/typeface-open-sans/files/open-sans-latin-400italic.woff',
+        '{}/@fortawesome/fontawesome-free/css/all.min.css',
+        '{}/@fortawesome/fontawesome-free/webfonts/fa-regular-400.woff2',
+        '{}/@fortawesome/fontawesome-free/webfonts/fa-solid-900.woff2'
+    ]
+
+    _manifest = None # type: ClassVar[Dict[str, object]]
+
+    def initialize(self) -> None:
+        self._server = cast(_ApplicationSettings, self.application.settings)['server']
+
+    async def get(self) -> None:
+        if not self._manifest:
+            shell = [
+                'index.html',
+                *self._server.client_shell,
+                '!{}'.format(self._server.client_service_path),
+                *(pattern.format(self._server.client_modules_path)
+                  for pattern in self._MICRO_CLIENT_SHELL)
+            ]
+            shell = [path.relative_to(self._server.client_path)
+                     for path in look_up_files(shell, top=self._server.client_path)]
+            shell = [path if path == Path('index.html') else Path('static') / path
+                     for path in shell]
+            # Instead of reading files directly, go through server to handle dynamic content (e.g.
+            # rendered templates). Tornado does not provide an API to request a response, so fall
+            # back to HTTP.
+            client = AsyncHTTPClient()
+            requests = (client.fetch('http://localhost:{}/{}'.format(self._server.port, path))
+                        for path in shell)
+            responses = await cast('Future[Tuple[HTTPResponse]]', gather(*requests))
+            shell = ['/{}?v={}'.format(path, response.headers['Etag'].strip('"'))
+                     for path, response in zip(shell, responses)]
+            _Manifest._manifest = {'shell': shell, 'debug': self._server.debug} # type: ignore
+
+        self.set_header('Content-Type', 'text/javascript')
+        self.write('micro.service.MANIFEST = {};\n'.format(json.dumps(self._manifest)))
+
+class _Service(RequestHandler):
+    _version = None # type: ClassVar[str]
+
+    def initialize(self) -> None:
+        self._server = cast(_ApplicationSettings, self.application.settings)['server']
+
+    async def get(self) -> None:
+        if not self._version:
+            response = await AsyncHTTPClient().fetch(
+                'http://localhost:{}/manifest.js'.format(self._server.port))
+            _Service._version = response.headers['Etag'].strip('"') # type: ignore
+
+        self.set_header('Content-Type', 'text/javascript')
+        self.set_header('Service-Worker-Allowed', '/')
+        self.render(self._server.client_service_path, version=self._version)
 
 class _LogClientErrorEndpoint(Endpoint):
     def post(self):

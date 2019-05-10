@@ -63,6 +63,7 @@ hello.StartPage = class extends micro.Page {
                     form.reset();
                 } catch (e) {
                     if (
+                        e instanceof micro.APIError &&
                         [
                             "CommunicationError", "NoResourceError", "ForbiddenResourceError",
                             "BrokenResourceError"

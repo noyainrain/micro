@@ -48,6 +48,17 @@ exports.startBrowser = function(test, subject) {
     return browser;
 };
 
+/** Navigate *browser* to the given *url* with an active service worker. */
+exports.getWithServiceWorker = async function(browser, url) {
+    async function f(callback) {
+        await navigator.serviceWorker.ready;
+        callback();
+    }
+    await browser.get(url);
+    await browser.executeAsyncScript(f);
+    await browser.get(url);
+};
+
 /**
  * Creates a condition that will loop until an element containing *text* is found by *locator*.
  */

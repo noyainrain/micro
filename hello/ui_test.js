@@ -20,15 +20,14 @@
 "use strict";
 
 let {exec, spawn} = require("child_process");
-let {hostname} = require("os");
 let {promisify} = require("util");
 
 let {until} = require("selenium-webdriver");
 
-let {startBrowser, untilElementTextLocated} = require("@noyainrain/micro/test");
+const {getWithServiceWorker, startBrowser, untilElementTextLocated} =
+    require("@noyainrain/micro/test");
 
-// Some browsers do not open localhost via proxy
-let URL = `http://${hostname()}:8081`;
+const URL = "http://localhost:8081";
 
 describe("UI", function() {
     let server;
@@ -59,18 +58,18 @@ describe("UI", function() {
         let input;
 
         // View start page
-        await browser.get(`${URL}/`);
+        await getWithServiceWorker(browser, `${URL}/`);
         await browser.wait(
             untilElementTextLocated({css: ".micro-logo"}, "Hello"), timeout);
 
         // Create greeting
-        form = await browser.findElement({css: "hello-start-page form"});
-        input = await form.findElement({name: "text"});
-        await input.sendKeys("Meow!");
-        await form.findElement({css: "button"}).click();
-        await browser.wait(
-            untilElementTextLocated({css: ".hello-start-greetings > li > p"}, "Meow!"), timeout
-        );
+        // form = await browser.findElement({css: "hello-start-page form"});
+        // input = await form.findElement({name: "text"});
+        // await input.sendKeys("Meow!");
+        // await form.findElement({css: "button"}).click();
+        // await browser.wait(
+        //     untilElementTextLocated({css: ".hello-start-greetings > li > p"}, "Meow!"), timeout
+        // )
 
         // Edit user
         await browser.findElement({css: ".micro-ui-header-user"}).click();

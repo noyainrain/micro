@@ -96,8 +96,9 @@ def make_server(port=8080, url=None, client_path='.', debug=False, redis_url='',
     handlers = [
         (r'/api/greetings$', _GreetingsEndpoint, {'get_collection': lambda *args: app.greetings})
     ]
-    return Server(app, handlers, port, url, client_path, client_modules_path='node_modules',
-                  debug=debug, client_map_service_key=client_map_service_key)
+    return Server(
+        app, handlers, port, url, client_path, client_modules_path='node_modules', debug=debug,
+        client_shell=['hello.js'], client_map_service_key=client_map_service_key)
 
 class _GreetingsEndpoint(CollectionEndpoint):
     # pylint: disable=abstract-method; Tornado handlers define a semi-abstract data_received()

@@ -21,14 +21,17 @@
 
 import argparse
 from argparse import ArgumentParser
+from collections import OrderedDict
 from datetime import datetime
 import logging
 from logging import StreamHandler, getLogger
+from os import walk
+from pathlib import Path
 import random
 import re
 import string
 import sys
-from typing import Coroutine, Optional, Type, TypeVar, cast
+from typing import Coroutine, List, Optional, Sequence, Type, TypeVar, Union, cast
 
 from tornado.log import LogFormatter
 
@@ -102,6 +105,38 @@ def check_email(email: str) -> None:
         raise ValueError('email_empty')
     if len(email.splitlines()) > 1:
         raise ValueError('email_newline')
+
+def look_up_files(paths: Sequence[str], *, top: Union[str, Path] = Path()) -> List[Path]:
+    """Compile a list of files at the given *paths*.
+
+    Glob patterns are expanded. For directories, files are included recursively. A leading `!`
+    excludes previously included entries. *top* is the top-level directory for the lookup and
+    defaults to the current directory.
+    """
+    if isinstance(top, str):
+        top = Path(top)
+    # Use like ordered set
+    files = OrderedDict() # type: OrderedDict[Path, None]
+    for pattern in paths:
+        if pattern.startswith('!'):
+            for path in top.glob(pattern[1:]):
+                if path.is_dir():
+                    for included in list(files):
+                        if path in included.parents:
+                            files.pop(included)
+                else:
+                    files.pop(path, None)
+        else:
+            expanded = sorted(top.glob(pattern))
+            if not expanded:
+                raise ValueError('No file matching paths entry {}'.format(pattern))
+            for path in expanded:
+                if path.is_dir():
+                    for dirpath, _, filenames in walk(str(path)):
+                        files.update((Path(dirpath) / name, None) for name in filenames)
+                else:
+                    files[path] = None
+    return list(files)
 
 def make_command_line_parser() -> ArgumentParser:
     """Create a :class:`argparse.ArgumentParser` handy for micro apps.

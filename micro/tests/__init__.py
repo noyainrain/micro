@@ -13,3 +13,7 @@
 # If not, see <http://www.gnu.org/licenses/>.
 
 """micro tests."""
+
+from pathlib import Path
+
+RES_PATH = Path(__file__).parent / 'res'
