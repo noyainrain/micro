@@ -29,8 +29,11 @@ micro.keyboard.ShortcutContext = class {
         this._prefix = null;
 
         function toKeyString(event) {
-            return event.key.length === 1 ? event.key.toUpperCase()
-                : `${event.altKey ? "Alt+" : ""}${event.ctrlKey ? "Control+" : ""}${event.metaKey ? "Meta+" : ""}${event.shiftKey ? "Shift+" : ""}${event.key}`;
+            // Normalize letter case
+            const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
+            // Consume Shift for symbols
+            const shift = event.shiftKey && !(key.length === 1 && key === key.toLowerCase());
+            return `${event.altKey ? "Alt+" : ""}${event.ctrlKey ? "Control+" : ""}${event.metaKey ? "Meta+" : ""}${shift ? "Shift+" : ""}${key}`;
         }
 
         this.elem.addEventListener("keydown", event => {
@@ -74,10 +77,12 @@ micro.keyboard.ShortcutContext = class {
     /**
      * Add a shortcut *key*.
      *
-     * *key* is a key string, meaning either a character (upper case) or a
-     * `key identifier <https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key/Key_Values>`_
-     * prefixed with any modifier (``Alt``, ``Control``, ``Meta`` and ``Shift``, in the given order)
-     * followed by a ``+``. For example, ``A`` and ``Control+Shift+Enter`` are valid key strings.
+     * *key* is a key string, meaning a
+     * `key identifier <https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key/Key_Values>`_,
+     * letter (upper case) or symbol, prefixed with any modifier (``Alt``, ``Control``, ``Meta`` and
+     * ``Shift``, in the given order), separated by ``+``. For symbols, ``Shift`` is not applicable,
+     * as the character is determined by the modifier (e.g. ``/`` and ``?``). Examples of valid key
+     * strings are ``A``, ``Shift+A``, ``?`` or ``Control+Shift+Enter``.
      *
      * *handle* is a function of the form ``handle(key, context)``, where *key* is the pressed key
      * and *context* refers to the shortcut context.

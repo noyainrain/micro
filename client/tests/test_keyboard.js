@@ -20,9 +20,12 @@ describe("ShortcutContext", function() {
         let span = main.firstElementChild;
         span.shortcutContext = new micro.keyboard.ShortcutContext(span);
         span.shortcutContext.add("A", (...args) => calls.push(["shortcut"].concat(args)));
+        span.shortcutContext.add("Shift+A", (...args) => calls.push(["shortcut"].concat(args)));
+        span.shortcutContext.add("?", (...args) => calls.push(["shortcut"].concat(args)));
         span.shortcutContext.add("B,A", (...args) => calls.push(["shortcut"].concat(args)));
-        span.shortcutContext.add("Control+Enter",
-                                 (...args) => calls.push(["shortcut"].concat(args)));
+        span.shortcutContext.add(
+            "Control+Shift+Enter", (...args) => calls.push(["shortcut"].concat(args))
+        );
         return [span, span.firstElementChild];
     }
 
@@ -32,6 +35,24 @@ describe("ShortcutContext", function() {
             let [span] = setupDOM(calls);
             span.dispatchEvent(new KeyboardEvent("keydown", {key: "a", bubbles: true}));
             expect(calls).to.deep.equal([["shortcut", "A", span.shortcutContext]]);
+        });
+
+        it("should trigger for modifier", function() {
+            const calls = [];
+            const [span] = setupDOM(calls);
+            span.dispatchEvent(
+                new KeyboardEvent("keydown", {key: "A", shiftKey: true, bubbles: true})
+            );
+            expect(calls).to.deep.equal([["shortcut", "Shift+A", span.shortcutContext]]);
+        });
+
+        it("should trigger for shifted symbol", function() {
+            const calls = [];
+            const [span] = setupDOM(calls);
+            span.dispatchEvent(
+                new KeyboardEvent("keydown", {key: "?", shiftKey: true, bubbles: true})
+            );
+            expect(calls).to.deep.equal([["shortcut", "?", span.shortcutContext]]);
         });
 
         it("should trigger for prefix", function() {
@@ -56,11 +77,15 @@ describe("ShortcutContext", function() {
             expect(calls).to.deep.equal([["keydown", "a"]]);
         });
 
-        it("should trigger for control keys in input mode", function() {
+        it("should trigger for functional key in input mode", function() {
             let calls = [];
             let [span, input] = setupDOM(calls);
-            input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true}));
-            expect(calls).to.deep.equal([["shortcut", "Control+Enter", span.shortcutContext]]);
+            input.dispatchEvent(
+                new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, shiftKey: true, bubbles: true})
+            );
+            expect(calls).to.deep.equal(
+                [["shortcut", "Control+Shift+Enter", span.shortcutContext]]
+            );
         });
     });
 });
