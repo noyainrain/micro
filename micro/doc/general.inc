@@ -105,97 +105,6 @@ application.
 
 .. include:: micro/object-attributes.inc
 
-.. _User:
-
-User
-----
-
-User is editable by the user oneself.
-
-.. include:: micro/object-attributes.inc
-
-.. include:: micro/editable-attributes.inc
-
-.. describe:: name
-
-   Name or nick name.
-
-.. describe:: email
-
-   Email address, being a single line string. May be ``None``. Visible only to the user oneself.
-
-.. describe:: auth_secret
-
-   Secret for authentication. Visible only to the user oneself.
-
-.. describe:: device_notification_status
-
-   Device notification status:
-
-   * ``on``: Notifications are enabled
-   * ``off``: Notifications are disabled
-   * ``off.expired``: Notifications are disabled because *push_subscription* expired
-
-.. describe:: push_subscription
-
-   Push subscription token used for sending device notifications. May be ``null``.
-
-.. http:get:: /api/users/(id)
-
-   Get the user given by *id*.
-
-.. include:: micro/editable-endpoints.inc
-
-.. http:post:: /api/users/(id)/set-email
-
-   {"email"}
-
-   Start to set the user's *email* address.
-
-   A third party authentication via the email provider (as layed out in :ref:`AuthRequest`) is
-   triggered and a corresponding :ref:`AuthRequest` is returned. To finish setting the email address
-   use :http:post:`/api/users/(id)/finish-set-email`.
-
-   Permission: The user oneself.
-
-.. http:post:: /api/users/(id)/finish-set-email
-
-   {"auth_request_id", "auth"}
-
-   Finish setting the user's *email* address and return the user.
-
-   *auth* is the authentication code, resulting from the :ref:`AuthRequest` with *auth_request_id*,
-   to be verified. If the verification fails, a :ref:`ValueError` (``auth_invalid``) is returned. If
-   the given email address is already associated with another user, a :ref:`ValueError`
-   (``email_duplicate``) is returned.
-
-   Permission: The user oneself.
-
-.. http:post:: /api/users/(id)/remove-email
-
-   Remove the user's current *email* address and return the user.
-
-   If the user's *email* is not set, a :ref:`ValueError` (``user_no_email``) is returned.
-
-   Permission: The user oneself.
-
-.. http:patch:: /api/users/(id)
-
-   ``{"op": "enable_device_notifications", "push_subscription"}``
-
-   Enable device notifications, using *push_subscription*.
-
-   A confirmation message is sent to the device. If there is a communication issue, a
-   :ref:`CommunicationError` is returned.
-
-   Permission: The user oneself.
-
-   ``{"op": "disable_device_notifications"}``
-
-   Disable device notifications.
-
-   Permission: The user oneself.
-
 .. _Activity:
 
 Activity
@@ -229,7 +138,7 @@ Activity feed (of events) around a common topic/context.
 
 .. http:get:: /api/(activity-url)/stream
 
-   Get a live stream of :ref:`Event`s as ``text/event-stream``.
+   Get a live stream of :ref:`Event` s as ``text/event-stream``.
 
 .. _Event:
 
@@ -240,16 +149,16 @@ Event about an action on an *object* by an *user*.
 
 .. include:: micro/object-attributes.inc
 
-.. attribute:: type
+.. describe:: type
 
    Type of the event.
 
-.. attribute:: object
+.. describe:: object
 
    Object for which the event happened. :ref:`Gone` if the object does not exist anymore. ``null``
    if the event is global.
 
-.. attribute:: user
+.. describe:: user
 
    :ref:`User` who triggered the event.
 
@@ -257,7 +166,7 @@ Event about an action on an *object* by an *user*.
 
    Date and time at which the event happened.
 
-.. attribute:: detail
+.. describe:: detail
 
    Dictionary with additonal details about the event. The contents depend on the event *type*.
 
@@ -315,7 +224,7 @@ ValueError
 
 Returned for value-related errors.
 
-.. attribute:: code
+.. describe:: code
 
    Error string providing more information about the problem.
 
@@ -332,7 +241,7 @@ Returned if the input to an endpoint contains one or more arguments with an inva
 
 InputError is a :ref:`ValueError` with *code* set to ``input_invalid``.
 
-.. attribute:: errors
+.. describe:: errors
 
    Map of argument names / error strings for every problematic argument of the input.
 

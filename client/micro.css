@@ -109,6 +109,10 @@ pre {
     white-space: pre-wrap;
 }
 
+i {
+    color: var(--micro-color-text-subtle);
+}
+
 .micro-small, small {
     font-size: 0.875em;
     color: var(--micro-color-text-subtle);
@@ -162,12 +166,17 @@ pre {
 
 .micro-icon-title {
     border-bottom: none;
-    color: #888;
     font-size: 3rem;
 }
 
-.micro-progress {
+.micro-progress i {
     color: var(--micro-color-primary);
+}
+
+aside {
+    margin: var(--micro-size-rm) 0;
+    font-size: 0.875em;
+    color: var(--micro-color-text-subtle);
 }
 
 /* ---- Focus hints ---- */
@@ -223,6 +232,10 @@ h1 .link {
     color: inherit;
 }
 
+.link i {
+    color: inherit;
+}
+
 /* ---- Actions ---- */
 
 .action {
@@ -248,6 +261,10 @@ h1 .link {
 
 .action:disabled {
     cursor: default;
+}
+
+.action i {
+    color: inherit;
 }
 
 .action-subtle {
@@ -345,6 +362,12 @@ legend {
 
 .micro-panel {
     display: flex;
+    align-items: flex-start;
+}
+
+.micro-panel > *,
+.micro-panel > div > * {
+    margin: 0;
 }
 
 .micro-panel > h1,
@@ -353,7 +376,6 @@ legend {
 .micro-panel > div > p,
 .micro-panel > div > .link {
     padding: var(--micro-size-xs);
-    margin: 0;
 }
 
 .micro-panel > p > small,
@@ -361,6 +383,7 @@ legend {
 .micro-panel > div > p > small,
 .micro-panel > div > .link > small {
     display: block;
+    margin-top: var(--micro-size-rxs);
 }
 
 .micro-panel > h1,
@@ -407,6 +430,11 @@ legend {
     line-height: inherit;
 }
 
+.micro-panel > .link,
+.micro-panel > div > .link {
+    color: var(--micro-color-text);
+}
+
 .micro-panel > .link i,
 .micro-panel > div > .link i {
     color: var(--micro-color-text-subtle);
@@ -415,6 +443,10 @@ legend {
 .micro-panel > .action,
 .micro-panel > div > .action {
     color: var(--micro-color-primary);
+}
+
+.micro-panel-main {
+    flex: auto;
 }
 
 /* ---- Entity list ---- */
@@ -429,6 +461,7 @@ legend {
     list-style: none;
 }
 
+.micro-entity-list > ul:not(:first-child),
 .micro-entity-list > ul > li:not(:first-child) {
     border-top: 1px solid var(--micro-color-delimiter);
 }
@@ -554,8 +587,8 @@ legend {
     text-decoration: none;
 }
 
-[is=micro-menu] li .link .fa {
-    color: #888;
+[is=micro-menu] li .link i {
+    color: var(--micro-color-text-subtle);
 }
 
 [is=micro-menu] li .action {
@@ -577,9 +610,10 @@ legend {
 
 [is=micro-menu].micro-secondary > li > .link:hover,
 [is=micro-menu].micro-secondary > li > .link:focus,
-[is=micro-menu] > li.micro-menu-expanded > .link,
+[is=micro-menu].micro-secondary > li.micro-menu-expanded > .link,
 [is=micro-menu].micro-secondary > li > .action:hover,
-[is=micro-menu].micro-secondary > li > .action:focus {
+[is=micro-menu].micro-secondary > li > .action:focus,
+[is=micro-menu].micro-secondary > li.micro-menu-expanded > .action {
     background: #ddd;
 }
 
@@ -649,10 +683,6 @@ legend {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.micro-user i {
-    color: #888;
 }
 
 /* ---- UI ---- */
@@ -730,9 +760,12 @@ main {
 
 .micro-ui-progress {
     margin: calc(3 * 1.5rem) 0;
-    color: var(--micro-color-primary);
     font-size: 3rem;
     text-align: center;
+}
+
+.micro-ui-progress i {
+    color: var(--micro-color-primary);
 }
 
 /* ---- Notification ---- */

@@ -273,6 +273,17 @@ class Application:
         initializing) micro specific data. The default implementation does nothing.
         """
 
+    def create_user(self, data: Dict[str, object]) -> 'User':
+        """Subclass API: Create a new user.
+
+        *data* is the JSON data required for :class:`User`.
+
+        May be overridden by subclass. Called by :meth:`login` for new users, which takes care of
+        storing the object. By default, a standard :class:`User` is returned.
+        """
+        # pylint: disable=no-self-use; part of subclass API
+        return User(**data) # type: ignore
+
     def create_settings(self) -> 'Settings':
         """Subclass API: Create and return the app :class:`Settings`.
 
@@ -282,44 +293,51 @@ class Application:
         """
         raise NotImplementedError()
 
-    def authenticate(self, secret):
+    def authenticate(self, secret: str) -> 'User':
         """Authenticate an :class:`User` (device) with *secret*.
 
         The identified user is set as current *user* and returned. If the authentication fails, an
         :exc:`AuthenticationError` is raised.
         """
-        id = self.r.hget('auth_secret_map', secret)
+        id = self.r.r.hget('auth_secret_map', secret.encode())
         if not id:
             raise AuthenticationError()
         self.user = self.users[id.decode()]
         return self.user
 
-    def login(self, code=None):
+    def login(self, code: str = None) -> 'User':
         """See :http:post:`/api/login`.
 
         The logged-in user is set as current *user*.
         """
         if code:
-            id = self.r.hget('auth_secret_map', code)
+            id = self.r.r.hget('auth_secret_map', code.encode())
             if not id:
                 raise ValueError('code_invalid')
-            user = self.users[id.decode()]
+            id = id.decode()
+            user = self.users[id]
 
         else:
             id = 'User:' + randstr()
-            user = User(
-                id=id, app=self, authors=[id], name='Guest', email=None, auth_secret=randstr(),
-                device_notification_status='off', push_subscription=None)
+            user = self.create_user({
+                'id': id, 'app': self,
+                'authors': [id],
+                'name': 'Guest',
+                'email': None,
+                'auth_secret': randstr(),
+                'device_notification_status': 'off',
+                'push_subscription': None
+            })
             self.r.oset(user.id, user)
             self.r.rpush('users', user.id)
             self.r.hset('auth_secret_map', user.auth_secret, user.id)
 
             # Promote first user to staff
             if len(self.users) == 1:
-                settings = self.settings
+                settings = self.settings # type: ignore
                 # pylint: disable=protected-access; Settings is a friend
-                settings._staff = [user.id]
-                self.r.oset(settings.id, settings)
+                settings._staff = [user.id] # type: ignore
+                self.r.oset(settings.id, settings) # type: ignore
 
         return self.authenticate(user.auth_secret)
 
