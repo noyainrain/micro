@@ -43,7 +43,7 @@ class Hello(Application):
                 id='Greeting:{}'.format(randstr()), app=self.app, authors=[self.app.user.id],
                 text=attrs['text'], resource=attrs['resource'])
             self.r.oset(greeting.id, greeting)
-            self.r.rpush(self.ids.key, greeting.id)
+            self.r.lpush(self.ids.key, greeting.id)
             self.app.activity.publish(
                 Event.create('greetings-create', None, detail={'greeting': greeting}, app=self.app))
             return greeting

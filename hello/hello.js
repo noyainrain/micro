@@ -51,7 +51,7 @@ hello.StartPage = class extends micro.Page {
             document.importNode(ui.querySelector(".hello-start-page-template").content, true));
         this._data = new micro.bind.Watchable({
             settings: ui.settings,
-            greetings: null,
+            greetings: new micro.Collection("/api/greetings"),
 
             createGreeting: async() => {
                 try {
@@ -87,12 +87,11 @@ hello.StartPage = class extends micro.Page {
         super.attachedCallback();
         this.ready.when((async() => {
             try {
-                let greetings = await ui.call("GET", "/api/greetings");
-                this._data.greetings = new micro.bind.Watchable(greetings.items);
+                await this._data.greetings.fetch();
                 this._activity = await micro.Activity.open("/api/activity/stream");
                 this._activity.events.addEventListener(
                     "greetings-create",
-                    event => this._data.greetings.unshift(event.detail.event.detail.greeting)
+                    event => this._data.greetings.items.unshift(event.detail.event.detail.greeting)
                 );
             } catch (e) {
                 ui.handleCallError(e);

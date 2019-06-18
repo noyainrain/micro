@@ -428,6 +428,7 @@ legend {
     border-radius: 0;
     background: transparent;
     line-height: inherit;
+    text-align: left;
 }
 
 .micro-panel > .link,
@@ -461,8 +462,8 @@ legend {
     list-style: none;
 }
 
-.micro-entity-list > ul:not(:first-child),
-.micro-entity-list > ul > li:not(:first-child) {
+.micro-entity-list > ul:not(:empty) ~ ul:not(:empty),
+.micro-entity-list > ul > li:not(:empty) ~ li:not(:empty) {
     border-top: 1px solid var(--micro-color-delimiter);
 }
 

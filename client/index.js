@@ -144,8 +144,6 @@ micro.UI = class extends HTMLBodyElement {
         }
 
         micro.keyboard.enableActivatedClass();
-        micro.bind.transforms.ShortcutContext = micro.keyboard.ShortcutContext;
-        micro.bind.transforms.Shortcut = micro.keyboard.Shortcut;
         this.shortcutContext = new micro.keyboard.ShortcutContext(this);
         this.shortcutContext.add("J", micro.keyboard.quickNavigate.bind(null, "next"));
         this.shortcutContext.add("K", micro.keyboard.quickNavigate.bind(null, "prev"));
@@ -581,6 +579,55 @@ micro.UI = class extends HTMLBodyElement {
             this._data.settings = event.detail.settings;
             localStorage.microSettings = JSON.stringify(event.detail.settings);
         }
+    }
+};
+
+/**
+ * :ref:`Collection` receivable in chunks.
+ *
+ * .. attribute:: url
+ *
+ *    URL of the collection.
+ *
+ * .. attribute:: items
+ *
+ *    :class:`micro.bind.Watchable` :class:`Array` of fetched items.
+ *
+ * .. attribute:: count
+ *
+ *    Overall number of items in the collection or ``null`` if not known yet.
+ *
+ * .. describe:: fetch
+ *
+ *    Dispatched when new items have been fetched.
+ */
+micro.Collection = class {
+    constructor(url) {
+        this.url = url;
+        this.items = new micro.bind.Watchable([]);
+        this.count = null;
+        this.events = document.createElement("span");
+        this.events.collection = this;
+    }
+
+    /** Indicates if all items have been fetched. */
+    get complete() {
+        return this.items.length === this.count;
+    }
+
+    /**
+     * Fetch the next *n* *items*.
+     *
+     * If :http:get:`querying the collection </api/(resource-url)?slice>` fails, an
+     * :class:`APIError` or :class:`NetworkError` is thrown.
+     */
+    async fetch(n = micro.LIST_LIMIT) {
+        const query = await ui.call(
+            "GET", `${this.url}?slice=${this.items.length}:${this.items.length + n}`
+        );
+        this.items.push(...query.items);
+        this.count = query.count;
+        this.events.dispatchEvent(new CustomEvent("fetch"));
     }
 };
 
@@ -1890,29 +1937,47 @@ micro.ActivityPage = class extends micro.Page {
     }
 };
 
-/** Render the given web :ref:`Resource` *resource*. */
-micro.bind.transforms.renderResource = function(ctx, resource) {
-    if (!resource) {
-        return "";
-    }
-    let elem;
-    switch (resource.__type__) {
-    case "Image":
-        elem = document.createElement("micro-image");
-        elem.image = resource;
-        break;
-    case "Video":
-        elem = document.createElement("micro-video");
-        elem.video = resource;
-        break;
-    default:
-        elem = document.createElement("micro-link");
-        console.log(micro.components);
-        elem.resource = resource;
-        break;
-    }
-    return elem;
-};
+Object.assign(micro.bind.transforms, {
+    /**
+     * Fetch the next *n* items for *collection*.
+     *
+     * Wrapper around :meth:`Collection.fetch` that handles common call errors.
+     */
+    async fetchCollection(collection, n = micro.LIST_LIMIT) {
+        try {
+            await collection.fetch(n);
+        } catch (e) {
+            ui.handleCallError(e);
+        }
+    },
+
+    /** Render the given web :ref:`Resource` *resource*. */
+    renderResource(ctx, resource) {
+        if (!resource) {
+            return "";
+        }
+        let elem;
+        switch (resource.__type__) {
+        case "Image":
+            elem = document.createElement("micro-image");
+            elem.image = resource;
+            break;
+        case "Video":
+            elem = document.createElement("micro-video");
+            elem.video = resource;
+            break;
+        default:
+            elem = document.createElement("micro-link");
+            console.log(micro.components);
+            elem.resource = resource;
+            break;
+        }
+        return elem;
+    },
+
+    ShortcutContext: micro.keyboard.ShortcutContext,
+    Shortcut: micro.keyboard.Shortcut
+});
 
 document.registerElement("micro-ui", {prototype: micro.UI.protoype, extends: "body"});
 document.registerElement("micro-simple-notification", micro.SimpleNotification);
