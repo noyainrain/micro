@@ -191,8 +191,21 @@ micro.UI = class extends HTMLBodyElement {
         this.service = null;
         if (this.features.serviceWorkers) {
             let url = document.querySelector("link[rel=service]").href;
+            // Technically the app should stop with an offline indication on any network error, but
+            // to not slow startup, register in the background
             (async() => {
-                this.service = await navigator.serviceWorker.register(url, {scope: "/"});
+                try {
+                    this.service = await navigator.serviceWorker.register(url, {scope: "/"});
+                } catch (e) {
+                    // Work around Firefox disabling service workers depending on privacy settings
+                    // (see https://bugzilla.mozilla.org/show_bug.cgi?id=1413615)
+                    if (e instanceof DOMException && e.name === "SecurityError") {
+                        this.features.serviceWorkers = false;
+                        this.classList.remove("micro-feature-service-workers");
+                    } else {
+                        throw e;
+                    }
+                }
             })().catch(micro.util.catch);
         }
 
@@ -433,6 +446,8 @@ micro.UI = class extends HTMLBodyElement {
      * - ``error``: A communication error occured
      */
     async enableDeviceNotifications() {
+        const COMMUNICATION_ERROR_MESSAGE = "Oops, there was a problem communicating with your device. Please try again in a few moments.";
+
         if (!(this.features.push && this.features.serviceWorkers && this.features.es6TypedArray)) {
             throw new Error("features");
         }
@@ -443,18 +458,23 @@ micro.UI = class extends HTMLBodyElement {
             atob(this.settings.push_vapid_public_key.replace(/-/ug, "+").replace(/_/ug, "/")),
             c => c.codePointAt(0));
 
+        const service = await navigator.serviceWorker.ready;
         // Subscribing fails with an InvalidStateError if there is an existing subscription and we
         // pass a different VAPID public key (after a database reset)
-        let subscription = await this.service.pushManager.getSubscription();
+        let subscription = await service.pushManager.getSubscription();
         if (subscription) {
             await subscription.unsubscribe();
         }
         try {
-            subscription = await this.service.pushManager.subscribe(
-                {userVisibleOnly: true, applicationServerKey});
+            subscription = await service.pushManager.subscribe(
+                {userVisibleOnly: true, applicationServerKey}
+            );
         } catch (e) {
             if (e instanceof DOMException && e.name === "NotAllowedError") {
                 return "cancel";
+            } else if (e instanceof DOMException && e.name === "AbortError") {
+                ui.notify(COMMUNICATION_ERROR_MESSAGE);
+                return "error";
             }
             throw e;
         }
@@ -467,9 +487,8 @@ micro.UI = class extends HTMLBodyElement {
             micro.util.dispatchEvent(this, new CustomEvent("user-edit", {detail: {user}}));
             return "ok";
         } catch (e) {
-            if (e instanceof micro.APIError &&
-                    e.error.__type__ === "CommunicationError") {
-                ui.notify("Oops, there was a problem communicating with your device. Please try again in a few moments.");
+            if (e instanceof micro.APIError && e.error.__type__ === "CommunicationError") {
+                ui.notify(COMMUNICATION_ERROR_MESSAGE);
             } else {
                 ui.handleCallError(e);
             }
