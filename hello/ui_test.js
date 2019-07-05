@@ -122,6 +122,13 @@ describe("UI", function() {
                                       "CatApp"),
             timeout);
 
+        // View analytics page
+        await menu.click();
+        await browser.findElement({css: ".micro-ui-analytics"}).click();
+        await browser.wait(
+            untilElementTextLocated({css: "micro-analytics-page h1"}, "Analytics"), timeout
+        );
+
         // View activity page
         await menu.click();
         await browser.findElement({css: ".micro-ui-activity"}).click();

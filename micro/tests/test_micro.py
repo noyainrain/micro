@@ -15,7 +15,7 @@
 # pylint: disable=missing-docstring; test module
 
 from asyncio import sleep
-from datetime import timedelta
+from datetime import timedelta, timezone
 import subprocess
 from tempfile import mkdtemp
 from unittest.mock import Mock, patch
@@ -33,6 +33,8 @@ from micro.test import CatApp, Cat
 from micro.util import ON
 
 SETUP_DB_SCRIPT = """\
+from time import sleep
+
 from micro.test import CatApp
 
 # Forward compatibility for redis-py 3 (deprecated since 0.30.0)
@@ -52,8 +54,9 @@ if int(app.r.get('micro_version')) == 6:
 else:
     app.activity.publish(event)
 
-# Events
+# Events at different times
 app.settings.edit(provider_name='Meow Inc.')
+sleep(1)
 app.settings.edit(provider_url='https://meow.example.com/')
 
 # Compatibility for app without cats (deprecated since 0.6.0)
@@ -65,6 +68,9 @@ if not hasattr(app, 'cats'):
 else:
     app.cats.create()
     app.cats.create().trash()
+
+# User without activity
+app.login()
 """
 
 class MicroTestCase(AsyncTestCase):
@@ -126,23 +132,27 @@ class ApplicationUpdateTest(AsyncTestCase):
 
     @gen_test
     async def test_update_db_version_previous(self) -> None:
-        Trashable.RETENTION = timedelta(seconds=0.2)
-        self.setup_db('0.32.0')
+        self.setup_db('0.38.1')
+        await sleep(1)
         app = CatApp(redis_url='15')
         app.update() # type: ignore
 
-        cats = list(app.cats.values())
-        app.start_empty_trash()
-        await sleep(0.1)
-        self.assertEqual(list(app.cats.values()), cats) # type: ignore
-        await sleep(0.3)
-        self.assertEqual(list(app.cats.values()), cats[:1]) # type: ignore
+        app.user = app.settings.staff[0]
+        first = app.activity[-1].time.replace(tzinfo=timezone.utc)
+        last = app.cats[1].activity[0].time.replace(tzinfo=timezone.utc)
+        self.assertEqual(app.user.create_time, first)
+        self.assertEqual(app.user.authenticate_time, last)
+        user = app.users[1]
+        self.assertEqual(user.create_time, user.authenticate_time)
+        self.assertAlmostEqual(user.create_time, app.now(), delta=timedelta(minutes=1))
+        self.assertGreater(user.create_time, last)
 
     @gen_test
     async def test_update_db_version_first(self):
         Trashable.RETENTION = timedelta(seconds=0.2)
         # NOTE: Tag tmp can be removed on next database update
         self.setup_db('tmp')
+        await sleep(1)
         app = CatApp(redis_url='15')
         app.update()
 
@@ -173,6 +183,15 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertEqual(list(app.cats.values()), cats)
         await sleep(0.3)
         self.assertEqual(list(app.cats.values()), cats[:1])
+        # Update to version 9
+        first = app.activity[-1].time.replace(tzinfo=timezone.utc)
+        last = app.activity[0].time.replace(tzinfo=timezone.utc)
+        self.assertEqual(app.user.create_time, first)
+        self.assertEqual(app.user.authenticate_time, last)
+        user = app.users[1]
+        self.assertEqual(user.create_time, user.authenticate_time)
+        self.assertAlmostEqual(user.create_time, app.now(), delta=timedelta(minutes=1))
+        self.assertGreater(user.create_time, last)
 
 class EditableTest(MicroTestCase):
     def setUp(self):

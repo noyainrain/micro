@@ -1,0 +1,37 @@
+<template id="micro-analytics-page-template">
+    <h1>Analytics</h1>
+    <p class="micro-small"><i class="fa fa-eye"></i> Only visible to staff members</p>
+
+    <div class="micro-analytics-content"></div>
+
+    <section>
+        <h1>User statistics</h1>
+        <micro-chart
+            class="micro-analytics-user-statistics"
+            statistics="users, users-actual, users-active"
+            labels="Users, Actual users, Monthly active users"
+        ></micro-chart>
+    </section>
+</template>
+<style>
+    .micro-analytics-user-statistics {
+        --micro-chart-palette: var(--micro-color-primary-tint), var(--micro-color-primary),
+                               var(--micro-color-primary-shade);
+    }
+</style>
+
+<template id="micro-chart-template">
+    <canvas data-content="alt"></canvas>
+</template>
+<style>
+    html {
+        --micro-chart-palette: var(--micro-color-primary);
+    }
+
+    micro-chart {
+        display: block;
+        position: relative;
+        height: calc(70ch * 9 / 16);
+        margin: var(--micro-size-rm) 0;
+    }
+</style>

@@ -271,6 +271,20 @@ micro.util.parseCoords = function(str) {
     return coords;
 };
 
+/** Return the given CSS *color* with transparency *alpha*. */
+micro.util.withAlpha = function(color, alpha) {
+    function normalize(c) {
+        if (c.length === 4) {
+            const value = Array.map(c.slice(1), component => component + component).join("");
+            return `#${value}`;
+        }
+        return c;
+    }
+    const [r, g, b] = micro.bind.chunk(normalize(color).slice(1), 2)
+        .map(component => parseInt(component, 16));
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 /**
  * Import the script located at *url*.
  *

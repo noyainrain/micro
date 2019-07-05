@@ -214,6 +214,45 @@ Video :ref:`Resource` description.
 
 .. include:: micro/resource-attributes.inc
 
+Analytics
+---------
+
+.. _Statistic:
+
+Statistic
+^^^^^^^^^
+
+Statistic about a topic over time.
+
+.. http:get:: /api/analytics/statistics/(topic)
+
+   Query the collection.
+
+   The query result is an object ``{items}`` holding an array of queried *items*.
+
+   Available topics are:
+
+   * ``users``: Count of all users
+   * ``users-actual``: Count of actual users, i.e. who returned at least once after the first day
+   * ``users-active``: Count of monthly active users, i.e. who were seen in the last 30 days
+
+   Permission: Staff members.
+
+.. _Point:
+
+Point
+^^^^^
+
+Statistic data point.
+
+.. describe:: t
+
+   Time the statistic was collected.
+
+.. describe:: v
+
+   Statistic value.
+
 Errors
 ------
 

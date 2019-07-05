@@ -39,6 +39,7 @@ from tornado.httpclient import HTTPResponse
 from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
+from .analytics import Analytics
 from .error import CommunicationError, ValueError
 from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
                         RedisSequence, bzpoptimed)
@@ -90,6 +91,10 @@ class Application:
     .. attribute:: users
 
        Collection of all :class:`User`s.
+
+    .. attribute:: analytics
+
+       Analytics unit.
 
     .. attribute:: redis_url
 
@@ -156,6 +161,7 @@ class Application:
         } # type: Dict[str, Type[JSONifiable]]
         self.user = None # type: Optional[User]
         self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)
+        self.analytics = Analytics(app=self)
 
         self.email = email
         self.smtp_url = smtp_url
@@ -179,6 +185,11 @@ class Application:
         activity.pre = self.check_user_is_staff
         return activity
 
+    @staticmethod
+    def now() -> datetime:
+        """Return the current UTC date and time, as aware object with second accuracy."""
+        return datetime.now(timezone.utc).replace(microsecond=0)
+
     def update(self):
         """Update the database.
 
@@ -196,7 +207,7 @@ class Application:
             self.r.oset(settings.id, settings)
             activity = Activity(id='Activity', app=self, subscriber_ids=[])
             self.r.oset(activity.id, activity)
-            self.r.set('micro_version', 8)
+            self.r.set('micro_version', 9)
             self.do_update()
             return
 
@@ -264,6 +275,24 @@ class Application:
                     r.zadd('micro_trash', {obj['id'].encode(): t})
             r.set('micro_version', 8)
 
+        # Deprecated since 0.39.0
+        if v < 9:
+            activity = {}
+            for event in self._scan_objects(r, Event):
+                user_id = event['user']
+                t = parse_isotime(event['time'], aware=True)
+                first, last = activity.get(user_id) or (t, t)
+                activity[user_id] = (min(first, t), max(last, t))
+
+            now = self.now()
+            users = r.omget(r.lrange('users', 0, -1))
+            for user in users:
+                first, last = activity.get(user['id']) or (now, now)
+                user['create_time'] = first.isoformat()
+                user['authenticate_time'] = last.isoformat()
+            r.omset({user['id']: user for user in users})
+            r.set('micro_version', 9)
+
         self.do_update()
 
     def do_update(self) -> None:
@@ -302,8 +331,14 @@ class Application:
         id = self.r.r.hget('auth_secret_map', secret.encode())
         if not id:
             raise AuthenticationError()
-        self.user = self.users[id.decode()]
-        return self.user
+        user = self.users[id.decode()]
+        self.user = user
+
+        now = self.now()
+        if now - user.authenticate_time >= timedelta(hours=1): # type: ignore
+            user.authenticate_time = now
+            self.r.oset(user.id, user)
+        return user
 
     def login(self, code: str = None) -> 'User':
         """See :http:post:`/api/login`.
@@ -319,12 +354,16 @@ class Application:
 
         else:
             id = 'User:' + randstr()
+            now = self.now()
             user = self.create_user({
-                'id': id, 'app': self,
+                'id': id,
+                'app': self,
                 'authors': [id],
                 'name': 'Guest',
                 'email': None,
                 'auth_secret': randstr(),
+                'create_time': now.isoformat(),
+                'authenticate_time': now.isoformat(),
                 'device_notification_status': 'off',
                 'push_subscription': None
             })
@@ -813,14 +852,16 @@ class User(Object, Editable):
     """See :ref:`User`."""
 
     def __init__(
-            self, id: str, app: Application, authors: List[str], name: str, email: str,
-            auth_secret: str, device_notification_status: str,
-            push_subscription: Optional[str]) -> None:
+            self, *, id: str, app: Application, authors: List[str], name: str, email: str,
+            auth_secret: str, create_time: str, authenticate_time: str,
+            device_notification_status: str, push_subscription: Optional[str]) -> None:
         super().__init__(id, app)
         Editable.__init__(self, authors=authors)
         self.name = name
         self.email = email
         self.auth_secret = auth_secret
+        self.create_time = parse_isotime(create_time, aware=True)
+        self.authenticate_time = parse_isotime(authenticate_time, aware=True)
         self.device_notification_status = device_notification_status
         self.push_subscription = push_subscription
 
@@ -966,6 +1007,8 @@ class User(Object, Editable):
                 {} if restricted and self.app.user != self else {
                     'email': self.email,
                     'auth_secret': self.auth_secret,
+                    'create_time': self.create_time.isoformat(),
+                    'authenticate_time': self.authenticate_time.isoformat(),
                     'device_notification_status': self.device_notification_status,
                     'push_subscription': self.push_subscription
                 })
@@ -1239,7 +1282,15 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
         }
 
 class Event(Object):
-    """See :ref:`Event`."""
+    """See :ref:`Event`.
+
+    .. attribute:: time
+
+       .. deprecated:: 0.39.0
+
+          Naive time. Work with aware object instead (with
+          :meth:`datetime.datetime.replace` (``tzinfo=timezone.utc``)).
+    """
 
     @staticmethod
     def create(type: str, object: Optional[Object], detail: Dict[str, object] = {},

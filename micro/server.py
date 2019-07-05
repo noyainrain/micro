@@ -42,7 +42,7 @@ from . import micro, templates, error
 from .micro import (Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError,
                     AuthenticationError, CommunicationError, PermissionError)
 from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
-from .util import look_up_files, str_or_none, parse_slice, check_polyglot
+from .util import cancel, look_up_files, str_or_none, parse_slice, check_polyglot
 
 LIST_LIMIT = 100
 SLICE_URL = r'(?:/(\d*:\d*))?'
@@ -164,6 +164,7 @@ class Server:
             *make_list_endpoints(r'/api/activity(?:/v1)?', get_activity),
             (r'/api/activity/stream', ActivityStreamEndpoint,
              {'get_activity': cast(object, get_activity)}),
+            (r'/api/analytics/statistics/([^/]+)$', _StatisticEndpoint),
             *handlers,
             # UI
             (r'/log-client-error$', _LogClientErrorEndpoint),
@@ -181,6 +182,7 @@ class Server:
         self._server = HTTPServer(application)
 
         self._empty_trash_task = None # type: Optional[Task[None]]
+        self._collect_statistics_task = None # type: Optional[Task[None]]
         self._message_templates = DictLoader(templates.MESSAGE_TEMPLATES, autoescape=None)
         self._micro_templates = Loader(os.path.join(self.client_path, self.client_modules_path,
                                                     '@noyainrain/micro'))
@@ -189,17 +191,16 @@ class Server:
         """Start the server."""
         self.app.update() # type: ignore
         self._empty_trash_task = self.app.start_empty_trash()
+        self._collect_statistics_task = self.app.analytics.start_collect_statistics()
         self._server.listen(self.port)
 
     async def stop(self) -> None:
         """Stop the server."""
         self._server.stop()
         if self._empty_trash_task:
-            try:
-                self._empty_trash_task.cancel()
-                await self._empty_trash_task
-            except CancelledError:
-                pass
+            await cancel(self._empty_trash_task)
+        if self._collect_statistics_task:
+            await cancel(self._collect_statistics_task)
 
     def run(self) -> None:
         """Start the server and run it continuously."""
@@ -493,10 +494,12 @@ class _Manifest(RequestHandler):
         '{}/@noyainrain/micro/*.js',
         '!{}/@noyainrain/micro/service.js',
         '!{}/@noyainrain/micro/karma.conf.js',
+        '{}/@noyainrain/micro/components/*.js',
         '{}/@noyainrain/micro/micro.css',
         '{}/@noyainrain/micro/images',
         '{}/webcomponents.js/webcomponents-lite.min.js',
         '{}/event-source-polyfill/src/eventsource.min.js',
+        '{}/chart.js/dist/Chart.bundle.min.js',
         '{}/leaflet/dist/leaflet.js',
         '{}/leaflet/dist/leaflet.css',
         '{}/typeface-open-sans/files/open-sans-latin-[346]00.woff',
@@ -732,3 +735,8 @@ class _ActivityEndpoint(Endpoint):
         activity = self.get_activity(*args)
         activity.unsubscribe()
         self.write(activity.json(restricted=True, include=True))
+
+class _StatisticEndpoint(Endpoint):
+    def get(self, topic: str) -> None:
+        statistic = self.app.analytics.statistics[topic]
+        self.write(statistic.json(user=self.current_user))

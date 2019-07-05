@@ -45,6 +45,11 @@
                                 help
                             </a>
                         </li>
+                        <li class="micro-ui-analytics">
+                            <a class="link" href="/analytics" data-shortcut="new Shortcut 'N,I'">
+                                <i class="fa fa-fw fa-chart-line"></i> Analytics
+                            </a>
+                        </li>
                         <li class="micro-ui-activity">
                             <a class="link" href="/activity" data-shortcut="new Shortcut 'N,H'">
                                 <i class="fa fa-fw fa-history"></i> Activity
@@ -103,6 +108,7 @@
     body > [slot],
     body:not(.micro-ui-settings-have-icon-small) .micro-ui-logo img,
     body:not(.micro-ui-offline) .micro-ui-header-offline,
+    body:not(.micro-ui-user-is-staff) .micro-ui-analytics,
     body:not(.micro-ui-user-is-staff) .micro-ui-edit-settings {
         display: none;
     }
@@ -469,6 +475,7 @@
     </ul>
 </template>
 
+{% include 'components/analytics.html' %}
 {% include 'components/image.html' %}
 {% include 'components/link.html' %}
 {% include 'components/video.html' %}

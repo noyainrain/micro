@@ -16,6 +16,14 @@ User is editable by the user oneself.
 
    Secret for authentication. Visible only to the user oneself.
 
+.. describe:: create_time
+
+   Time the user account was created. Visible only to the user oneself.
+
+.. describe:: authenticate_time
+
+   Time the user last authenticated. Visible only to the user oneself.
+
 .. describe:: device_notification_status
 
    Device notification status:

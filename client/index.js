@@ -23,13 +23,15 @@
 micro.util.watchErrors();
 
 micro.LIST_LIMIT = 100;
-micro.SHORT_DATE_TIME_FORMAT = {
-    year: "2-digit",
-    month: "2-digit",
-    day: "2-digit",
+micro.SHORT_DATE_FORMAT = {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+};
+micro.SHORT_DATE_TIME_FORMAT = Object.assign({
     hour: "2-digit",
     minute: "2-digit"
-};
+}, micro.SHORT_DATE_FORMAT);
 
 /**
  * Find the first ancestor of *elem* that satisfies *predicate*.
@@ -96,6 +98,7 @@ micro.UI = class extends HTMLBodyElement {
         this.pages = [
             {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.EditUserPage.make},
             {url: "^/settings/edit$", page: micro.EditSettingsPage.make},
+            {url: "^/analytics$", page: micro.components.analytics.AnalyticsPage.make},
             {url: "^/activity$", page: micro.ActivityPage.make}
         ];
 

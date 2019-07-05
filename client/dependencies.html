@@ -11,6 +11,10 @@
     href="{{ static_url('{}/leaflet/dist/leaflet.css'.format(modules_path)) }}"
 />
 <link
+    rel="chartjs-script"
+    href="{{ static_url('{}/chart.js/dist/Chart.bundle.min.js'.format(modules_path)) }}"
+/>
+<link
     rel="leaflet-script" href="{{ static_url('{}/leaflet/dist/leaflet.js'.format(modules_path)) }}"
 />
 <link rel="service" href="{{ static_url(service_path, include_version=False) }}" />
@@ -32,6 +36,10 @@
 </script>
 <script src="{{ static_url('{}/@noyainrain/micro/index.js'.format(modules_path)) }}" defer="defer">
 </script>
+<script
+    src="{{ static_url('{}/@noyainrain/micro/components/analytics.js'.format(modules_path)) }}"
+    defer="defer"
+></script>
 
 <style>
     @font-face {

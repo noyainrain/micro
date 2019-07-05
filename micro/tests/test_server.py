@@ -72,6 +72,7 @@ class ServerTest(ServerTestCase):
         await self.request('/api/activity/v2')
         await self.request('/api/activity/v2', method='PATCH', body='{"op": "subscribe"}')
         await self.request('/api/activity/v2', method='PATCH', body='{"op": "unsubscribe"}')
+        await self.request('/api/analytics/stats/users')
 
     @gen_test
     def test_endpoint_request(self):

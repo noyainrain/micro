@@ -21,8 +21,9 @@
 
 import argparse
 from argparse import ArgumentParser
+from asyncio import CancelledError, Task # pylint: disable=unused-import; typing
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from logging import StreamHandler, getLogger
 from os import walk
@@ -58,18 +59,23 @@ def randstr(length: int = 16, charset: str = string.ascii_lowercase) -> str:
     """
     return ''.join(random.choice(charset) for i in range(length))
 
-def parse_isotime(isotime: str) -> datetime:
-    """Parse an ISO 8601 time string into a naive :class:`datetime.datetime`.
+def parse_isotime(isotime: str, *, aware: bool = False) -> datetime:
+    """Parse an ISO 8601 time string into a :class:`datetime.datetime`.
 
     Note that this rudimentary parser makes bold assumptions about the format: The first six
     components are always interpreted as year, month, day and optionally hour, minute and second.
     Everything else, i.e. microsecond and time zone information, is ignored.
+
+    .. deprecated:: 0.39.0
+
+       Naive time result. Work with aware object instead (with *aware* ``True``).
     """
     try:
         values = [int(t) for t in re.split(r'\D', isotime)[:6]]
         year, month, day = values[:3]
         hour, minute, second = (values[3:] + [0, 0, 0])[:3]
-        return datetime(year, month, day, hour, minute, second)
+        return datetime(year, month, day, hour, minute, second,
+                        tzinfo=timezone.utc if aware else None)
     except (TypeError, ValueError):
         raise ValueError('isotime_bad_format')
 
@@ -178,6 +184,14 @@ def setup_logging(debug=False):
     logger.setLevel(logging.INFO)
     if not debug:
         getLogger('tornado.access').setLevel(logging.ERROR)
+
+async def cancel(task: 'Task[_T]') -> None:
+    """Cancel the *task*."""
+    try:
+        task.cancel()
+        await task
+    except CancelledError:
+        pass
 
 def run_instant(coro: Coroutine[object, object, _T]) -> _T:
     """Run the coroutine *coro* at once and return the result.
