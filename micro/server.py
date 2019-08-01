@@ -21,6 +21,7 @@
 from asyncio import (CancelledError, Future, Task, gather, # pylint: disable=unused-import; typing
                      get_event_loop, ensure_future)
 from collections.abc import Mapping
+from functools import partial
 import http.client
 import json
 from logging import getLogger
@@ -29,7 +30,7 @@ from pathlib import Path
 import re
 from signal import SIGINT
 from typing import Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from mypy_extensions import TypedDict, VarArg
 from tornado.httpclient import AsyncHTTPClient, HTTPResponse # pylint: disable=unused-import; typing
@@ -63,16 +64,15 @@ Handler = Union[Tuple[str, Type[RequestHandler]],
 
 _ApplicationSettings = TypedDict('_ApplicationSettings', # pylint: disable=invalid-name; type alias
                                  {'static_path': str, 'server': 'Server'})
-
 class Server:
     """Server for micro apps.
 
-    The server may optionally serve the client in :attr:`client_path`. All files from
-    :attr:`client_modules_path`, `manifest.js` and the script at :attr:`client_service_path` are
-    delivered, with a catch-all for `index.html`.
+    The server may optionally serve the client in :attr:`client_config` *path*. All files from
+    *modules_path*, ``manifest.js`` and the script at *service_path* are delivered, with a catch-all
+    for ``index.html``.
 
-    Also, the server may act as a dynamic build system for the client. `index.html` is rendered as
-    template and a build manifest `manifest.js` is generated (see :attr:`client_shell`).
+    Also, the server may act as a dynamic build system for the client. ``index.html`` is rendered as
+    template and a build manifest ``manifest.js`` is generated (see *shell*).
 
     .. attribute:: app
 
@@ -97,32 +97,81 @@ class Server:
 
        Client location from where static files and templates are delivered.
 
+       .. deprecated:: 0.40.0
+
+          Use :attr:`client_config` instead.
+
     .. attribute:: client_service_path
 
        Location of client service worker script. Defaults to the included micro service worker.
+
+       .. deprecated:: 0.40.0
+
+          Use :attr:`client_config` instead.
 
     .. attribute: client_shell
 
        Set of files that make up the client shell. See :func:`micro.util.look_up_files`.
 
+       .. deprecated:: 0.40.0
+
+          Use :attr:`client_config` instead.
+
     .. attribute:: client_map_service_key
 
        See ``--client-map-service-key`` command line option.
 
+       .. deprecated:: 0.40.0
+
+          Use :attr:`client_config` instead.
+
     .. attribute:: debug
 
        See ``--debug`` command line option.
+
+    .. attribute:: client_config
+
+       Client configuration:
+
+       - ``path``: Location from where static files and templates are delivered
+       - ``service_path``: Location of service worker script. Defaults to the included micro service
+         worker.
+       - ``shell``: Set of files that make up the client shell. See
+         :func:`micro.util.look_up_files`.
+       - ``map_service_key``: See ``--client-map-service-key`` command line option
+       - ``description``: Short description of the service
+       - ``color``: CSS primary color of the service
 
     .. deprecated:: 0.21.0
 
        Constructor options as positional arguments. Use keyword arguments instead.
     """
 
+    ClientConfig = TypedDict('ClientConfig', {
+        'path': str,
+        'modules_path': str,
+        'service_path': str,
+        'shell': Sequence[str],
+        'map_service_key': Optional[str],
+        'description': str,
+        'color': str
+    })
+    ClientConfigArg = TypedDict('ClientConfigArg', {
+        'path': str,
+        'modules_path': str,
+        'service_path': str,
+        'shell': Sequence[str],
+        'map_service_key': Optional[str],
+        'description': str,
+        'color': str
+    }, total=False)
+
     def __init__(
             self, app: micro.Application, handlers: Sequence[Handler], port: int = 8080,
             url: str = None, client_path: str = 'client', client_modules_path: str = '.',
             client_service_path: str = None, debug: bool = False, *,
-            client_shell: Sequence[str] = [], client_map_service_key: str = None) -> None:
+            client_config: ClientConfigArg = {}, client_shell: Sequence[str] = [],
+            client_map_service_key: str = None) -> None:
         url = url or 'http://localhost:{}'.format(port)
         try:
             urlparts = urlparse(url)
@@ -133,17 +182,38 @@ class Server:
                 not any(cast(object, getattr(urlparts, k)) for k in not_allowed)):
             raise ValueError('url_invalid')
 
+        # Compatibility with client attributes (deprecated since 0.40.0)
+        client_config = {
+            'path': client_path,
+            'modules_path': client_modules_path,
+            **({'service_path': client_service_path} if client_service_path else {}), # type: ignore
+            'shell': client_shell,
+            'map_service_key': client_map_service_key,
+            **client_config # type: ignore
+        } # type: Server.ClientConfigArg
+
         self.app = app
         self.port = port
         self.url = url
-        self.client_path = client_path
-        self.client_modules_path = client_modules_path
-        self.client_service_path = (
-            client_service_path or
-            os.path.join(client_modules_path, '@noyainrain/micro/service.js'))
-        self.client_shell = list(client_shell)
-        self.client_map_service_key = client_map_service_key
         self.debug = debug
+        self.client_config = {
+            'path': 'client',
+            'modules_path': '.',
+            'service_path': os.path.join(client_config.get('modules_path', '.'),
+                                         '@noyainrain/micro/service.js'),
+            'map_service_key': None,
+            'description': 'Social micro web app',
+            'color': '#08f',
+            **client_config, # type: ignore
+            'shell': list(client_config.get('shell') or [])
+        } # type: Server.ClientConfig
+
+        # Compatibility with client attributes (deprecated since 0.40.0)
+        self.client_path = self.client_config['path']
+        self.client_modules_path = self.client_config['modules_path']
+        self.client_service_path = self.client_config['service_path']
+        self.client_shell = self.client_config['shell']
+        self.client_map_service_key = self.client_config['map_service_key']
 
         self.app.email = 'bot@' + urlparts.hostname
         self.app.render_email_auth_message = self._render_email_auth_message
@@ -168,10 +238,11 @@ class Server:
             *handlers,
             # UI
             (r'/log-client-error$', _LogClientErrorEndpoint),
+            (r'/index.html$', _Index),
             (r'/manifest.js$', _Manifest), # type: ignore
             (r'/static/{}$'.format(self.client_service_path), _Service), # type: ignore
             (r'/static/(.*)$', _Static, {'path': self.client_path}), # type: ignore
-            (r'/.*$', _UI), # type: ignore
+            (r'/.*$', UI), # type: ignore
         ] # type: List[Handler]
 
         application = Application( # type: ignore
@@ -458,36 +529,96 @@ class _Static(StaticFileHandler):
         if path == self.application.settings['server'].client_service_path:
             self.set_header('Service-Worker-Allowed', '/')
 
-class _UI(RequestHandler):
+class UI(RequestHandler):
+    """Request handler serving the UI.
+
+    .. attribute:: server
+
+       Context sever.
+
+    .. attribute:: app
+
+       Context application.
+    """
+
+    def __init__(self, application: Application, request: HTTPServerRequest,
+                 **kwargs: object) -> None:
+        # Erase Any from kwargs
+        super().__init__(application, request, **kwargs)
+
     def initialize(self) -> None:
-        self._server = cast(_ApplicationSettings, self.application.settings)['server']
+        self.server = cast(_ApplicationSettings, self.application.settings)['server']
+        self.app = self.server.app
         # pylint: disable=protected-access; Server is a friend
-        self._templates = self._server._micro_templates
-        if self._server.debug:
+        self._templates = self.server._micro_templates
+        if self.server.debug:
             self._templates.reset()
 
-    def get_template_namespace(self) -> Dict[str, object]:
+    def get_meta(self, *args: str) -> Dict[str, str]:
+        """Subclass API: Generate meta data for (part of) the UI.
+
+        *args* are the URL arguments.
+
+        Generally, a meta data item is rendered as HTML meta tag, with the following special cases:
+
+        - ``title`` as title tag
+        - ``icon-{sizes}`` as link tag with *rel* ``icon`` and the given *sizes*, e.g.
+          ``icon-16x16``
+        - ``og:*`` as RDFa meta tag
+
+        By default, the returned meta data describes the service in general.
+        """
+        # pylint: disable=unused-argument; part of API
+        settings = self.server.app.settings
         return {
-            **cast(Dict[str, object], super().get_template_namespace()),
-            'modules_path': self._server.client_modules_path,
-            'service_path': self._server.client_service_path,
-            'map_service_key': self._server.client_map_service_key
+            'title': settings.title,
+            'description': self.server.client_config['description'],
+            'application-name': settings.title,
+            **({'icon-16x16': settings.icon_small} if settings.icon_small else {}),
+            # Largest icon size in use across popular platforms (128px with 4x scaling)
+            **({'icon-512x512': settings.icon_large} if settings.icon_large else {}),
+            'theme-color': self.server.client_config['color'],
+            'og:type': 'website',
+            'og:url': urljoin(self.server.url, self.request.uri),
+            'og:title': settings.title,
+            'og:description': self.server.client_config['description'],
+            'og:image': urljoin(self.server.url, settings.icon_large),
+            'og:image:alt': '{} logo'.format(settings.title),
+            'og:site_name': settings.title
         }
 
-    def get(self):
+    def get(self, *args: str) -> None:
+        meta = self.get_meta(*args)
+        meta.setdefault('title', '')
+        meta.setdefault('icon-16x16', '')
+        meta.setdefault('icon-512x512', '')
+        meta.setdefault('theme-color', '')
+
+        data = {
+            **cast(Dict[str, object], self.get_template_namespace()),
+            **self.server.client_config,
+            'meta': meta,
+        } # type: Dict[str, object]
+
         self.set_header('Cache-Control', 'no-cache')
         self.render(
-            'index.html', micro_dependencies=self._render_micro_dependencies,
-            micro_boot=self._render_micro_boot, micro_templates=self._render_micro_templates)
+            'index.html',
+            micro_dependencies=partial(self._render_micro_dependencies, data), # type: ignore
+            micro_boot=partial(self._render_micro_boot, data), # type: ignore
+            micro_templates=partial(self._render_micro_templates, data)) # type: ignore
 
-    def _render_micro_dependencies(self) -> bytes:
-        return self._templates.load('dependencies.html').generate(**self.get_template_namespace())
+    def _render_micro_dependencies(self, data: Dict[str, object]) -> bytes:
+        return self._templates.load('dependencies.html').generate(**data)
 
-    def _render_micro_boot(self) -> bytes:
-        return self._templates.load('boot.html').generate(**self.get_template_namespace())
+    def _render_micro_boot(self, data: Dict[str, object]) -> bytes:
+        return self._templates.load('boot.html').generate(**data)
 
-    def _render_micro_templates(self) -> bytes:
-        return self._templates.load('templates.html').generate(**self.get_template_namespace())
+    def _render_micro_templates(self, data: Dict[str, object]) -> bytes:
+        return self._templates.load('templates.html').generate(**data)
+
+class _Index(UI):
+    def get_meta(self, *args: str) -> Dict[str, str]:
+        return {}
 
 class _Manifest(RequestHandler):
     _MICRO_CLIENT_SHELL = [

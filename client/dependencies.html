@@ -1,5 +1,3 @@
-<link rel="icon" sizes="16x16" />
-<link rel="icon" sizes="192x192" />
 <link
     rel="stylesheet"
     href="{{ static_url('{}/@fortawesome/fontawesome-free/css/all.min.css'.format(modules_path)) }}"
@@ -76,5 +74,17 @@
         src: url('{{ static_url('{}/@fortawesome/fontawesome-free/webfonts/fa-solid-900.woff2'.format(modules_path)) }}');
     }
 </style>
+
+{% for key, value in meta.items() %}
+    {% if key == 'title' %}
+        <title>{{ value }}</title>
+    {% elif key.startswith('icon-') %}
+        <link rel="icon" sizes="{{ key.split('-')[1] }}" href="{{ value }}" />
+    {% elif key.startswith('og:') %}
+        <meta property="{{ key }}" content="{{ value }}" />
+    {% else %}
+        <meta name="{{ key }}" content="{{ value }}" />
+    {% end %}
+{% end %}
 
 <meta itemprop="map-service-key" content="{{ map_service_key or '' }}" />

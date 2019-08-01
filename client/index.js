@@ -168,8 +168,10 @@ micro.UI = class extends HTMLBodyElement {
         let update = () => {
             document.querySelector('link[rel=icon][sizes="16x16"]').href =
                 this._data.settings && this._data.settings.icon_small || "";
-            document.querySelector('link[rel=icon][sizes="192x192"]').href =
+            document.querySelector('link[rel=icon][sizes="512x512"]').href =
                 this._data.settings && this._data.settings.icon_large || "";
+            document.querySelector("meta[name=theme-color]").content =
+                getComputedStyle(this).getPropertyValue("--micro-color-primary").trim();
             this.classList.toggle("micro-ui-user-is-staff",
                                   this._data.settings && this._data.user && this.staff);
             this.classList.toggle("micro-ui-settings-have-icon-small",

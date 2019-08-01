@@ -16,7 +16,7 @@
 
 .. describe:: icon_large
 
-   URL of the site icon optimized for large scale. Should be 192 pixels square. May be ``null``.
+   URL of the site icon optimized for large scale. Should be 512 pixels square. May be ``null``.
 
 .. describe:: provider_name
 

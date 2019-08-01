@@ -46,7 +46,7 @@ from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMappi
 from .resource import (Analyzer, HandleResourceFunc, Image, Resource, Video, handle_image,
                        handle_webpage, handle_youtube)
 from .util import (OnType, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
-                   run_instant, str_or_none, version)
+                   run_instant, str_or_none)
 from .webapi import fetch
 
 _PUSH_TTL = 24 * 60 * 60
@@ -174,9 +174,9 @@ class Application:
         self.analyzer = Analyzer(handlers=handlers)
 
     @property
-    def settings(self):
+    def settings(self) -> 'Settings':
         """App :class:`Settings`."""
-        return self.r.oget('Settings')
+        return self.r.oget('Settings', default=AssertionError, expect=expect_type(Settings))
 
     @property
     def activity(self) -> 'Activity':
@@ -1091,35 +1091,29 @@ class Settings(Object, Editable):
        VAPID private key used for sending device notifications.
     """
 
-    @version(1)
     def __init__(
-            self, id, app, authors, title, icon, favicon, provider_name, provider_url,
-            provider_description, feedback_url, staff):
-        # pylint: disable=non-parent-init-called, super-init-not-called; versioned
-        icon_small, icon_large = favicon, None
-        self.__init__(id, app, authors, title, icon, icon_small, icon_large, provider_name,
-                      provider_url, provider_description, feedback_url, staff, v=2)
-
-    @__init__.version(2) # type: ignore
-    def __init__(
-            self, id, app, authors, title, icon, icon_small, icon_large, provider_name,
-            provider_url, provider_description, feedback_url, staff, push_vapid_private_key=None,
-            push_vapid_public_key=None):
-        # pylint: disable=function-redefined; decorated
-        # Compatibility for Settings without VAPID keys (deprecated since 0.14.0)
+            self, *, id: str, app: Application, authors: List[str], title: str, icon: Optional[str],
+            icon_small: str = None, icon_large: str = None, provider_name: Optional[str],
+            provider_url: Optional[str], provider_description: Optional[Dict[str, str]],
+            feedback_url: Optional[str], staff: List[str], push_vapid_private_key: str = None,
+            push_vapid_public_key: str = None, favicon: str = None, v: int = 1) -> None:
+        # pylint: disable=unused-argument; part of API
+        # Compatibility for versioned function (deprecated since 0.40.0)
         super().__init__(id, app)
         Editable.__init__(self, authors=authors, activity=lambda: app.activity)
         self.title = title
         self.icon = icon
-        self.icon_small = icon_small
+        # Compatibility for favicon (deprecated since 0.13.0)
+        self.icon_small = icon_small or favicon
         self.icon_large = icon_large
         self.provider_name = provider_name
         self.provider_url = provider_url
         self.provider_description = provider_description
         self.feedback_url = feedback_url
         self._staff = staff
-        self.push_vapid_private_key = push_vapid_private_key
-        self.push_vapid_public_key = push_vapid_public_key
+        # Compatibility for Settings without VAPID keys (deprecated since 0.14.0)
+        self.push_vapid_private_key = push_vapid_private_key or ''
+        self.push_vapid_public_key = push_vapid_public_key or ''
 
     @property
     def staff(self):

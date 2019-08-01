@@ -97,7 +97,7 @@ class CatApp(Application):
                 cat['resource'] = None
         r.omset({cat['id']: cat for cat in cats})
 
-    def create_settings(self):
+    def create_settings(self) -> Settings:
         # pylint: disable=unexpected-keyword-arg; decorated
         return Settings(
             id='Settings', app=self, authors=[], title='CatApp', icon=None, icon_small=None,
