@@ -68,11 +68,12 @@ class Server:
     """Server for micro apps.
 
     The server may optionally serve the client in :attr:`client_config` *path*. All files from
-    *modules_path*, ``manifest.js`` and the script at *service_path* are delivered, with a catch-all
-    for ``index.html``.
+    *modules_path*, ``manifest.webmanifest``, ``manifest.js`` and the script at *service_path* are
+    delivered, with a catch-all for ``index.html``.
 
     Also, the server may act as a dynamic build system for the client. ``index.html`` is rendered as
-    template and a build manifest ``manifest.js`` is generated (see *shell*).
+    template. A web app manifest ``manifest.webmanifest`` and a build manifest ``manifest.js`` (see
+    *shell*) are generated.
 
     .. attribute:: app
 
@@ -239,7 +240,8 @@ class Server:
             # UI
             (r'/log-client-error$', _LogClientErrorEndpoint),
             (r'/index.html$', _Index),
-            (r'/manifest.js$', _Manifest), # type: ignore
+            (r'/manifest.webmanifest$', _WebManifest), # type: ignore
+            (r'/manifest.js$', _BuildManifest), # type: ignore
             (r'/static/{}$'.format(self.client_service_path), _Service), # type: ignore
             (r'/static/(.*)$', _Static, {'path': self.client_path}), # type: ignore
             (r'/.*$', UI), # type: ignore
@@ -620,7 +622,31 @@ class _Index(UI):
     def get_meta(self, *args: str) -> Dict[str, str]:
         return {}
 
-class _Manifest(RequestHandler):
+class _WebManifest(RequestHandler):
+    def initialize(self) -> None:
+        self._server = cast(_ApplicationSettings, self.application.settings)['server']
+
+    def get(self, *args: str) -> None:
+        # pylint: disable=unused-argument; part of API
+        settings = self._server.app.settings
+        meta = {
+            'name': settings.title,
+            'description': self._server.client_config['description'],
+            'icons': [
+                *([{'src': settings.icon_small, 'sizes': '16x16'}] if settings.icon_small else []),
+                *([{'src': settings.icon_large, 'sizes': '512x512'}] if settings.icon_large else [])
+            ],
+            'theme_color': self._server.client_config['color'],
+            'background_color': 'white',
+            'start_url': '/',
+            'display': 'standalone',
+        }
+
+        self.set_header('Cache-Control', 'no-cache')
+        self.set_header('Content-Type', 'application/manifest+json')
+        self.write(meta)
+
+class _BuildManifest(RequestHandler):
     _MICRO_CLIENT_SHELL = [
         '{}/@noyainrain/micro/*.js',
         '!{}/@noyainrain/micro/service.js',
@@ -667,7 +693,7 @@ class _Manifest(RequestHandler):
             responses = await cast('Future[Tuple[HTTPResponse]]', gather(*requests))
             shell = ['/{}?v={}'.format(path, response.headers['Etag'].strip('"'))
                      for path, response in zip(shell, responses)]
-            _Manifest._manifest = {'shell': shell, 'debug': self._server.debug} # type: ignore
+            _BuildManifest._manifest = {'shell': shell, 'debug': self._server.debug} # type: ignore
 
         self.set_header('Content-Type', 'text/javascript')
         self.write('micro.service.MANIFEST = {};\n'.format(json.dumps(self._manifest)))

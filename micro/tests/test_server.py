@@ -45,6 +45,7 @@ class ServerTest(ServerTestCase):
     async def test_availability(self):
         # UI
         await self.request('/')
+        await self.request('/manifest.webmanifest')
         await self.request(
             '/log-client-error', method='POST',
             body='{"type": "Error", "stack": "micro.UI.prototype.createdCallback", "url": "/"}')

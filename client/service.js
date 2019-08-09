@@ -101,6 +101,7 @@ micro.service.Service = class {
         const handlers = [
             ["^/api/.*$", () => {}],
             ["^/log-client-error$", () => {}],
+            ["^/manifest.webmanifest$", () => {}],
             [
                 "^/static/.*$",
                 event => event.respondWith((async() => {

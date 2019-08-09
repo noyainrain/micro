@@ -37,7 +37,7 @@ html {
 
 html {
     color: var(--micro-color-text);
-    background: #fff;
+    background: white;
     font: medium / 1.5 "Open Sans";
 }
 
@@ -736,15 +736,6 @@ legend {
 
 .micro-ui-menu {
     margin: 0;
-}
-
-[is=micro-menu].micro-ui-menu > li > .link {
-    padding: calc(1.5em / 4);
-    border-right: 1px solid #ddd;
-}
-
-[is=micro-menu].micro-ui-menu > li:first-child > .link {
-    border-left: 1px solid #ddd;
 }
 
 body:not(.micro-ui-settings-have-feedback-url) .micro-ui-feedback {
