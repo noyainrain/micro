@@ -35,7 +35,7 @@ from py_vapid import Vapid
 from py_vapid.utils import b64urlencode
 from redis import StrictRedis
 from redis.exceptions import ResponseError
-from tornado.httpclient import HTTPResponse
+from requests.exceptions import RequestException
 from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
@@ -47,7 +47,6 @@ from .resource import (Analyzer, HandleResourceFunc, Image, Resource, Video, han
                        handle_webpage, handle_youtube)
 from .util import (OnType, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
                    run_instant, str_or_none)
-from .webapi import fetch
 
 _PUSH_TTL = 24 * 60 * 60
 
@@ -1049,9 +1048,9 @@ class User(Object, Editable):
             push_subscription = json.loads(push_subscription)
             if not isinstance(push_subscription, dict):
                 raise builtins.ValueError()
-            urlparts = urlparse(push_subscription.get('endpoint'))
-            pusher = WebPusher(push_subscription, self._HTTPClient)
-        except (builtins.ValueError, WebPushException):
+            urlparts = urlparse(push_subscription['endpoint'])
+            pusher = WebPusher(push_subscription)
+        except (builtins.ValueError, KeyError, WebPushException):
             raise ValueError('push_subscription_invalid')
 
         # Unfortunately sign() tries to validate the email address
@@ -1061,27 +1060,26 @@ class User(Object, Editable):
             'sub': 'mailto:{}'.format(email)
         })
 
-        # Firefox does not yet support aes128gcm encoding (see
-        # https://bugzilla.mozilla.org/show_bug.cgi?id=1525872)
-        response = await pusher.send(json.dumps(event.json(restricted=True, include=True)), headers,
-                                     ttl=_PUSH_TTL, content_encoding='aesgcm')
-        if response.code in (404, 410):
+        try:
+            # Firefox does not yet support aes128gcm encoding (see
+            # https://bugzilla.mozilla.org/show_bug.cgi?id=1525872)
+            send = partial(pusher.send, json.dumps(event.json(restricted=True, include=True)),
+                           headers=headers, ttl=_PUSH_TTL, content_encoding='aesgcm')
+            response = await get_event_loop().run_in_executor(None, send)
+        except RequestException as e:
+            raise CommunicationError(
+                '{} for POST {}'.format(str(e.args[0]), push_subscription['endpoint']))
+        if response.status_code in (404, 410):
             raise ValueError('push_subscription_invalid')
-        if response.code != 201:
-            raise CommunicationError('Server responded with status {}'.format(response.code))
+        if response.status_code != 201:
+            raise CommunicationError(
+                'Unexpected response status {} for POST {}'.format(response.status_code,
+                                                                   push_subscription['endpoint']))
 
     def _disable_device_notifications(self, reason: str = None) -> None:
         self.device_notification_status = 'off.{}'.format(reason) if reason else 'off'
         self.push_subscription = None
         self.app.r.oset(self.id, self)
-
-    class _HTTPClient:
-        @staticmethod
-        async def post(endpoint: str, data: bytes, headers: Dict[str, str],
-                       timeout: float) -> HTTPResponse:
-            # pylint: disable=unused-argument, missing-docstring; part of API
-            return await fetch(endpoint, raise_error=False, method='POST', headers=headers,
-                               body=data)
 
 class Settings(Object, Editable):
     """See :ref:`Settings`.

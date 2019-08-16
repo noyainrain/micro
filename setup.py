@@ -7,7 +7,7 @@ with open('requirements.txt') as f:
 
 setup(
     name='noyainrain.micro',
-    version='0.40.1',
+    version='0.40.2',
     url='https://github.com/noyainrain/micro',
     maintainer='Sven James',
     maintainer_email='sven@inrain.org',
