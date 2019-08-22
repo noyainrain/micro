@@ -45,7 +45,6 @@ body {
     margin: 0;
 }
 
-header,
 h1,
 p,
 ul,
@@ -55,19 +54,6 @@ pre {
     display: block;
     margin: 1.5rem 0;
     font-weight: normal;
-}
-
-header {
-    display: flex;
-    align-items: flex-end;
-}
-
-header > * {
-    margin: 0;
-}
-
-header > h1 {
-    flex: auto;
 }
 
 h1 {
@@ -358,7 +344,11 @@ legend {
     padding: 0;
 }
 
-/* ---- Panel ---- */
+/**
+ * Panel: Arrangement of controls and text content.
+ *
+ * Designed to be placed in a bordered container that signals interactivity, e.g. a bar.
+ */
 
 .micro-panel {
     display: flex;
@@ -465,6 +455,28 @@ legend {
 .micro-entity-list > ul:not(:empty) ~ ul:not(:empty),
 .micro-entity-list > ul > li:not(:empty) ~ li:not(:empty) {
     border-top: 1px solid var(--micro-color-delimiter);
+}
+
+/* ---- Heading ---- */
+
+.micro-heading {
+    border-bottom: 1px solid var(--micro-color-delimiter);
+    margin: var(--micro-size-rm) 0;
+    align-items: flex-end;
+}
+
+.micro-heading > h1 {
+    flex: auto;
+    padding: 0;
+    font-size: 2rem;
+}
+
+section .micro-heading > h1 {
+    font-size: 1.66rem;
+}
+
+section section .micro-heading > h1 {
+    font-size: 1.33rem;
 }
 
 /* ---- Logo ---- */
@@ -822,14 +834,6 @@ micro-forbidden-page {
 }
 
 /* ---- EditUserPage ---- */
-
-.micro-edit-user-email header {
-    align-items: flex-end;
-}
-
-.micro-edit-user-email header h1 {
-    flex: auto;
-}
 
 micro-edit-user-page:not(.micro-edit-user-has-email) .micro-edit-user-remove-email {
     display: none;

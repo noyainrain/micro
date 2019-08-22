@@ -1709,7 +1709,7 @@ micro.EditUserPage = class extends micro.Page {
         this._emailP = this.querySelector(".micro-edit-user-email-value");
         this._setEmailAction = this.querySelector(".micro-edit-user-set-email-1 form button");
         this._cancelSetEmailAction = this.querySelector(".micro-edit-user-cancel-set-email button");
-        this._removeEmailAction = this.querySelector(".micro-edit-user-remove-email button");
+        this._removeEmailAction = this.querySelector(".micro-edit-user-remove-email");
         this._removeEmailAction.addEventListener("click", this);
         this._setEmailAction.addEventListener("click", this);
         this._cancelSetEmailAction.addEventListener("click", this);
