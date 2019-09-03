@@ -22,13 +22,6 @@
 
 window.expect = window.expect || chai.expect;
 
-before(async function() {
-    let templates = document.createElement("div");
-    let response = await fetch("/base/templates.html");
-    templates.innerHTML = await response.text();
-    document.body.appendChild(templates);
-});
-
 beforeEach(function() {
     document.body.appendChild(document.createElement("main"));
 });

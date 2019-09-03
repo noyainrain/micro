@@ -14,8 +14,10 @@ module.exports = function(config) {
             "keyboard.js",
             "util.js",
             "index.js",
+            "components/analytics.js",
+            "components/contextual.js",
             "!(node_modules)/**/test*.js",
-            {pattern: "templates.html", included: false}
+            {pattern: "templates.html", type: "dom"}
         ],
         sauceLabs: {
             testName: `[micro]${tag} Unit tests`
