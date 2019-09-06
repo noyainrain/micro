@@ -22,6 +22,17 @@
 
 window.expect = window.expect || chai.expect;
 
+const MARKUP = `\
+*Meow*
+**
+**Meow, meow!**
+- Apple
+ * Orange*
+https://example.org/
+(http://example.org/)
+Wordhttps://example.org/
+`;
+
 beforeEach(function() {
     document.body.appendChild(document.createElement("main"));
 });
@@ -138,5 +149,28 @@ describe("LocationInputElement", function() {
             input.valueAsObject = {name: "Berlin", coords: BERLIN_COORDS};
             expect(input.nativeInput.value).to.equal("Berlin");
         });
+    });
+});
+
+describe("markup()", function() {
+    it("should render markup text", function() {
+        const fragment = micro.bind.transforms.markup(null, MARKUP);
+        const nodes = Array.from(fragment.childNodes, node => [node.nodeName, node.textContent]);
+        expect(nodes).to.deep.equal([
+            ["EM", "Meow"],
+            ["#text", "\n**\n"],
+            ["STRONG", "Meow, meow!"],
+            ["#text", "\n"],
+            ["#text", "\u00a0•"],
+            ["#text", " Apple\n"],
+            ["#text", "\u00a0•"],
+            ["#text", " Orange*"],
+            ["#text", "\n"],
+            ["A", "https://example.org/"],
+            ["#text", "\n"],
+            ["#text", "("],
+            ["A", "http://example.org/"],
+            ["#text", ")\nWordhttps://example.org/\n"]
+        ]);
     });
 });

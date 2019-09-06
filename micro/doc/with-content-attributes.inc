@@ -1,6 +1,6 @@
 .. describe:: text
 
-   Text content. May be ``null``.
+   Text content as *markup text*. May be ``null``.
 
 .. describe:: resource
 

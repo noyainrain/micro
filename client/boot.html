@@ -43,7 +43,7 @@
 
     var features = {};
     features.dom4ClassList = "classList" in document.createElement("div");
-    features.dom4QuerySelector = "querySelector" in document;
+    features.dom4ParentNode = "append" in document.body;
     try {
         eval("var x = () => {};");
         features.es6ArrowFunction = true;

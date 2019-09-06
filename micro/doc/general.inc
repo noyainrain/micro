@@ -35,6 +35,12 @@ A *slice string* has the form ``{start}:{stop}``. Both *start* and *stop* may be
 A *polyglot string* is an :class:`Object` holding multiple translations of a string indexed by short
 language tag.
 
+*Markup text* is a string that may contain the following markup:
+
+* ``*Emphasized text*``
+* ``**Important text**``
+* ``* List item``
+
 Usage examples
 --------------
 

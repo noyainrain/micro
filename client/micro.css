@@ -39,6 +39,7 @@ html {
     color: var(--micro-color-text);
     background: white;
     font: medium / 1.5 "Open Sans";
+    overflow-wrap: break-word;
 }
 
 body {
@@ -50,8 +51,8 @@ p,
 ul,
 ol,
 dl,
+table,
 pre {
-    display: block;
     margin: 1.5rem 0;
     font-weight: normal;
 }
@@ -89,6 +90,20 @@ dd {
     margin: 0;
 }
 
+table {
+    border-collapse: collapse;
+}
+
+table td {
+    padding: var(--micro-size-xs);
+    border: 1px solid var(--micro-color-delimiter);
+    vertical-align: baseline;
+}
+
+table thead td {
+    font-weight: bold;
+}
+
 pre {
     /* Prevent browsers from manipulating the font size if the font family equals "monospace" */
     font: 0.875em / 1.5 monospace, monospace;
@@ -97,6 +112,14 @@ pre {
 
 i {
     color: var(--micro-color-text-subtle);
+}
+
+em {
+    font-style: italic;
+}
+
+strong {
+    font-weight: bold;
 }
 
 .micro-small, small {
@@ -214,10 +237,6 @@ aside {
     cursor: default;
 }
 
-h1 .link {
-    color: inherit;
-}
-
 .link i {
     color: inherit;
 }
@@ -274,6 +293,12 @@ h1 .link {
 
 /* ---- Forms ---- */
 
+input,
+textarea,
+select {
+    margin: 0;
+}
+
 input:not([type=checkbox]),
 textarea,
 select {
@@ -289,22 +314,28 @@ select:invalid:not(:focus) {
     box-shadow: none;
 }
 
-input[type=checkbox] {
-    margin: 0;
-}
-
 input[type=checkbox]:focus {
     outline: 1px solid var(--micro-color-primary-tint);
     box-shadow: none;
+}
+
+.micro-input-wrapper {
+    border: 1px solid var(--micro-color-border);
+}
+
+.micro-input-wrapper input:not([type=checkbox]),
+.micro-input-wrapper textarea,
+.micro-input-wrapper select {
+    border: none;
 }
 
 label {
     display: block;
 }
 
-label > input:not([type=checkbox]),
-label > textarea,
-label > select {
+label input:not([type=checkbox]),
+label textarea,
+label select {
     display: block;
     width: 100%;
 }
@@ -313,7 +344,7 @@ h1 > label {
     margin-bottom: calc(1.5rem / 4);
 }
 
-label > textarea {
+label textarea {
     height: calc(5 * 1.5em + 2 * 0.25 * 1.5em);
 }
 
@@ -791,8 +822,8 @@ main {
     text-align: center;
 }
 
-.micro-boot-page h1 {
-    color: #f00;
+.micro-boot-page i {
+    color: red;
 }
 
 .micro-boot-page-detail {
