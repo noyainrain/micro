@@ -410,6 +410,15 @@ micro.bind.transforms = {
     },
 
     /**
+     * Bind *args* to *func*.
+     *
+     * The returned function will call *func* with *args* prepended and ``this`` set to *thisArg*.
+     */
+    bindThis(ctx, func, thisArg, ...args) {
+        return func.bind(thisArg, ...args);
+    },
+
+    /**
      * Format a string containing placeholders.
      *
      * *str* is a format string with placeholders of the form ``{key}``. *args* is a flat list of

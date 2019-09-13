@@ -1,7 +1,10 @@
 <template class="micro-ui-template">
     <header class="micro-ui-header" style="display: none;">
         <nav class="micro-ui-inside micro-panel">
-            <a class="micro-ui-logo link" href="/" data-shortcut="new Shortcut 'N,S'">
+            <a
+                class="micro-ui-logo link" href="/" data-tab-index="logoTabIndex"
+                data-shortcut="new Shortcut 'N,S'"
+            >
                 <h1>
                     <img data-src="settings.icon_small" />
                     <span data-content="settings.title"></span>
@@ -17,7 +20,7 @@
 
             <div class="micro-ui-header-fill"></div>
 
-            <ul is="micro-menu" class="micro-ui-menu micro-secondary">
+            <ul is="micro-menu" class="micro-ui-menu micro-secondary micro-interactive">
                 <li class="micro-ui-header-user">
                     <button class="link"><micro-user data-user="user"></micro-user></button>
                     <ul is="micro-menu">
@@ -81,6 +84,14 @@
     </header>
 </template>
 <style>
+    body[noninteractive] .micro-interactive {
+        display: none;
+    }
+
+    body[noninteractive] .micro-ui-logo {
+        pointer-events: none;
+    }
+
     .micro-ui-header-offline {
         color: var(--micro-color-text-subtle);
     }

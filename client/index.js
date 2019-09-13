@@ -161,7 +161,8 @@ micro.UI = class extends HTMLBodyElement {
         this._data = new micro.bind.Watchable({
             user: null,
             settings: null,
-            offline: false
+            offline: false,
+            logoTabIndex: 0
         });
         micro.bind.bind(this.children, this._data);
 
@@ -290,6 +291,12 @@ micro.UI = class extends HTMLBodyElement {
         go().catch(micro.util.catch);
     }
 
+    attributeChangedCallback(name, oldValue, newValue) {
+        if (name === "noninteractive") {
+            this._data.logoTabIndex = newValue === null ? 0 : -1;
+        }
+    }
+
     /** Current URL. Set to rewrite the browser URL. */
     get url() {
         return this._url;
@@ -338,6 +345,22 @@ micro.UI = class extends HTMLBodyElement {
      */
     get staff() {
         return this._data.settings.staff.map(s => s.id).indexOf(this.user.id) !== -1;
+    }
+
+    /**
+     * Indicates if the UI is in non-interactive mode, where interactive elements (marked with the
+     * class ``micro-interactive``) are hidden.
+     */
+    get noninteractive() {
+        return this.hasAttribute("noninteractive");
+    }
+
+    set noninteractive(value) {
+        if (value) {
+            this.setAttribute("noninteractive", "noninteractive");
+        } else {
+            this.removeAttribute("noninteractive");
+        }
     }
 
     /**

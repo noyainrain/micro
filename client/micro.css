@@ -39,7 +39,9 @@ html {
     color: var(--micro-color-text);
     background: white;
     font: medium / 1.5 "Open Sans";
+    overflow: hidden scroll;
     overflow-wrap: break-word;
+    scroll-padding: calc(2 * var(--micro-size-rm) + 2 * var(--micro-size-rxs)) 0;
 }
 
 body {
@@ -677,6 +679,7 @@ section section .micro-heading > h1 {
     margin: -2px 0 0 0;
     box-shadow: var(--micro-shadow);
     background: white;
+    white-space: nowrap;
 }
 
 [is=micro-menu].micro-secondary [is=micro-menu] {
@@ -736,7 +739,6 @@ section section .micro-heading > h1 {
 }
 
 .micro-ui-inside {
-    position: relative;
     box-sizing: content-box;
     max-width: 70ch;
     padding: 0 var(--micro-size-rm);
