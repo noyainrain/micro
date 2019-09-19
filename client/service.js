@@ -66,6 +66,8 @@ micro.util.watchErrors();
  */
 micro.service.Service = class {
     constructor() {
+        // TODO: subclass API
+        this.api = new micro.WebApi();
         this.settings = null;
         this.notificationRenderers = {
             "user-enable-device-notifications": () => ({
@@ -131,7 +133,7 @@ micro.service.Service = class {
             event.waitUntil((async() => {
                 if (!this.settings) {
                     try {
-                        this.settings = await micro.call("GET", "/api/settings");
+                        this.settings = await this.api.call("GET", "/api/settings");
                     } catch (e) {
                         if (
                             e instanceof micro.NetworkError ||

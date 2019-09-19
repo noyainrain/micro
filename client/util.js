@@ -59,29 +59,52 @@ micro.APIError = class APIError extends Error {
  *    :class:`TypeError` for IO related errors. Check for :class:`micro.NetworkError` instead.
  */
 micro.call = async function(method, url, args) {
-    let options = {method, credentials: "same-origin"};
-    if (args) {
-        options.headers = {"Content-Type": "application/json"};
-        options.body = JSON.stringify(args);
+    throw new Error("TODO");
+    // return new micro.WebApi().call(method, url, {args});
+};
+
+// TODO could add this in experimental branch, and just add headers option to micro.call
+// micro.call = async function(method, url, args, {headers = {}}) {}
+// and call it from UI.call
+// micro.call(method, url, args, {
+//     headers: this.user ? {Authorization: `Bearer ${this.user.auth_secret}`} : {}
+// });
+micro.WebApi = class {
+    constructor({url = location.origin, query = {}, headers = {}} = {}) {
+        this.url = url;
+        this.query = query;
+        this.headers = headers;
     }
 
-    let response;
-    let result;
-    try {
-        response = await fetch(url, options);
-        result = await response.json();
-    } catch (e) {
-        if (e instanceof TypeError) {
-            throw new micro.NetworkError(`${e.message} for ${method} ${url}`);
-        } else if (e instanceof SyntaxError) {
-            throw new micro.NetworkError(`Bad response format for ${method} ${url}`);
+    async call(method, url, {args = null, query = {}} = {}) {
+        url = new URL(url, this.url);
+        for (let [key, value] of Object.entries(Object.assign({}, this.query, query))) {
+            url.searchParams.set(key, value);
         }
-        throw e;
+        const options = {method, credentials: "same-origin", headers: Object.assign({}, this.headers)};
+        if (args) {
+            options.headers["Content-Type"] = "application/json";
+            options.body = JSON.stringify(args);
+        }
+
+        let response;
+        let result;
+        try {
+            response = await fetch(url, options);
+            result = await response.json();
+        } catch (e) {
+            if (e instanceof TypeError) {
+                throw new micro.NetworkError(`${e.message} for ${method} ${url}`);
+            } else if (e instanceof SyntaxError) {
+                throw new micro.NetworkError(`Bad response format for ${method} ${url}`);
+            }
+            throw e;
+        }
+        if (!response.ok) {
+            throw new micro.APIError(result, response.status);
+        }
+        return result;
     }
-    if (!response.ok) {
-        throw new micro.APIError(result, response.status);
-    }
-    return result;
 };
 
 /**
@@ -340,14 +363,14 @@ micro.util.importCSS = function(url) {
  */
 micro.util.watchErrors = function() {
     async function report(e) {
-        await micro.call("POST", "/log-client-error", {
+        await new micro.WebApi().call("POST", "/log-client-error", {args: {
             type: e.constructor.name,
             // Stack traces may be truncated for security reasons, resulting in an empty string at
             // worst
             stack: e.stack || "?",
             url: location.pathname,
             message: e.message
-        });
+        }});
     }
     addEventListener("error", event => report(event.error));
 

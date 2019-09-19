@@ -95,6 +95,9 @@ micro.UI = class extends HTMLBodyElement {
         this._pageSpace = this.querySelector("main .micro-ui-inside");
         this._activities = new Set();
 
+        // TODO subclass API
+        this.api = null;
+
         this.pages = [
             {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.EditUserPage.make},
             {url: "^/settings/edit$", page: micro.EditSettingsPage.make},
@@ -225,6 +228,11 @@ micro.UI = class extends HTMLBodyElement {
             localStorage.microSettings = JSON.stringify(null);
             localStorage.microVersion = 2;
         }
+        // TODO
+        if (version < 3) {
+            document.cookie = "auth_secret=; path=/; max-age=0";
+            localStorage.microVersion = 3;
+        }
 
         // Go!
         let go = async() => {
@@ -232,6 +240,7 @@ micro.UI = class extends HTMLBodyElement {
                 this._progressElem.style.display = "block";
                 await Promise.resolve(this.update());
                 this._data.user = JSON.parse(localStorage.microUser);
+                this.api = new micro.WebApi({headers: this._data.user ? {Authorization: `Bearer ${this._data.user.auth_secret}`} : {}});
                 this._data.settings = JSON.parse(localStorage.microSettings);
 
                 // If requested, log in with code
@@ -387,7 +396,7 @@ micro.UI = class extends HTMLBodyElement {
      */
     async call(method, url, args) {
         try {
-            return await micro.call(method, url, args);
+            return await this.api.call(method, url, {args});
         } catch (e) {
             // Authentication errors are a corner case and happen only if a) the user has deleted
             // their account on another device or b) the database has been reset (during
@@ -588,14 +597,10 @@ micro.UI = class extends HTMLBodyElement {
 
     _storeUser(user) {
         this._data.user = user;
-        if (user) {
-            localStorage.microUser = JSON.stringify(user);
-            document.cookie =
-                `auth_secret=${user.auth_secret}; path=/; max-age=${360 * 24 * 60 * 60}`;
-        } else {
-            localStorage.microUser = null;
-            document.cookie = "auth_secret=; path=/; max-age=0";
-        }
+        localStorage.microUser = JSON.stringify(user);
+        // TODO where to set this; must be set whenever data.user is set, two places, here and on
+        // first load
+        this.api = new micro.WebApi({headers: this._data.user ? {Authorization: `Bearer ${this._data.user.auth_secret}`} : {}});
     }
 
     _addActivity(activity) {
@@ -1413,9 +1418,14 @@ micro.LocationInputElement = class extends HTMLElement {
                     query = encodeURIComponent(query.slice(0, 256).replace(/[,;]/ug, " "));
                     limitArg = limit;
                 }
-                const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?limit=${limitArg}&access_token=${ui.mapServiceKey}`;
+                const mapbox = new micro.WebApi(
+                    {url: "https://api.mapbox.com", query: {access_token: ui.mapServiceKey}}
+                );
                 try {
-                    const result = await micro.call("GET", url);
+                    const result = await mapbox.call(
+                        "GET", `/geocoding/v5/mapbox.places/${query}.json`,
+                        {query: {limit: limitArg}}
+                    );
                     return result.features.slice(0, limit).map(
                         feature => ({
                             name: feature.matching_place_name || feature.place_name,
