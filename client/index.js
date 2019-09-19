@@ -161,8 +161,7 @@ micro.UI = class extends HTMLBodyElement {
         this._data = new micro.bind.Watchable({
             user: null,
             settings: null,
-            offline: false,
-            logoTabIndex: 0
+            offline: false
         });
         micro.bind.bind(this.children, this._data);
 
@@ -289,12 +288,6 @@ micro.UI = class extends HTMLBodyElement {
             }
         };
         go().catch(micro.util.catch);
-    }
-
-    attributeChangedCallback(name, oldValue, newValue) {
-        if (name === "noninteractive") {
-            this._data.logoTabIndex = newValue === null ? 0 : -1;
-        }
     }
 
     /** Current URL. Set to rewrite the browser URL. */
