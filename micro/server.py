@@ -40,8 +40,9 @@ from tornado.template import DictLoader, Loader, filter_whitespace
 from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
 
 from . import micro, templates, error
-from .micro import (Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError,
-                    AuthenticationError, CommunicationError, PermissionError)
+from .micro import ( # pylint: disable=unused-import; typing
+    Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError, AuthenticationError,
+    CommunicationError, PermissionError)
 from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
 from .util import cancel, look_up_files, str_or_none, parse_slice, check_polyglot
 

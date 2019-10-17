@@ -517,6 +517,12 @@ micro.UI = class extends HTMLBodyElement {
         }
     }
 
+    /** Scroll :class:`Element` *elem* into view, minding the header. */
+    scrollToElement(elem) {
+        const em = parseFloat(getComputedStyle(this).fontSize);
+        scroll(0, elem.offsetTop - (2 * 1.5 * em + 2 * 1.5 * em / 4));
+    }
+
     async _navigate() {
         let oldURL = this._url;
         let oldLocation = oldURL ? new URL(oldURL, location.origin) : null;

@@ -43,8 +43,9 @@ from .analytics import Analytics
 from .error import CommunicationError, ValueError
 from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
                         RedisSequence, bzpoptimed)
-from .resource import (Analyzer, HandleResourceFunc, Image, Resource, Video, handle_image,
-                       handle_webpage, handle_youtube)
+from .resource import ( # pylint: disable=unused-import; typing
+    Analyzer, HandleResourceFunc, Image, Resource, Video, handle_image, handle_webpage,
+    handle_youtube)
 from .util import (OnType, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
                    run_instant, str_or_none)
 

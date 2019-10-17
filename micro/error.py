@@ -15,7 +15,7 @@
 """micro errors."""
 
 import builtins
-from typing import Dict
+from typing import Dict, Tuple, cast
 
 from . import webapi
 
@@ -35,7 +35,8 @@ class ValueError(builtins.ValueError, Error):
     @property
     def code(self) -> object:
         # pylint: disable=missing-docstring; already documented
-        return self.args[0] if self.args else None # type: ignore
+        return (cast(Tuple[object, ...], self.args)[0] if cast(Tuple[object, ...], self.args)
+                else None)
 
     def json(self) -> Dict[str, object]:
         # Compatibility for code (deprecated since 0.27.0)

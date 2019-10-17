@@ -10,7 +10,8 @@ micro.components = micro.components || {};
  *
  * .. describe:: pause
  *
- *    Dispatched when the video has paused playing.
+ *    Dispatched when the video has paused playing. *ended* indicates if the video is over (or an
+ *    error occured).
  */
 micro.components.VideoElement = class extends HTMLElement {
     createdCallback() {
@@ -62,9 +63,22 @@ micro.components.VideoElement = class extends HTMLElement {
         return this._data.state.duration;
     }
 
-    /** Current position of the video in seconds. */
+    /**
+     * Current position of the video in seconds.
+     *
+     * Set to seek to the given time.
+     */
     get time() {
         return this._data.state.time;
+    }
+
+    set time(value) {
+        this._data.state.time = value;
+    }
+
+    /** Indicates if the video is paused. */
+    get paused() {
+        return !this._data.state.playing;
     }
 
     /** Start playing the video. */
@@ -82,9 +96,9 @@ micro.components.VideoElement = class extends HTMLElement {
         this.dispatchEvent(new CustomEvent("play"));
     }
 
-    _switchPaused() {
+    _switchPaused({ended = false} = {}) {
         this._data.controlsVisible = true;
-        this.dispatchEvent(new CustomEvent("pause"));
+        this.dispatchEvent(new CustomEvent("pause", {detail: {ended}}));
     }
 
     async _setUpPlayer() {
@@ -180,6 +194,8 @@ Object.assign(micro.components.VideoElement, {
         get time() {
             return 0;
         }
+
+        set time(value) {}
     },
 
     _PlayingInitializing: class extends micro.components.VideoElement._State {
@@ -211,7 +227,7 @@ Object.assign(micro.components.VideoElement, {
             ui.notify("Oops, there was a problem communicating with YouTube. Please try again in a few moments.");
             this.owner._data.state =
                 new micro.components.VideoElement._PausedUninitialized(this.owner);
-            this.owner._switchPaused();
+            this.owner._switchPaused({ended: true});
         }
 
         get playing() {
@@ -225,6 +241,8 @@ Object.assign(micro.components.VideoElement, {
         get time() {
             return 0;
         }
+
+        set time(value) {}
     },
 
     _PlayingInitialized: class extends micro.components.VideoElement._State {
@@ -241,7 +259,7 @@ Object.assign(micro.components.VideoElement, {
             this.owner._player.cleanUp();
             this.owner._data.state =
                 new micro.components.VideoElement._PausedUninitialized(this.owner);
-            this.owner._switchPaused();
+            this.owner._switchPaused({ended: true});
         }
 
         onError(code) {
@@ -260,7 +278,7 @@ Object.assign(micro.components.VideoElement, {
             this.owner._player.cleanUp();
             this.owner._data.state =
                 new micro.components.VideoElement._PausedUninitialized(this.owner);
-            this.owner._switchPaused();
+            this.owner._switchPaused({ended: true});
         }
 
         get playing() {
@@ -273,6 +291,10 @@ Object.assign(micro.components.VideoElement, {
 
         get time() {
             return this.owner._player.getCurrentTime();
+        }
+
+        set time(value) {
+            this.owner._player.seekTo(value);
         }
     },
 
@@ -296,6 +318,16 @@ Object.assign(micro.components.VideoElement, {
 
         get time() {
             return this.owner._player.getCurrentTime();
+        }
+
+        set time(value) {
+            if (value === 0) {
+                this.owner._player.cleanUp();
+                this.owner._data.state =
+                    new micro.components.VideoElement._PausedUninitialized(this.owner);
+                return;
+            }
+            this.owner._player.seekTo(value);
         }
     }
 });

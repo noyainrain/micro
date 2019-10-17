@@ -39,6 +39,9 @@ exports.startBrowser = function(test, subject) {
 
     let capabilities = {
         browserName,
+        // Work around Safari 13 missing elements on click (see
+        // https://bugs.webkit.org/show_bug.cgi?id=202589)
+        version: process.env.BROWSER_VERSION,
         platform: process.env.PLATFORM,
         tunnelIdentifier: process.env.TUNNEL_ID,
         name: `[${subject}]${tag} ${test.fullTitle()}`

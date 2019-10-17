@@ -21,7 +21,7 @@ from typing import (Callable, Dict, Generic, Iterator, List, Mapping, Optional, 
 from weakref import WeakKeyDictionary, WeakValueDictionary, WeakSet
 
 from redis import Redis
-from redis.client import Script
+from redis.client import Script # pylint: disable=unused-import; typing
 from redis.exceptions import ResponseError
 from typing_extensions import Literal
 
