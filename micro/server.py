@@ -22,6 +22,7 @@ from asyncio import (CancelledError, Future, Task, gather, # pylint: disable=unu
                      get_event_loop, ensure_future)
 from collections.abc import Mapping
 from functools import partial
+from http import HTTPStatus
 import http.client
 import json
 from logging import getLogger
@@ -29,7 +30,8 @@ import os
 from pathlib import Path
 import re
 from signal import SIGINT
-from typing import Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
+from typing import (Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union,
+                    cast)
 from urllib.parse import urljoin, urlparse
 
 from mypy_extensions import TypedDict, VarArg
@@ -44,7 +46,8 @@ from .micro import ( # pylint: disable=unused-import; typing
     Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError, AuthenticationError,
     CommunicationError, PermissionError)
 from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
-from .util import cancel, look_up_files, str_or_none, parse_slice, check_polyglot
+from .util import (Expect, ExpectFunc, cancel, look_up_files, str_or_none, parse_slice,
+                   check_polyglot)
 
 LIST_LIMIT = 100
 SLICE_URL = r'(?:/(\d*:\d*))?'
@@ -60,11 +63,18 @@ Device info: %s"""
 
 _LOGGER = getLogger(__name__)
 
+class _UndefinedType:
+    pass
+_UNDEFINED = _UndefinedType()
+
 Handler = Union[Tuple[str, Type[RequestHandler]],
                 Tuple[str, Type[RequestHandler], Dict[str, object]]]
 
 _ApplicationSettings = TypedDict('_ApplicationSettings', # pylint: disable=invalid-name; type alias
                                  {'static_path': str, 'server': 'Server'})
+
+_T = TypeVar('_T')
+
 class Server:
     """Server for micro apps.
 
@@ -237,6 +247,7 @@ class Server:
             (r'/api/activity/stream', ActivityStreamEndpoint,
              {'get_activity': cast(object, get_activity)}),
             (r'/api/analytics/statistics/([^/]+)$', _StatisticEndpoint),
+            (r'/api/analytics/referrals$', _ReferralsEndpoint),
             *handlers,
             # UI
             (r'/log-client-error$', _LogClientErrorEndpoint),
@@ -391,6 +402,21 @@ class Endpoint(RequestHandler):
                 (KeyError, AuthenticationError, PermissionError, CommunicationError, error.Error)):
             return
         super().log_exception(typ, value, tb)
+
+    def get_arg(self, name: str, expect: ExpectFunc[_T], *,
+                default: Union[_T, _UndefinedType] = _UNDEFINED) -> _T:
+        """Return the argument with the given *name*, asserting its type with *expect*.
+
+        If the argument does not exist, *default* is returned. If the argument has an unexpected
+        type or is missing with no *default*, a :exc:`micro.error.ValueError` is raised.
+        """
+        arg = self.args.get(name, default)
+        if arg is _UNDEFINED:
+            raise error.ValueError('Missing {}'.format(name))
+        try:
+            return expect(arg)
+        except TypeError:
+            raise error.ValueError('Bad {} type'.format(name))
 
     def check_args(self, type_info):
         """Check *args* for their expected type.
@@ -898,3 +924,13 @@ class _StatisticEndpoint(Endpoint):
     def get(self, topic: str) -> None:
         statistic = self.app.analytics.statistics[topic]
         self.write(statistic.json(user=self.current_user))
+
+class _ReferralsEndpoint(CollectionEndpoint):
+    def initialize(self, **args: object) -> None:
+        super().initialize(get_collection=lambda: self.app.analytics.referrals, **args)
+
+    def post(self) -> None:
+        url = self.get_arg('url', Expect.str)
+        referral = self.app.analytics.referrals.add(url, user=self.current_user)
+        self.set_status(HTTPStatus.CREATED) # type: ignore
+        self.write(referral.json(restricted=True, include=True))

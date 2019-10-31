@@ -22,10 +22,12 @@
 import argparse
 from argparse import ArgumentParser
 from asyncio import CancelledError, Task # pylint: disable=unused-import; typing
+import builtins
 from collections import OrderedDict
 from datetime import datetime, timezone
 import logging
 from logging import StreamHandler, getLogger
+from numbers import Real
 from os import walk
 from pathlib import Path
 import random
@@ -44,6 +46,7 @@ class OnType:
 ON = OnType()
 
 _T = TypeVar('_T')
+_U = TypeVar('_U')
 
 def str_or_none(str: str) -> Optional[str]:
     """Return *str* unmodified if it has content, otherwise return ``None``.
@@ -204,7 +207,7 @@ def run_instant(coro: Coroutine[object, object, _T]) -> _T:
     except StopIteration as e:
         return cast(_T, e.value)
 
-def expect_opt_type(cls: Type[_T]) -> ExpectFunc[Optional[object], Optional[_T]]:
+def expect_opt_type(cls: Type[_T]) -> ExpectFunc[Optional[_T]]:
     """Return a function that asserts a given *obj* is an instance of *cls* or ``None``."""
     def _f(obj: Optional[object]) -> Optional[_T]:
         if obj is not None and not isinstance(obj, cls):
@@ -243,3 +246,39 @@ def version(v):
         versions[v] = func
         return _wrapper
     return _decorator
+
+class Expect:
+    """Compilation of type assertions.
+
+    .. attribute:: str
+
+       Assert that *obj* is a :class:`str`.
+
+    .. attribute:: float
+
+       Assert that *obj* is a :class:`float`.
+    """
+
+    str = expect_type(builtins.str)
+    float = expect_type(Real) # type: ignore
+
+    @staticmethod
+    def list(expect_item: ExpectFunc[_T]) -> ExpectFunc[List[_T]]:
+        """Return a function that asserts *obj* is a :class:`list`.
+
+        The type of each item is asserted with *expect_item*.
+        """
+        def _f(obj: object) -> List[_T]:
+            if not isinstance(obj, builtins.list):
+                raise TypeError()
+            for item in obj:
+                expect_item(item)
+            return obj
+        return _f
+
+    @staticmethod
+    def opt(expect: ExpectFunc[_T]) -> ExpectFunc[Optional[_T]]:
+        """Return a function that asserts *obj* is ``None`` or meets *expect*."""
+        def _f(obj: object) -> Optional[_T]:
+            return None if obj is None else expect(obj)
+        return _f

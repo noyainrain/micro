@@ -168,13 +168,13 @@ strong {
 }
 
 .micro-lgroup {
-    list-style: none;
+    margin: var(--micro-size-rm) 0;
 }
 
 .micro-lgroup > ul,
 .micro-lgroup > ol {
-    padding: 0;
     margin: 0;
+    list-style: none;
 }
 
 .micro-icon-title {

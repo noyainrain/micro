@@ -259,6 +259,40 @@ Statistic data point.
 
    Statistic value.
 
+.. _Referral:
+
+Referral
+^^^^^^^^
+
+Referral from another site.
+
+.. include:: micro/object-attributes.inc
+
+.. describe:: url
+
+   HTTP(S) referrer URL.
+
+.. describe:: time
+
+   Date and time of the referral.
+
+.. _Referrals:
+
+Referrals
+^^^^^^^^^
+
+:ref:`Referral` :ref:`Collection`, latest first.
+
+Only staff members can query the referrals.
+
+.. include:: micro/collection-endpoints.inc
+
+.. http:post:: /api/analytics/referrals
+
+   ``{url}``
+
+   Record a :ref:`Referral` from *url* and return it.
+
 Errors
 ------
 

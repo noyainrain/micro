@@ -56,3 +56,9 @@ class AnalyticsTest(MicroTestCase):
                          users_actual)
         self.assertEqual(self.app.analytics.statistics['users-active'].get(user=self.staff_member),
                          users_active)
+
+class ReferralsTest(MicroTestCase):
+    def test_add(self) -> None:
+        referral = self.app.analytics.referrals.add('https://example.org/', user=self.user)
+        self.assertEqual(referral.url, 'https://example.org/')
+        self.assertIn(referral.id, self.app.analytics.referrals)

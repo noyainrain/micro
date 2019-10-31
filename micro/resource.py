@@ -34,7 +34,7 @@ from tornado.httpclient import HTTPClientError, HTTPResponse
 
 from . import error
 from .error import CommunicationError, Error
-from .util import expect_opt_type, expect_type, str_or_none
+from .util import Expect, expect_type, str_or_none
 from .webapi import WebAPI, fetch
 
 HandleResourceFunc = Callable[[str, str, bytes, 'Analyzer'],
@@ -48,9 +48,9 @@ class Resource:
         """See :meth:`JSONifiableWithParse.parse`."""
         # pylint: disable=unused-argument; part of API
         return Resource(
-            expect_type(str)(data['url']), expect_type(str)(data['content_type']),
-            description=expect_opt_type(str)(data['description']),
-            image=expect_opt_type(Image)(data['image']))
+            Expect.str(data.get('url')), Expect.str(data.get('content_type')),
+            description=Expect.opt(Expect.str)(data.get('description')),
+            image=Expect.opt(expect_type(Image))(data.get('image')))
 
     def __init__(self, url: str, content_type: str, *, description: str = None,
                  image: 'Image' = None) -> None:

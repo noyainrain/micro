@@ -57,6 +57,8 @@ class ServerTest(ServerTestCase):
         await self.request('/api/users/{}'.format(self.app.user.id), method='PATCH',
                            body='{"op": "disable_notifications"}')
         await self.request('/api/settings')
+        await self.request('/api/analytics/referrals', method='POST',
+                           body='{"url": "https://example.org/"}')
 
         # API (generic)
         cat = self.app.cats.create()
@@ -74,6 +76,7 @@ class ServerTest(ServerTestCase):
         await self.request('/api/activity/v2', method='PATCH', body='{"op": "subscribe"}')
         await self.request('/api/activity/v2', method='PATCH', body='{"op": "unsubscribe"}')
         await self.request('/api/analytics/stats/users')
+        await self.request('/api/analytics/referrals')
 
     @gen_test
     def test_endpoint_request(self):

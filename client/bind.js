@@ -436,6 +436,19 @@ micro.bind.transforms = {
     },
 
     /**
+     * Return a string representation of the given :class:`Date` *date*.
+     *
+     * Alternatively, *date* may be a string parsable by :class:`Date`. *format* is equivalent to
+     * the *options* argument of :meth:`Date.toLocaleString`.
+     */
+    formatDate(ctx, date, format) {
+        if (typeof date === "string") {
+            date = new Date(date);
+        }
+        return date.toLocaleString("en", format);
+    },
+
+    /**
      * Project *arr* into the DOM.
      *
      * If *arr* is :class:`Watchable`, the DOM will be live, i.e. updating *arr* will update the DOM

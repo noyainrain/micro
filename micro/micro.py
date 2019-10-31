@@ -27,7 +27,7 @@ import re
 from smtplib import SMTP
 import sys
 from typing import (AsyncIterator, Awaitable, Callable, Coroutine, Dict, Generic, Iterator, List,
-                    Optional, Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload)
+                    Optional, Set, Tuple, Type, TypeVar, Union, cast, overload)
 from urllib.parse import SplitResult, urlparse, urlsplit
 
 from pywebpush import WebPusher, WebPushException
@@ -39,15 +39,14 @@ from requests.exceptions import RequestException
 from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
-from .analytics import Analytics
 from .error import CommunicationError, ValueError
 from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
                         RedisSequence, bzpoptimed)
 from .resource import ( # pylint: disable=unused-import; typing
     Analyzer, HandleResourceFunc, Image, Resource, Video, handle_image, handle_webpage,
     handle_youtube)
-from .util import (OnType, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
-                   run_instant, str_or_none)
+from .util import (Expect, OnType, check_email, expect_opt_type, expect_type, parse_isotime,
+                   randstr, run_instant, str_or_none)
 
 _PUSH_TTL = 24 * 60 * 60
 
@@ -149,6 +148,8 @@ class Application:
         except builtins.ValueError:
             raise ValueError('redis_url_invalid')
 
+        # pylint: disable=import-outside-toplevel; circular dependency
+        from .analytics import Analytics, Referral
         self.types = {
             'User': User,
             'Settings': Settings,
@@ -157,7 +158,8 @@ class Application:
             'AuthRequest': AuthRequest,
             'Resource': Resource,
             'Image': Image,
-            'Video': Video
+            'Video': Video,
+            'Referral': Referral
         } # type: Dict[str, Type[JSONifiable]]
         self.user = None # type: Optional[User]
         self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)
@@ -721,8 +723,7 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
     def __init__(
             self, ids: RedisSequence, *,
             check: Callable[[Union[int, slice, str]], None] = None,
-            expect: ExpectFunc[JSONifiable, O] = cast(ExpectFunc[JSONifiable, O],
-                                                      expect_type(Object)),
+            expect: ExpectFunc[O] = cast(ExpectFunc[O], expect_type(Object)),
             app: Application) -> None:
         # pylint: disable=function-redefined, super-init-not-called; overload
         pass
@@ -733,8 +734,7 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
     def __init__(
             self, *args: object,
             check: Callable[[Union[int, slice, str]], None] = None,
-            expect: ExpectFunc[JSONifiable, O] = cast(ExpectFunc[JSONifiable, O],
-                                                      expect_type(Object)),
+            expect: ExpectFunc[O] = cast(ExpectFunc[O], expect_type(Object)),
             **kwargs: object) -> None:
         # pylint: disable=function-redefined, super-init-not-called; overload
         # Compatibility for host (deprecated since 0.24.0)
@@ -1389,15 +1389,14 @@ class Location:
     @staticmethod
     def parse(data: Dict[str, object]) -> 'Location':
         """Parse the given location JSON *data* into a :class:`Location`."""
-        name, coords = data.get('name'), data.get('coords')
-        if not isinstance(name, str):
-            raise TypeError()
-        if coords is not None:
-            if not (isinstance(coords, Sequence) and len(coords) == 2 and
-                    all(isinstance(value, (float, int)) for value in coords)):
+        coords_list = Expect.opt(Expect.list(Expect.float))(data.get('coords'))
+        if coords_list is None:
+            coords = None
+        else:
+            if len(coords_list) != 2:
                 raise TypeError()
-            coords = (float(coords[0]), float(coords[1]))
-        return Location(name, coords)
+            coords = (float(coords_list[0]), float(coords_list[1]))
+        return Location(Expect.str(data.get('name')), coords)
 
     def json(self) -> Dict[str, object]:
         """Return a JSON representation of the location."""

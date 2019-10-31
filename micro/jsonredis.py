@@ -8,8 +8,8 @@ Also includes :class:`JSONRedisMapping`, an utility map interface for JSON objec
 
 .. data:: ExpectFunc
 
-   Function of the form `expect(obj: T) -> U` which asserts that an object *obj* is of a certain
-   type *U* and raises a :exc:`TypeError` if not.
+   Function of the form `expect(obj: object) -> _T` which asserts that *obj* is of a certain type
+   *_T* and raises a :exc:`TypeError` if not.
 """
 
 import json
@@ -28,7 +28,7 @@ from typing_extensions import Literal
 T = TypeVar('T')
 U = TypeVar('U')
 
-ExpectFunc = Callable[[T], U]
+ExpectFunc = Callable[[object], T]
 
 _ZPOPTIMED_SCRIPT = """\
 redis.replicate_commands()
@@ -96,8 +96,8 @@ class JSONRedis(Generic[T]):
         self._cache = WeakValueDictionary() # type: WeakValueDictionary[str, T]
 
     @overload
-    def oget(self, key: str, *, default: None = None, # type: ignore
-             expect: None = None) -> Optional[T]:
+    def oget( # type: ignore
+            self, key: str, *, default: None = None, expect: None = None) -> Optional[T]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
@@ -105,16 +105,16 @@ class JSONRedis(Generic[T]):
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
-    def oget(self, key: str, *, default: None = None, # type: ignore
-             expect: ExpectFunc[T, U]) -> Optional[U]:
+    def oget( # type: ignore
+            self, key: str, *, default: None = None, expect: ExpectFunc[U]) -> Optional[U]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
-    def oget(self, key: str, *, default: Union[T, Type[Exception]], expect: ExpectFunc[T, U]) -> U:
+    def oget(self, key: str, *, default: Union[T, Type[Exception]], expect: ExpectFunc[U]) -> U:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     def oget(self, key: str, default: Union[T, Type[Exception]] = None,
-             expect: ExpectFunc[T, U] = None) -> Union[Optional[T], T, U, Optional[U]]:
+             expect: ExpectFunc[U] = None) -> Union[Optional[T], T, U, Optional[U]]:
         """Return the object at *key*.
 
         If *key* does not exist, *default* is returned. If *default* is an :exc:`Exception`, it is
@@ -148,8 +148,9 @@ class JSONRedis(Generic[T]):
         self.set(key, json.dumps(object, default=self.encode))
 
     @overload
-    def omget(self, keys: Sequence[str], *, default: None = None, # type: ignore
-              expect: None = None) -> List[Optional[T]]:
+    def omget( # type: ignore
+            self, keys: Sequence[str], *, default: None = None,
+            expect: None = None) -> List[Optional[T]]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
@@ -158,18 +159,19 @@ class JSONRedis(Generic[T]):
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
-    def omget(self, keys: Sequence[str], *, default: None = None, # type: ignore
-              expect: ExpectFunc[T, U]) -> List[Optional[U]]:
+    def omget( # type: ignore
+            self, keys: Sequence[str], *, default: None = None,
+            expect: ExpectFunc[U]) -> List[Optional[U]]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
     def omget(self, keys: Sequence[str], *, default: Union[T, Type[Exception]],
-              expect: ExpectFunc[T, U]) -> List[U]:
+              expect: ExpectFunc[U]) -> List[U]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     def omget(
             self, keys: Sequence[str], default: Union[T, Type[Exception]] = None,
-            expect: ExpectFunc[T, U] = None
+            expect: ExpectFunc[U] = None
         ) -> Union[List[Optional[T]], List[T], List[Optional[U]], List[U]]:
         """Return a list of objects for the given *keys*.
 
@@ -361,7 +363,7 @@ class JSONRedisMapping(Generic[T, U], Mapping[str, T]):
        Function narrowing the type of retrieved objects. May be ``None``.
     """
 
-    def __init__(self, r: JSONRedis[U], map_key: str, expect: ExpectFunc[U, T] = None) -> None:
+    def __init__(self, r: JSONRedis[U], map_key: str, expect: ExpectFunc[T] = None) -> None:
         self.r = r
         self.map_key = map_key
         self.expect = expect
@@ -441,7 +443,7 @@ def redis_range(slc: slice) -> Tuple[int, int]:
         return (1, 0)
     return (0 if slc.start is None else slc.start, -1 if slc.stop is None else slc.stop - 1)
 
-def expect_type(cls: Type[T]) -> ExpectFunc[object, T]:
+def expect_type(cls: Type[T]) -> ExpectFunc[T]:
     """Return a function which asserts that a given *obj* is an instance of *cls*."""
     def _f(obj: object) -> T:
         if not isinstance(obj, cls):

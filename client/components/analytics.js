@@ -42,7 +42,22 @@ micro.components.analytics.AnalyticsPage = class extends micro.Page {
         this.appendChild(
             document.importNode(ui.querySelector("#micro-analytics-page-template").content, true)
         );
+        this._data = new micro.bind.Watchable({
+            referrals: new micro.Collection("/api/analytics/referrals"),
+            referralsComplete: false
+        });
+        micro.bind.bind(this.children, this._data);
+
         this.contentNode = this.querySelector(".micro-analytics-content");
+        this._data.referrals.events.addEventListener("fetch", () => {
+            this._data.referralsComplete = this._data.referrals.complete;
+        });
+    }
+
+    attachedCallback() {
+        super.attachedCallback();
+        const button = this.querySelector(".micro-analytics-more-referrals");
+        this.ready.when(button.trigger().catch(micro.util.catch));
     }
 };
 document.registerElement("micro-analytics-page", micro.components.analytics.AnalyticsPage);
@@ -168,11 +183,12 @@ micro.components.analytics.Chart = class extends HTMLElement {
             });
 
             if (datasets[0].data.length >= 2) {
-                const from = datasets[0].data[0].t.toLocaleDateString(
-                    "en", micro.SHORT_DATE_FORMAT
+                const from = micro.bind.transforms.formatDate(
+                    null, datasets[0].data[0].t, micro.bind.transforms.SHORT_DATE_FORMAT
                 );
-                const to = datasets[0].data[datasets[0].data.length - 1].t.toLocaleDateString(
-                    "en", micro.SHORT_DATE_FORMAT
+                const to = micro.bind.transforms.formatDate(
+                    null, datasets[0].data[datasets[0].data.length - 1].t,
+                    micro.bind.transforms.SHORT_DATE_FORMAT
                 );
                 const summary = datasets.map(
                     dataset => `${dataset.label}: ${dataset.data[0].y} - ${dataset.data[dataset.data.length - 1].y}`

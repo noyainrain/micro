@@ -24,11 +24,15 @@ import json
 from datetime import datetime, timedelta
 import typing
 from typing import Callable, Dict, Iterator, List, Mapping, Optional, cast
+from urllib.parse import urlsplit
 
-from .util import expect_type, parse_isotime
+from . import error
+from .jsonredis import RedisSortedSet
+from .micro import Collection, Object, User
+from .util import expect_type, parse_isotime, randstr
 
 if typing.TYPE_CHECKING:
-    from micro import Application, User
+    from .micro import Application
 
 StatisticFunc = Callable[[datetime], float]
 
@@ -42,6 +46,10 @@ class Analytics:
     .. attribute:: statistics
 
        Statistics over time by topic.
+
+    .. attribute:: referrals
+
+       Referrals from other sites.
 
     .. attribute:: app
 
@@ -57,6 +65,7 @@ class Analytics:
             **definitions
         } # type: Dict[str, StatisticFunc]
         self.statistics = {topic: Statistic(topic, app=app) for topic in self.definitions}
+        self.referrals = Referrals(app=app)
         self.app = app
 
     def collect_statistics(self, *, _t: datetime = None) -> None:
@@ -88,7 +97,7 @@ class Analytics:
         return sum(1 for user in self._actual_users()
                    if t - user.authenticate_time <= timedelta(days=30)) # type: ignore
 
-    def _actual_users(self) -> Iterator['User']:
+    def _actual_users(self) -> Iterator[User]:
         return (user for user in self.app.users[:] # type: ignore
                 if user.authenticate_time - user.create_time >= timedelta(days=1)) # type: ignore
 
@@ -109,14 +118,14 @@ class Statistic:
         self.app = app
         self._key = 'analytics.statistics.{}'.format(self.topic)
 
-    def get(self, *, user: Optional['User']) -> List['Point']:
+    def get(self, *, user: Optional[User]) -> List['Point']:
         """See :http:get:`/api/analytics/statistics/(topic)`."""
         if not user in self.app.settings.staff: # type: ignore
             raise PermissionError()
         return [Point.parse(json.loads(p.decode())) for p # type: ignore
                 in self.app.r.r.zrange(self._key, 0, -1)] # type: ignore
 
-    def json(self, *, user: 'User' = None) -> Dict[str, object]:
+    def json(self, *, user: User = None) -> Dict[str, object]:
         """See :meth:`micro.JSONifiable.json`."""
         return {'items': [p.json() for p in self.get(user=user)]}
 
@@ -144,3 +153,35 @@ class Point:
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Point) and self.t == other.t and self.v == other.v
+
+class Referral(Object):
+    """See :ref:`Referral`."""
+
+    def __init__(self, *, id: str, app: 'Application', url: str, time: str) -> None:
+        super().__init__(id=id, app=app)
+        self.url = url
+        self.time = parse_isotime(time, aware=True)
+
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
+        return {
+            **super().json(restricted=restricted, include=include),
+            'url': self.url,
+            'time': self.time.isoformat()
+        }
+
+class Referrals(Collection[Referral]):
+    """See :ref:`Referrals`."""
+
+    def __init__(self, *, app: 'Application') -> None:
+        super().__init__(RedisSortedSet('analytics.referrals', app.r.r),
+                         check=lambda key: self.app.check_user_is_staff(), app=app) # type: ignore
+
+    def add(self, url: str, *, user: Optional[User]) -> Referral:
+        """See :http:post:`/api/analytics/referrals`."""
+        # pylint: disable=unused-argument; part of API
+        if urlsplit(url).scheme not in {'http', 'https'}:
+            raise error.ValueError('Bad url scheme {}'.format(url))
+        referral = Referral(id=randstr(), app=self.app, url=url, time=self.app.now().isoformat())
+        self.app.r.oset(referral.id, referral)
+        self.app.r.r.zadd(self.ids.key, {referral.id.encode(): -referral.time.timestamp()})
+        return referral

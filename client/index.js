@@ -23,15 +23,6 @@
 micro.util.watchErrors();
 
 micro.LIST_LIMIT = 100;
-micro.SHORT_DATE_FORMAT = {
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-};
-micro.SHORT_DATE_TIME_FORMAT = Object.assign({
-    hour: "2-digit",
-    minute: "2-digit"
-}, micro.SHORT_DATE_FORMAT);
 
 /**
  * Find the first ancestor of *elem* that satisfies *predicate*.
@@ -265,6 +256,14 @@ micro.UI = class extends HTMLBodyElement {
                         this.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
                         const settings = await ui.call("GET", "/api/settings");
                         this.dispatchEvent(new CustomEvent("settings-edit", {detail: {settings}}));
+                        if (
+                            document.referrer &&
+                            new URL(document.referrer).origin !== location.origin
+                        ) {
+                            await ui.call(
+                                "POST", "/api/analytics/referrals", {url: document.referrer}
+                            );
+                        }
                     } catch (e) {
                         if (!(e instanceof micro.NetworkError)) {
                             throw e;
@@ -1972,8 +1971,9 @@ micro.ActivityPage = class extends micro.Page {
             let li = document.createElement("li");
             let time = document.createElement("time");
             time.dateTime = event.time;
-            time.textContent =
-                new Date(event.time).toLocaleString("en", micro.SHORT_DATE_TIME_FORMAT);
+            time.textContent = micro.bind.transforms.formatDate(
+                null, event.time, micro.bind.transforms.SHORT_DATE_TIME_FORMAT
+            );
             li.appendChild(time);
             li.appendChild(ui.renderEvent[event.type](event));
             ul.appendChild(li);
@@ -1984,6 +1984,20 @@ micro.ActivityPage = class extends micro.Page {
 };
 
 Object.assign(micro.bind.transforms, {
+    SHORT_DATE_FORMAT: {
+        year: "numeric",
+        month: "short",
+        day: "numeric"
+    },
+
+    SHORT_DATE_TIME_FORMAT: {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    },
+
     /**
      * Render *markup text* into a :class:`DocumentFragment`.
      *

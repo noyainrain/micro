@@ -12,6 +12,36 @@
             labels="Users, Actual users, Monthly active users"
         ></micro-chart>
     </section>
+
+    <section>
+        <h1>Referrals</h1>
+        <div class="micro-lgroup">
+            <ul class="micro-timeline" data-content="list referrals.items 'referral'">
+                <template>
+                    <li>
+                        <time
+                            data-date-time="referral.time"
+                            data-content="formatDate referral.time SHORT_DATE_TIME_FORMAT"
+                        ></time>
+                        <a data-href="referral.url" data-content="referral.url"></a>
+                    </li>
+                </template>
+            </ul>
+            <ul data-content="switch referralsComplete false">
+                <template>
+                    <li>
+                        <button
+                            is="micro-button" class="micro-analytics-more-referrals link"
+                            data-run="bind fetchCollection referrals 10"
+                            data-shortcut="new Shortcut 'M'"
+                        >
+                            <i class="fa fa-ellipsis-v"></i> More
+                        </button>
+                    </li>
+                </template>
+            </ul>
+        </div>
+    </section>
 </template>
 <style>
     .micro-analytics-user-statistics {
