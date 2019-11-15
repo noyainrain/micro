@@ -473,6 +473,7 @@ legend {
 
 .micro-panel-main {
     flex: auto;
+    min-width: 0;
 }
 
 /* ---- Entity list ---- */
@@ -502,6 +503,7 @@ legend {
 
 .micro-heading > h1 {
     flex: auto;
+    min-width: 0;
     padding: 0;
     font-size: 2rem;
 }

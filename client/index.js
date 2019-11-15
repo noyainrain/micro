@@ -886,8 +886,8 @@ micro.OL = class extends HTMLOListElement {
 
                 // Locate li the pointer is over
                 if (event.type === "touchmove") {
-                    x = event.targetTouches[0].clientX;
-                    y = event.targetTouches[0].clientY;
+                    x = event.changedTouches[0].clientX;
+                    y = event.changedTouches[0].clientY;
                 } else {
                     x = event.clientX;
                     y = event.clientY;
