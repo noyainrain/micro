@@ -40,6 +40,21 @@ micro.ListInputElement = class extends HTMLElement {
                 this.nativeInput.focus();
             },
 
+            onItemClick: item => {
+                this._data.remove(item);
+                if (this.nativeInput.value) {
+                    add(this.nativeInput.value);
+                }
+                this.nativeInput.value = item;
+                //this.nativeInput.value += item;
+                /*if (this.nativeInput.value) {
+                    this.nativeInput.value += ` ${item}`;
+                    // this.nativeInput.value = `${item} ${this.nativeInput.value}`;
+                } else {
+                    this.nativeInput.value = item;
+                }*/
+            },
+
             onKeyPress: event => {
                 switch(event.key) {
                 case "Enter":
@@ -103,6 +118,7 @@ micro.ListInputElement = class extends HTMLElement {
     }
 
     set value(value) {
+        console.log("SET", value);
         this._data.value = new micro.bind.Watchable(value.slice());
         // this._compileOptions();
     }
@@ -157,7 +173,7 @@ document.registerElement("micro-list-input", micro.ListInputElement);
     <div class="micro-input-wrapper" data-class-micro-list-input-order="order" data-class-focus-within="focus" data-onclick="onClick">
         <ol is="micro-ol" data-content="list ctx value 'item'">
             <template>
-                <li class="micro-panel">
+                <li class="micro-panel" data-onclick="bind onItemClick item" style="cursor: pointer;">
                     <span data-class-micro-ol-handle="order">
                         <i class="fa fa-grip-vertical micro-list-input-grip"></i>
                     </span>
@@ -166,7 +182,7 @@ document.registerElement("micro-list-input", micro.ListInputElement);
                     </span>
                     <button
                         is="micro-button" type="button" class="action" tabindex="-1"
-                        data-run="bind remove item"
+                        data-run="bind remove item" style="display: none;"
                     >
                         <!--<i class="far fa-times-circle"></i>-->
                         <!--<i class="fa fa-times"></i>-->

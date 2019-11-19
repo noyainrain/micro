@@ -2,6 +2,7 @@
 
 * SNIPPET ctx refactor
 * TODO list_input -> list_input.html and list_input.js
+  should also get rid of problem that input.value is assigned before custom element ist registered
 
 * TODO options
 
