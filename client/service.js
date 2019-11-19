@@ -23,15 +23,29 @@
 self.micro = self.micro || {};
 micro.service = {};
 
+/**
+ * :class:`Object` holding client assembly information.
+ *
+ * *shell* is the set of resources that make up the app shell. May be ``null``. *debug* indicates
+ * debug mode.
+ */
+micro.service.MANIFEST = {shell: null, debug: false};
+
 micro.service.STANDALONE = location.pathname.endsWith("@noyainrain/micro/service.js");
 if (micro.service.STANDALONE) {
-    importScripts(new URL("util.js", location.href).href);
+    // Chrome does not yet update the service worker if imports change (see
+    // https://bugs.chromium.org/p/chromium/issues/detail?id=648295)
+    // {{ version }}
+    importScripts(new URL("util.js", location.href).href, "/manifest.js");
 }
 
 micro.util.watchErrors();
 
 /**
  * Main service worker of a micro app.
+ *
+ * The app shell is cached for offline availability, if *shell* in :data:`micro.service.MANIFEST` is
+ * set.
  *
  * .. attribute:: settings
  *
@@ -61,8 +75,57 @@ micro.service.Service = class {
             })
         };
 
-        addEventListener("install", () => skipWaiting());
+        addEventListener("install", event => {
+            skipWaiting();
+            if (!micro.service.MANIFEST.shell) {
+                return;
+            }
+            event.waitUntil((async () => {
+                const cache = await caches.open("micro");
+                const target = new Set(micro.service.MANIFEST.shell);
+                let current = await cache.keys();
+                current = new Set(
+                    current.map(request => {
+                        const url = new URL(request.url);
+                        return url.pathname + url.search;
+                    })
+                );
+                const fresh = Array.from(target).filter(url => !current.has(url));
+                const stale = Array.from(current).filter(url => !target.has(url));
+                await cache.addAll(fresh);
+                await Promise.all(stale.map(url => cache.delete(url)));
+            })().catch(micro.util.catch));
+        });
         addEventListener("activate", () => clients.claim());
+
+        const handlers = [
+            ["^/api/.*$", () => {}],
+            ["^/log-client-error$", () => {}],
+            ["^/manifest.webmanifest$", () => {}],
+            [
+                "^/static/.*$",
+                event => event.respondWith((async() => {
+                    const response = await caches.match(event.request.url);
+                    return response || new Response(null, {status: 404, statusText: "Not Found"});
+                })())
+            ],
+            ["^/.*$", event => event.respondWith(caches.match("/index.html", {ignoreSearch: true}))]
+        ];
+        addEventListener("fetch", event => {
+            if (!micro.service.MANIFEST.shell || micro.service.MANIFEST.debug) {
+                return;
+            }
+            const url = new URL(event.request.url);
+            if (url.origin !== location.origin) {
+                return;
+            }
+            for (let [pattern, handle] of handlers) {
+                if (url.pathname.match(new RegExp(pattern, "u"))) {
+                    handle(event);
+                    break;
+                }
+            }
+        });
 
         addEventListener("push", event => {
             event.waitUntil((async() => {

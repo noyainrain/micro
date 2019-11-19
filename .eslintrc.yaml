@@ -50,6 +50,7 @@ rules:
     no-mixed-operators: off
     object-property-newline: off
     one-var: off
+    prefer-named-capture-group: off
     wrap-regex: off
     # Aligning with first argument may be more readable
     array-bracket-newline: off
@@ -99,6 +100,10 @@ rules:
           allowAfterThis: true
     # Mixing let and const may be less readable
     prefer-const: off
+    # Unpacking a single value may be less readable
+    prefer-destructuring: off
+    # No cross-browser support yet
+    prefer-object-spread: off
     # Escapes may be less readable
     quotes:
         - error

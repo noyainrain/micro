@@ -22,23 +22,24 @@ If user authentication with the given secret fails, an :ref:`AuthenticationError
 any endpoint, a :ref:`PermissionError` is returned if the current user is not allowed to perform the
 action.
 
-Lists
------
-
-For most API endpoints which return a list, a slice of the form ``/(start):(stop)`` may be appended
-to the URL, where *start* (inclusive) and *stop* (exclusive) are indices of the items to return.
-The maximum number of items is limited to a *limit* of ``100``. Both *start* and *stop* are optional
-and default to ``0`` and ``start + limit`` respectively.
-
-Example: ``/api/activity`` (which is equivalent to ``/api/activity/:`` or ``/api/activity/0:100``)
-returns the first hundred items (i.e. global events) and ``/api/activity/10:20`` returns the items
-from index 10 up to including 19.
-
 Additional types
 ----------------
 
+A *slice* represents a range of a list, as array ``[start, stop]``, from index *start* (inclusive)
+to *stop* (exclusive). Both *start* and *stop* may be ``null``, referring to the beginning (0) and
+end (list length) of the list respectively.
+
+A *slice string* has the form ``{start}:{stop}``. Both *start* and *stop* may be omitted, meaning
+``null``.
+
 A *polyglot string* is an :class:`Object` holding multiple translations of a string indexed by short
 language tag.
+
+*Markup text* is a string that may contain the following markup:
+
+* ``*Emphasized text*``
+* ``**Important text**``
+* ``* List item``
 
 Usage examples
 --------------
@@ -77,6 +78,24 @@ setting the email address::
         ...
     }
 
+.. _Gone:
+
+Gone
+----
+
+Former object that does not exist anymore.
+
+.. _Collection:
+
+Collection
+----------
+
+Collection of objects.
+
+.. include:: micro/collection-attributes.inc
+
+.. include:: micro/collection-endpoints.inc
+
 .. _AuthRequest:
 
 AuthRequest
@@ -91,97 +110,6 @@ mailbox, where they retrieve the code. Finally the code is passed back to and ve
 application.
 
 .. include:: micro/object-attributes.inc
-
-.. _User:
-
-User
-----
-
-User is editable by the user oneself.
-
-.. include:: micro/object-attributes.inc
-
-.. include:: micro/editable-attributes.inc
-
-.. describe:: name
-
-   Name or nick name.
-
-.. describe:: email
-
-   Email address, being a single line string. May be ``None``. Visible only to the user oneself.
-
-.. describe:: auth_secret
-
-   Secret for authentication. Visible only to the user oneself.
-
-.. describe:: device_notification_status
-
-   Device notification status:
-
-   * ``on``: Notifications are enabled
-   * ``off``: Notifications are disabled
-   * ``off.expired``: Notifications are disabled because *push_subscription* expired
-
-.. describe:: push_subscription
-
-   Push subscription token used for sending device notifications. May be ``null``.
-
-.. http:get:: /api/users/(id)
-
-   Get the user given by *id*.
-
-.. include:: micro/editable-endpoints.inc
-
-.. http:post:: /api/users/(id)/set-email
-
-   {"email"}
-
-   Start to set the user's *email* address.
-
-   A third party authentication via the email provider (as layed out in :ref:`AuthRequest`) is
-   triggered and a corresponding :ref:`AuthRequest` is returned. To finish setting the email address
-   use :http:post:`/api/users/(id)/finish-set-email`.
-
-   Permission: The user oneself.
-
-.. http:post:: /api/users/(id)/finish-set-email
-
-   {"auth_request_id", "auth"}
-
-   Finish setting the user's *email* address and return the user.
-
-   *auth* is the authentication code, resulting from the :ref:`AuthRequest` with *auth_request_id*,
-   to be verified. If the verification fails, a :ref:`ValueError` (``auth_invalid``) is returned. If
-   the given email address is already associated with another user, a :ref:`ValueError`
-   (``email_duplicate``) is returned.
-
-   Permission: The user oneself.
-
-.. http:post:: /api/users/(id)/remove-email
-
-   Remove the user's current *email* address and return the user.
-
-   If the user's *email* is not set, a :ref:`ValueError` (``user_no_email``) is returned.
-
-   Permission: The user oneself.
-
-.. http:patch:: /api/users/(id)
-
-   ``{"op": "enable_device_notifications", "push_subscription"}``
-
-   Enable device notifications, using *push_subscription*.
-
-   A confirmation message is sent to the device. If there is a communication issue, a
-   :ref:`CommunicationError` is returned.
-
-   Permission: The user oneself.
-
-   ``{"op": "disable_device_notifications"}``
-
-   Disable device notifications.
-
-   Permission: The user oneself.
 
 .. _Activity:
 
@@ -214,6 +142,10 @@ Activity feed (of events) around a common topic/context.
 
    Permission: Authenticated users.
 
+.. http:get:: /api/(activity-url)/stream
+
+   Get a live stream of :ref:`Event` s as ``text/event-stream``.
+
 .. _Event:
 
 Event
@@ -223,15 +155,16 @@ Event about an action on an *object* by an *user*.
 
 .. include:: micro/object-attributes.inc
 
-.. attribute:: type
+.. describe:: type
 
    Type of the event.
 
-.. attribute:: object
+.. describe:: object
 
-   Object for which the event happened. ``null`` if it is a global event.
+   Object for which the event happened. :ref:`Gone` if the object does not exist anymore. ``null``
+   if the event is global.
 
-.. attribute:: user
+.. describe:: user
 
    :ref:`User` who triggered the event.
 
@@ -239,11 +172,9 @@ Event about an action on an *object* by an *user*.
 
    Date and time at which the event happened.
 
-.. attribute:: detail
+.. describe:: detail
 
    Dictionary with additonal details about the event. The contents depend on the event *type*.
-
-.. _ValueError:
 
 .. _Location:
 
@@ -260,52 +191,191 @@ Location.
 
    Coordinates as latitude-longitude pair. May be ``null``.
 
+.. _Resource:
+
+Resource
+--------
+
+Web resource description.
+
+.. include:: micro/resource-attributes.inc
+
+.. _Image:
+
+Image
+-----
+
+Image :ref:`Resource` description.
+
+Note that the *image* representation is always ``null``.
+
+.. include:: micro/resource-attributes.inc
+
+.. _Video:
+
+Video
+-----
+
+Video :ref:`Resource` description.
+
+.. include:: micro/resource-attributes.inc
+
+Analytics
+---------
+
+.. _Statistic:
+
+Statistic
+^^^^^^^^^
+
+Statistic about a topic over time.
+
+.. http:get:: /api/analytics/statistics/(topic)
+
+   Query the collection.
+
+   The query result is an object ``{items}`` holding an array of queried *items*.
+
+   Available topics are:
+
+   * ``users``: Count of all users
+   * ``users-actual``: Count of actual users, i.e. who returned at least once after the first day
+   * ``users-active``: Count of monthly active users, i.e. who were seen in the last 30 days
+
+   Permission: Staff members.
+
+.. _Point:
+
+Point
+^^^^^
+
+Statistic data point.
+
+.. describe:: t
+
+   Time the statistic was collected.
+
+.. describe:: v
+
+   Statistic value.
+
+.. _Referral:
+
+Referral
+^^^^^^^^
+
+Referral from another site.
+
+.. include:: micro/object-attributes.inc
+
+.. describe:: url
+
+   HTTP(S) referrer URL.
+
+.. describe:: time
+
+   Date and time of the referral.
+
+.. _Referrals:
+
+Referrals
+^^^^^^^^^
+
+:ref:`Referral` :ref:`Collection`, latest first.
+
+Only staff members can query the referrals.
+
+.. include:: micro/collection-endpoints.inc
+
+.. http:post:: /api/analytics/referrals
+
+   ``{url}``
+
+   Record a :ref:`Referral` from *url* and return it.
+
+Errors
+------
+
+.. _ValueError:
+
 ValueError
-----------
+^^^^^^^^^^
 
 Returned for value-related errors.
 
-.. attribute:: code
+.. describe:: code
 
    Error string providing more information about the problem.
+
+   .. deprecated:: 0.27.0
+
+      Use :attr:`message` instead.
 
 .. _InputError:
 
 InputError
-----------
+^^^^^^^^^^
 
 Returned if the input to an endpoint contains one or more arguments with an invalid value.
 
 InputError is a :ref:`ValueError` with *code* set to ``input_invalid``.
 
-.. attribute:: errors
+.. describe:: errors
 
    Map of argument names / error strings for every problematic argument of the input.
 
 .. _NotFoundError:
 
 NotFoundError
--------------
+^^^^^^^^^^^^^
 
 Returned if a requested endpoint does not exist.
 
 .. _AuthenticationError:
 
 AuthenticationError
--------------------
+^^^^^^^^^^^^^^^^^^^
 
 Returned if user authentication fails.
 
 .. _PermissionError:
 
 PermissionError
----------------
+^^^^^^^^^^^^^^^
 
 Returned if the current user is not allowed to perform an action.
 
 .. _CommunicationError:
 
 CommunicationError
-------------------
+^^^^^^^^^^^^^^^^^^
 
 Returned if communication with a third party fails.
+
+.. _AnalysisError:
+
+AnalysisError
+^^^^^^^^^^^^^
+
+Returned if analyzing a web resource fails.
+
+.. _NoResourceError:
+
+NoResourceError
+^^^^^^^^^^^^^^^
+
+:ref:`AnalysisError` returned if there is no resource at the URL to analyze.
+
+.. _ForbiddenResourceError:
+
+ForbiddenResourceError
+^^^^^^^^^^^^^^^^^^^^^^
+
+:ref:`AnalysisError` returned if access to the resource subject to analysis is forbidden.
+
+.. _BorkenResourceError:
+
+BrokenResourceError
+^^^^^^^^^^^^^^^^^^^
+
+:ref:`AnalysisError` returned if the resource subject to analysis is broken.

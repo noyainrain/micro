@@ -24,7 +24,7 @@ self.micro = self.micro || {};
 micro.util = {};
 
 /** Thrown if network communication failed. */
-micro.NetworkError = class extends TypeError {};
+micro.NetworkError = class NetworkError extends TypeError {};
 
 /**
  * Thrown for HTTP JSON REST API errors.
@@ -37,9 +37,9 @@ micro.NetworkError = class extends TypeError {};
  *
  *    The associated HTTP status code.
  */
-micro.APIError = class extends Error {
+micro.APIError = class APIError extends Error {
     constructor(error, status) {
-        super(error.__type__);
+        super(`${error.__type__}: ${error.message}`);
         this.error = error;
         this.status = status;
     }
@@ -71,9 +71,10 @@ micro.call = async function(method, url, args) {
         response = await fetch(url, options);
         result = await response.json();
     } catch (e) {
-        if (e instanceof TypeError || e instanceof SyntaxError) {
-            // Consider invalid JSON an IO error as well
-            throw new micro.NetworkError();
+        if (e instanceof TypeError) {
+            throw new micro.NetworkError(`${e.message} for ${method} ${url}`);
+        } else if (e instanceof SyntaxError) {
+            throw new micro.NetworkError(`Bad response format for ${method} ${url}`);
         }
         throw e;
     }
@@ -103,6 +104,39 @@ micro.util.PromiseWhen = function() {
     });
     p.when = when;
     return p;
+};
+
+/**
+ * Promise which can be aborted.
+ *
+ * *executor* is a promise executor with an additional argument *signal*, which indicates if the
+ * execution should be aborted.
+ *
+ * .. method:: abort()
+ *
+ *    Abort the promise.
+ */
+micro.util.AbortablePromise = function(executor) {
+    const signal = {aborted: false};
+    const p = new Promise((resolve, reject) => executor(resolve, reject, signal));
+    p.abort = () => {
+        signal.aborted = true;
+    };
+    return p;
+};
+
+/**
+ * Return an asynchronous function which can be aborted.
+ *
+ * *f* is the asynchronous function to run. It is called with an additional argument *signal*
+ * prepended, which indicates if the execution should be aborted.
+ */
+micro.util.abortable = function(f) {
+    return function(...args) {
+        return new micro.util.AbortablePromise(
+            (resolve, reject, signal) => f(signal, ...args).then(resolve, reject)
+        );
+    };
 };
 
 /**
@@ -213,21 +247,109 @@ micro.util.formatFragment = function(str, args) {
 };
 
 /**
+ * Parse an ISO 6709 representation of geographic coordinates *str* into a latitude-longitude pair.
+ *
+ * Units and hemisphere indicators are optional. Only latitude and longitude, without elevation, are
+ * supported. Additonally, negative coordinates are allowed.
+ */
+micro.util.parseCoords = function(str) {
+    const part = "(\\d+(?:\\.\\d+)?)[^.NSEW]?";
+    const coord = `(-)?${part}(?:\\s*${part})?(?:\\s*${part})?(?:\\s*([NSEW]))?`;
+    const pattern = new RegExp(`^\\s*${coord}\\s+${coord}\\s*$`, "u");
+    const match = str.match(pattern);
+    if (!match) {
+        throw new SyntaxError(`Bad str format "${str}"`);
+    }
+    const coords = [match.slice(1, 6), match.slice(6, 11)].map(groups => {
+        const [d, m, s] = groups.slice(1, 4).map(p => parseFloat(p) || 0);
+        return (d + m / 60 + s / (60 * 60)) * (groups[0] ? -1 : 1) *
+            ("SW".includes(groups[4]) ? -1 : 1);
+    });
+    if (!(coords[0] >= -90 && coords[0] <= 90 && coords[1] >= -180 && coords[1] <= 180)) {
+        throw new RangeError(`Out of range str coordinates "${str}"`);
+    }
+    return coords;
+};
+
+/** Return the given CSS *color* with transparency *alpha*. */
+micro.util.withAlpha = function(color, alpha) {
+    function normalize(c) {
+        if (c.length === 4) {
+            const value = Array.map(c.slice(1), component => component + component).join("");
+            return `#${value}`;
+        }
+        return c;
+    }
+    const [r, g, b] = micro.bind.chunk(normalize(color).slice(1), 2)
+        .map(component => parseInt(component, 16));
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+/**
+ * Import the script located at *url*.
+ *
+ * *namespace* is the identifier of the namespace (i.e. global variable) created by the imported
+ * script, if any. If given, the namespace is returned.
+ */
+micro.util.import = function(url, namespace = null) {
+    // eslint-disable-next-line no-underscore-dangle
+    const imports = micro.util.import._imports;
+    if (imports.has(url)) {
+        return imports.get(url);
+    }
+
+    const p = new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = url;
+        script.addEventListener("load", () => resolve(window[namespace]));
+        script.addEventListener("error", () => {
+            script.remove();
+            reject(new micro.NetworkError(`Error for GET ${url}`));
+        });
+        document.head.appendChild(script);
+    });
+
+    imports.set(url, p);
+    p.catch(() => imports.delete(url));
+    return p;
+};
+// eslint-disable-next-line no-underscore-dangle
+micro.util.import._imports = new Map();
+
+/**
+ * Import the stylesheet located at *url*.
+ */
+micro.util.importCSS = function(url) {
+    return new Promise((resolve, reject) => {
+        let link = document.head.querySelector(`link[rel='stylesheet'][src='${url}']`);
+        if (link) {
+            resolve();
+            return;
+        }
+        link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = url;
+        link.addEventListener("load", resolve);
+        link.addEventListener("error", reject);
+        document.head.appendChild(link);
+    });
+};
+
+/**
  * Watch for unhandled exceptions and report them.
  */
 micro.util.watchErrors = function() {
     async function report(e) {
         await micro.call("POST", "/log-client-error", {
-            type: e.name,
-            stack: e.stack,
+            type: e.constructor.name,
+            // Stack traces may be truncated for security reasons, resulting in an empty string at
+            // worst
+            stack: e.stack || "?",
             url: location.pathname,
             message: e.message
         });
     }
-    addEventListener("error", event => {
-        report(event.error ||
-               {name: "Error", stack: `${event.filename}:${event.lineno}`, message: event.message});
-    });
+    addEventListener("error", event => report(event.error));
 
     /**
      * Catch unhandled rejections.

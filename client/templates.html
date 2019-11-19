@@ -1,49 +1,64 @@
 <template class="micro-ui-template">
     <header class="micro-ui-header" style="display: none;">
-        <nav class="micro-ui-inside">
-            <h1 class="micro-ui-logo">
-                <a class="link" href="/" data-shortcut="new Shortcut 'N,S'">
-                    <img/> <span class="micro-ui-logo-text"></span>
+        <nav class="micro-ui-inside micro-panel">
+            <a class="micro-ui-logo link" href="/" data-shortcut="new Shortcut 'N,S'">
+                <h1>
+                    <img data-src="settings.icon_small" />
+                    <span data-content="settings.title"></span>
                     <span class="micro-ui-beta">Beta</span>
-                </a>
-            </h1>
+                </h1>
+            </a>
+            <p
+                class="micro-ui-header-offline" tabindex="0"
+                data-title="format '{title} is currently offline' 'title' settings.title"
+            >
+                <i class="fa fa-fw fa-wifi"></i>
+            </p>
 
             <div class="micro-ui-header-fill"></div>
 
-            <ul is="micro-menu" class="micro-ui-menu micro-secondary">
+            <ul is="micro-menu" class="micro-ui-menu micro-secondary micro-interactive">
                 <li class="micro-ui-header-user">
-                    <button class="link"><micro-user></micro-user></button>
+                    <button class="link"><micro-user data-user="user"></micro-user></button>
                     <ul is="micro-menu">
                         <li class="micro-ui-edit-user">
                             <a class="action" href="/user/edit" data-shortcut="new Shortcut 'N,U'">
-                                <span class="fa fa-fw fa-wrench"></span> Edit user settings
+                                <i class="fa fa-fw fa-wrench"></i> Edit user settings
                             </a>
                         </li>
                     </ul>
                 </li>
                 <li class="micro-ui-header-menu">
-                    <button class="link"><span class="fa fa-fw fa-bars"></span></button>
+                    <button class="link"><i class="fa fa-fw fa-bars"></i></button>
                     <ul is="micro-menu">
+                        <li class="micro-ui-about">
+                            <a class="link" href="/about" data-shortcut="new Shortcut 'N,A'">
+                                <i class="fa fa-fw fa-info-circle"></i> About
+                            </a>
+                        </li>
                         <li class="micro-ui-feedback">
-                            <a class="link" data-shortcut="new Shortcut 'N,F'">
-                                <span class="fa fa-fw fa-question-circle"></span> Feedback &amp;
+                            <a
+                                class="link" data-href="settings.feedback_url"
+                                data-shortcut="new Shortcut 'N,F'"
+                            >
+                                <i class="fa fa-fw fa-question-circle"></i> Feedback &amp;
                                 help
                             </a>
                         </li>
-                        <li class="micro-ui-about">
-                            <a class="link" href="/about" data-shortcut="new Shortcut 'N,A'">
-                                <span class="fa fa-fw fa-info-circle"></span> About
+                        <li class="micro-ui-analytics">
+                            <a class="link" href="/analytics" data-shortcut="new Shortcut 'N,I'">
+                                <i class="fa fa-fw fa-chart-line"></i> Analytics
                             </a>
                         </li>
                         <li class="micro-ui-activity">
                             <a class="link" href="/activity" data-shortcut="new Shortcut 'N,H'">
-                                <span class="fa fa-fw fa-history"></span> Activity
+                                <i class="fa fa-fw fa-history"></i> Activity
                             </a>
                         </li>
                         <li class="micro-ui-edit-settings">
                             <a class="action" href="/settings/edit"
                                data-shortcut="new Shortcut 'N,C'">
-                                <span class="fa fa-fw fa-wrench"></span> Edit site settings
+                                <i class="fa fa-fw fa-wrench"></i> Edit site settings
                             </a>
                         </li>
                         <li class="micro-ui-keyboard compact" tabindex="0">
@@ -66,6 +81,19 @@
     </header>
 </template>
 <style>
+    body[noninteractive] .micro-interactive {
+        display: none;
+    }
+
+    .micro-ui-logo img {
+        height: 1em;
+        vertical-align: middle;
+    }
+
+    .micro-ui-header-offline {
+        color: var(--micro-color-text-subtle);
+    }
+
     .micro-ui-keyboard {
         padding: 0 calc(1.5rem / 4);
     }
@@ -84,6 +112,29 @@
     .micro-ui-keyboard:hover ul,
     .micro-ui-keyboard:focus ul {
         display: block;
+    }
+
+    .micro-ui-notification-space:not(:empty) {
+        border-top: 1px solid var(--micro-color-delimiter);
+    }
+
+    .micro-ui-notification-space h1,
+    .micro-ui-notification-space p {
+        margin: var(--micro-size-rxs) 0;
+    }
+
+    .micro-ui-notification-space h1 {
+        border: none;
+        font-size: 1em;
+        font-weight: bold;
+    }
+
+    body > [slot],
+    body:not(.micro-ui-settings-have-icon-small) .micro-ui-logo img,
+    body:not(.micro-ui-offline) .micro-ui-header-offline,
+    body:not(.micro-ui-user-is-staff) .micro-ui-analytics,
+    body:not(.micro-ui-user-is-staff) .micro-ui-edit-settings {
+        display: none;
     }
 </style>
 
@@ -140,6 +191,7 @@
     micro-options {
         position: absolute;
         z-index: 1;
+        max-width: calc(100% - 2 * var(--micro-size-rm));
         background: white;
         box-shadow: var(--micro-shadow);
     }
@@ -173,14 +225,86 @@
     }
 </style>
 
-{% include 'components/list_input.html' %}
+<template id="micro-map-template">
+    <div></div>
+</template>
+<style>
+    micro-map {
+        display: block;
+        margin: 1.5rem 0;
+    }
+
+    .leaflet-container {
+        z-index: 0;
+        height: calc(70ch * 9 / 16);
+        font: inherit;
+        background: #d1d1d1; /* Map tile background */
+    }
+
+    .leaflet-container:focus {
+        box-shadow: 0 0 0 1px var(--micro-color-primary-tint);
+    }
+
+    .leaflet-container .link {
+        color: var(--micro-color-secondary);
+    }
+</style>
+
+<template id="micro-map-marker-template">
+    <div>
+        <a data-id="or location.hash ''" class="link" data-href="location.url">
+            <i class="fa fa-map-marker-alt"></i>
+        </a>
+    </div>
+</template>
+<style>
+    .leaflet-div-icon {
+        border: none;
+        background: none;
+    }
+
+    .leaflet-div-icon .link {
+        display: block;
+        font-size: 2em;
+        line-height: 1;
+        color: var(--micro-color-primary);
+        text-shadow: 0 -1px white, 1px 0 white, 0 1px white, -1px 0 white;
+    }
+</style>
+
+<template id="micro-map-attribution-template">
+    <span>
+        Map data by ©
+        <a class="link" href="https://www.mapbox.com/about/maps/" target="_blank">
+            <img
+                src="{{ static_url('{}/@noyainrain/micro/images/mapbox.svg'.format(modules_path)) }}"
+                alt="Mapbox"
+            />
+        </a>
+        ©
+        <a class="link" href="https://www.openstreetmap.org/copyright" target="_blank">
+            OpenStreetMap
+        </a>
+    </span>
+</template>
+<style>
+    .leaflet-container .leaflet-control-attribution {
+        padding: var(--micro-size-xs);
+        font-size: 0.875em;
+        color: var(--micro-color-text-subtle);
+        background: rgba(255, 255, 255, 0.66);
+        text-align: right;
+    }
+
+    .leaflet-control-attribution img {
+        height: 1.5em;
+        vertical-align: bottom;
+    }
+</style>
 
 <template id="micro-location-input-template">
     <input />
-    <micro-options
-        data-options="queryLocations" data-delay="500" data-to-text="locationToText"
-        data-onselect="onSelect"
-    >
+    <micro-options data-options="queryLocations" data-delay="500" data-to-text="locationToText">
         <template name="footer">
             <p class="micro-location-input-footer">
                 <small>
@@ -209,7 +333,7 @@
 </style>
 
 <template class="micro-user-template">
-    <i class="fa fa-user"></i><span></span>
+    <i class="fa fa-user"></i> <span></span>
 </template>
 
 <template id="micro-offline-page-template">
@@ -265,12 +389,12 @@
         </p>
     </form>
 
-    <section class="micro-edit-user-email">
-        <header class="group">
+    <section>
+        <header class="micro-heading micro-panel">
             <h1>Email</h1>
-            <div class="micro-edit-user-remove-email">
-                <button class="action"><i class="fa fa-trash"></i> Remove</button>
-            </div>
+            <button class="micro-edit-user-remove-email action">
+                <i class="fa fa-trash"></i> Remove
+            </button>
         </header>
 
         <div class="micro-edit-user-set-email-1">
@@ -363,14 +487,21 @@
 <template class="micro-activity-page-template">
     <h1>Site activity</h1>
     <p><small><i class='fa fa-eye'></i> Only visible to staff members</small></p>
-    <ul>
-        <li class="micro-lgroup">
-            <ul class="micro-timeline"></ul>
-        </li>
-        <li class="micro-activity-show-more">
-            <button is="micro-button" class="link">
-                <i class="fa fa-ellipsis-v"></i> Show more
-            </button>
-        </li>
+    <div class="micro-lgroup">
+        <ul class="micro-timeline"></ul>
+        <ul>
+            <li class="micro-activity-show-more">
+                <button is="micro-button" class="link">
+                    <i class="fa fa-ellipsis-v"></i> More
+                </button>
+            </li>
+        </ul>
     </ul>
 </template>
+
+{% include 'components/analytics.html' %}
+{% include 'components/contextual.html' %}
+{% include 'components/image.html' %}
+{% include 'components/link.html' %}
+{% include 'components/list_input.html' %}
+{% include 'components/video.html' %}

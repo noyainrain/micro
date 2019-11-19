@@ -22,12 +22,16 @@
 
 window.expect = window.expect || chai.expect;
 
-before(async function() {
-    let templates = document.createElement("div");
-    let response = await fetch("/base/templates.html");
-    templates.innerHTML = await response.text();
-    document.body.appendChild(templates);
-});
+const MARKUP = `\
+*Meow*
+**
+**Meow, meow!**
+- Apple
+ * Orange*
+https://example.org/
+(http://example.org/)
+Wordhttps://example.org/
+`;
 
 beforeEach(function() {
     document.body.appendChild(document.createElement("main"));
@@ -113,6 +117,9 @@ describe("OptionsElement", function() {
 });
 
 describe("LocationInputElement", function() {
+    const BERLIN_COORDS = [52.504043, 13.393236];
+    const BERLIN_COORDS_STR = "52°30′14.5548″N 13°23′35.6496″E";
+
     async function setupDOM() {
         let main = document.querySelector("main");
         main.innerHTML = "<micro-location-input></micro-location-input>";
@@ -121,19 +128,49 @@ describe("LocationInputElement", function() {
     }
 
     describe("on set value", function() {
-        it("should set native input value", async function() {
-            let input = await setupDOM();
-            input.value = {name: "Berlin", coords: [52.504043, 13.393236]};
-            expect(input.nativeInput.value).to.equal("Berlin");
+        it("should update valueAsObject", async function() {
+            const input = await setupDOM();
+            input.nativeInput.value = "Berlin";
+            expect(input.valueAsObject).to.deep.equal({name: "Berlin", coords: null});
+        });
+
+        it("should update valueAsObject for geographic coordinates value", async function() {
+            const input = await setupDOM();
+            input.nativeInput.value = BERLIN_COORDS_STR;
+            expect(input.valueAsObject).to.deep.equal(
+                {name: BERLIN_COORDS_STR, coords: BERLIN_COORDS}
+            );
         });
     });
 
-    describe("on input", function() {
-        it("should set value", async function() {
-            let input = await setupDOM();
-            input.nativeInput.value = "Berlin";
-            input.nativeInput.dispatchEvent(new Event("input"));
-            expect(input.value).to.deep.equal({name: "Berlin", coords: null});
+    describe("on set valueAsObject", function() {
+        it("should update value", async function() {
+            const input = await setupDOM();
+            input.valueAsObject = {name: "Berlin", coords: BERLIN_COORDS};
+            expect(input.nativeInput.value).to.equal("Berlin");
         });
+    });
+});
+
+describe("markup()", function() {
+    it("should render markup text", function() {
+        const fragment = micro.bind.transforms.markup(null, MARKUP);
+        const nodes = Array.from(fragment.childNodes, node => [node.nodeName, node.textContent]);
+        expect(nodes).to.deep.equal([
+            ["EM", "Meow"],
+            ["#text", "\n**\n"],
+            ["STRONG", "Meow, meow!"],
+            ["#text", "\n"],
+            ["#text", "\u00a0•"],
+            ["#text", " Apple\n"],
+            ["#text", "\u00a0•"],
+            ["#text", " Orange*"],
+            ["#text", "\n"],
+            ["A", "https://example.org/"],
+            ["#text", "\n"],
+            ["#text", "("],
+            ["A", "http://example.org/"],
+            ["#text", ")\nWordhttps://example.org/\n"]
+        ]);
     });
 });

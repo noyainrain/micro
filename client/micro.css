@@ -17,9 +17,13 @@ html {
     --micro-size-m: 1.5em;
     --micro-size-s: 0.75em;
     --micro-size-xs: 0.375em;
+    --micro-size-xxs: 0.1875em;
     --micro-size-rm: 1.5rem;
+    --micro-size-rs: 0.75rem;
+    --micro-size-rxs: 0.375rem;
+    --micro-size-rxxs: 0.1875rem;
     --micro-size-text-s: 0.875em;
-    --micro-shadow: 0 2px 2px rgba(0, 0, 0, 0.33);
+    --micro-shadow: 0 0 2px rgba(0, 0, 0, 0.33);
     --micro-focus-shadow: inset 0 0 0 1px var(--micro-color-primary-tint);
 }
 
@@ -36,37 +40,26 @@ html {
 
 html {
     color: var(--micro-color-text);
-    background: #fff;
+    background: white;
     font: medium / 1.5 "Open Sans";
+    overflow: hidden scroll;
+    overflow-wrap: break-word;
+    scroll-padding: calc(2 * var(--micro-size-rm) + 2 * var(--micro-size-rxs)) 0;
 }
 
 body {
     margin: 0;
 }
 
-header,
 h1,
 p,
 ul,
 ol,
 dl,
+table,
 pre {
-    display: block;
     margin: 1.5rem 0;
     font-weight: normal;
-}
-
-header {
-    display: flex;
-    align-items: flex-end;
-}
-
-header > * {
-    margin: 0;
-}
-
-header > h1 {
-    flex: auto;
 }
 
 h1 {
@@ -102,10 +95,36 @@ dd {
     margin: 0;
 }
 
+table {
+    border-collapse: collapse;
+}
+
+table td {
+    padding: var(--micro-size-xs);
+    border: 1px solid var(--micro-color-delimiter);
+    vertical-align: baseline;
+}
+
+table thead td {
+    font-weight: bold;
+}
+
 pre {
     /* Prevent browsers from manipulating the font size if the font family equals "monospace" */
     font: 0.875em / 1.5 monospace, monospace;
     white-space: pre-wrap;
+}
+
+i {
+    color: var(--micro-color-text-subtle);
+}
+
+em {
+    font-style: italic;
+}
+
+strong {
+    font-weight: bold;
 }
 
 .micro-small, small {
@@ -150,28 +169,28 @@ pre {
 }
 
 .micro-lgroup {
-    list-style: none;
+    margin: var(--micro-size-rm) 0;
 }
 
 .micro-lgroup > ul,
 .micro-lgroup > ol {
-    padding: 0;
     margin: 0;
-}
-
-.micro-panel p {
-    padding: var(--micro-size-xs);
-    margin: 0;
+    list-style: none;
 }
 
 .micro-icon-title {
     border-bottom: none;
-    color: #888;
     font-size: 3rem;
 }
 
-.micro-progress {
+.micro-progress i {
     color: var(--micro-color-primary);
+}
+
+aside {
+    margin: var(--micro-size-rm) 0;
+    font-size: 0.875em;
+    color: var(--micro-color-text-subtle);
 }
 
 /* ---- Focus hints ---- */
@@ -223,7 +242,7 @@ pre {
     cursor: default;
 }
 
-h1 .link {
+.link i {
     color: inherit;
 }
 
@@ -246,24 +265,16 @@ h1 .link {
     cursor: pointer;
 }
 
-.micro-panel .action {
-    border: none;
-    border-radius: 0;
-    color: var(--micro-color-primary);
-    background: transparent;
-    line-height: 1.5;
-}
-
-.micro-panel .action:hover {
-    background: var(--micro-color-delimiter);
-}
-
 .action:focus {
     box-shadow: inset 0 0 0 1px var(--micro-color-primary), inset 0 0 0 2px white;
 }
 
 .action:disabled {
     cursor: default;
+}
+
+.action i {
+    color: inherit;
 }
 
 .action-subtle {
@@ -287,6 +298,12 @@ h1 .link {
 
 /* ---- Forms ---- */
 
+input,
+textarea,
+select {
+    margin: 0;
+}
+
 input:not([type=checkbox]),
 textarea,
 select {
@@ -302,12 +319,42 @@ select:invalid:not(:focus) {
     box-shadow: none;
 }
 
-input[type=checkbox] {
-    margin: 0;
-}
-
 input[type=checkbox]:focus {
     outline: 1px solid var(--micro-color-primary-tint);
+    box-shadow: none;
+}
+
+.micro-input-wrapper {
+    border: 1px solid var(--micro-color-border);
+}
+
+.micro-input-wrapper input:not([type=checkbox]),
+.micro-input-wrapper textarea,
+.micro-input-wrapper select {
+    border: none;
+}
+
+.micro-input-wrapper {
+    /*display: block;
+    width: 100%;
+    margin: var(--micro-size-m) 0;*/
+    /* TODO
+    padding: var(--micro-size-xs);
+    cursor: text; */
+}
+
+/* TODO */
+.micro-input-wrapper.focus-within {
+    box-shadow: var(--micro-focus-shadow);
+}
+
+.micro-input-wrapper input {
+    /*display: block;
+    width: 100%;
+    padding: 0;*/
+}
+
+.micro-input-wrapper input:focus {
     box-shadow: none;
 }
 
@@ -315,9 +362,9 @@ label {
     display: block;
 }
 
-label > input:not([type=checkbox]),
-label > textarea,
-label > select {
+label input:not([type=checkbox]),
+label textarea,
+label select {
     display: block;
     width: 100%;
 }
@@ -326,7 +373,7 @@ h1 > label {
     margin-bottom: calc(1.5rem / 4);
 }
 
-label > textarea {
+label textarea {
     height: calc(5 * 1.5em + 2 * 0.25 * 1.5em);
 }
 
@@ -357,35 +404,101 @@ legend {
     padding: 0;
 }
 
-legend::after {
-    content: ':';
+/**
+ * Panel: Arrangement of controls and text content.
+ *
+ * Designed to be placed in a bordered container that signals interactivity, e.g. a bar.
+ */
+
+.micro-panel {
+    display: flex;
+    align-items: flex-start;
 }
 
-/* ---- Input wrapper ---- */
+.micro-panel > *,
+.micro-panel > div > * {
+    margin: 0;
+}
 
-.micro-input-wrapper {
-    display: block;
-    width: 100%;
+.micro-panel > h1,
+.micro-panel > p,
+.micro-panel > .link,
+.micro-panel > div > p,
+.micro-panel > div > .link {
     padding: var(--micro-size-xs);
-    border: 1px solid var(--micro-color-border);
-    margin: var(--micro-size-m) 0;
-    cursor: text;
 }
 
-/* TODO */
-.micro-input-wrapper.focus-within {
+.micro-panel > p > small,
+.micro-panel > .link > small,
+.micro-panel > div > p > small,
+.micro-panel > div > .link > small {
+    display: block;
+    margin-top: var(--micro-size-rxs);
+}
+
+.micro-panel > h1,
+.micro-panel > .link > h1 {
+    border-bottom: none;
+    margin: 0;
+    font-size: 1em;
+}
+
+.micro-panel > .link:focus,
+.micro-panel > .link:not(:disabled):hover,
+.micro-panel > .action:focus,
+.micro-panel > .action:not(:disabled):hover,
+.micro-panel > [tabindex]:focus,
+.micro-panel > [tabindex]:not(:disabled):hover,
+.micro-panel > div > .link:focus,
+.micro-panel > div > .link:not(:disabled):hover,
+.micro-panel > div > .action:focus,
+.micro-panel > div > .action:not(:disabled):hover,
+.micro-panel > div > [tabindex]:focus,
+.micro-panel > div > [tabindex]:not(:disabled):hover {
+    background: var(--micro-color-delimiter);
+    text-decoration: none;
+}
+
+.micro-panel > .link:focus,
+.micro-panel > .action:focus,
+.micro-panel > [tabindex]:focus,
+.micro-panel > div > .link:focus,
+.micro-panel > div > .action:focus,
+.micro-panel > div > [tabindex]:focus {
     box-shadow: var(--micro-focus-shadow);
 }
 
-.micro-input-wrapper input {
+.micro-panel > .link,
+.micro-panel > .action,
+.micro-panel > div > .link,
+.micro-panel > div > .action {
     display: block;
-    width: 100%;
-    padding: 0;
+    padding: var(--micro-size-xs);
     border: none;
+    border-radius: 0;
+    background: transparent;
+    line-height: inherit;
+    text-align: left;
 }
 
-.micro-input-wrapper input:focus {
-    box-shadow: none;
+.micro-panel > .link,
+.micro-panel > div > .link {
+    color: var(--micro-color-text);
+}
+
+.micro-panel > .link i,
+.micro-panel > div > .link i {
+    color: var(--micro-color-text-subtle);
+}
+
+.micro-panel > .action,
+.micro-panel > div > .action {
+    color: var(--micro-color-primary);
+}
+
+.micro-panel-main {
+    flex: auto;
+    min-width: 0;
 }
 
 /* ---- Entity list ---- */
@@ -400,8 +513,32 @@ legend::after {
     list-style: none;
 }
 
-.micro-entity-list > ul > li:not(:first-child) {
+.micro-entity-list > ul:not(:empty) ~ ul:not(:empty),
+.micro-entity-list > ul > li:not(:empty) ~ li:not(:empty) {
     border-top: 1px solid var(--micro-color-delimiter);
+}
+
+/* ---- Heading ---- */
+
+.micro-heading {
+    border-bottom: 1px solid var(--micro-color-delimiter);
+    margin: var(--micro-size-rm) 0;
+    align-items: flex-end;
+}
+
+.micro-heading > h1 {
+    flex: auto;
+    min-width: 0;
+    padding: 0;
+    font-size: 2rem;
+}
+
+section .micro-heading > h1 {
+    font-size: 1.66rem;
+}
+
+section section .micro-heading > h1 {
+    font-size: 1.33rem;
 }
 
 /* ---- Logo ---- */
@@ -521,12 +658,12 @@ legend::after {
 [is=micro-menu] li .link:hover,
 [is=micro-menu] li .link:focus,
 [is=micro-menu] li.micro-menu-expanded .link {
-    background: #ddd;
+    background: var(--micro-color-delimiter);
     text-decoration: none;
 }
 
-[is=micro-menu] li .link .fa {
-    color: #888;
+[is=micro-menu] li .link i {
+    color: var(--micro-color-text-subtle);
 }
 
 [is=micro-menu] li .action {
@@ -548,10 +685,11 @@ legend::after {
 
 [is=micro-menu].micro-secondary > li > .link:hover,
 [is=micro-menu].micro-secondary > li > .link:focus,
-[is=micro-menu] > li.micro-menu-expanded > .link,
+[is=micro-menu].micro-secondary > li.micro-menu-expanded > .link,
 [is=micro-menu].micro-secondary > li > .action:hover,
-[is=micro-menu].micro-secondary > li > .action:focus {
-    background: #ddd;
+[is=micro-menu].micro-secondary > li > .action:focus,
+[is=micro-menu].micro-secondary > li.micro-menu-expanded > .action {
+    background: var(--micro-color-delimiter);
 }
 
 [is=micro-menu].micro-secondary > li > .action {
@@ -570,6 +708,7 @@ legend::after {
     margin: -2px 0 0 0;
     box-shadow: var(--micro-shadow);
     background: white;
+    white-space: nowrap;
 }
 
 [is=micro-menu].micro-secondary [is=micro-menu] {
@@ -581,7 +720,7 @@ legend::after {
     overflow: hidden;
 }
 
-[is=micro-menu] [is=micro-menu] > li {
+[is=micro-menu] [is=micro-menu] > li:not(:first-child) {
     border-top: 1px solid #ddd;
 }
 
@@ -600,7 +739,7 @@ legend::after {
 [is=micro-menu] [is=micro-menu] li .link:focus,
 [is=micro-menu] [is=micro-menu] li .action:hover,
 [is=micro-menu] [is=micro-menu] li .action:focus {
-    background: #ddd;
+    background: var(--micro-color-delimiter);
 }
 
 [is=micro-menu] [is=micro-menu] li .action {
@@ -622,10 +761,6 @@ legend::after {
     white-space: nowrap;
 }
 
-.micro-user i {
-    color: #888;
-}
-
 /* ---- UI ---- */
 
 .micro-ui-dragging {
@@ -635,18 +770,19 @@ legend::after {
 .micro-ui-inside {
     box-sizing: content-box;
     max-width: 70ch;
-    padding: 0 1.5rem;
+    padding: 0 var(--micro-size-rm);
     margin: 0 auto;
 }
 
 .micro-ui-header {
     position: fixed;
-    z-index: 1;
+    z-index: 2;
     top: 0;
     left: 0;
     right: 0;
     margin: 0;
     box-shadow: var(--micro-shadow);
+    box-shadow: 0 0 2px 1px rgba(0, 0, 0, 0.33);
     background: #fff;
 }
 
@@ -655,25 +791,8 @@ legend::after {
     white-space: nowrap;
 }
 
-.micro-ui-logo {
-    border-bottom: none;
-    margin: 0;
-    font-size: 1rem;
-}
-
-.micro-ui-logo .link {
-    display: block;
-    padding: calc(0.25 * 1.5em) 0;
-}
-
-.micro-ui-logo .link:hover,
-.micro-ui-logo .link:focus {
-    background: #ddd;
-    text-decoration: none;
-}
-
-.micro-ui-logo img {
-    vertical-align: middle;
+.micro-panel > .micro-ui-logo {
+    padding-left: 1px;
 }
 
 .micro-ui-beta {
@@ -684,20 +803,10 @@ legend::after {
 
 .micro-ui-header-fill {
     flex: auto;
-    min-width: calc(0.25 * 1.5rem);
 }
 
 .micro-ui-menu {
     margin: 0;
-}
-
-[is=micro-menu].micro-ui-menu > li > .link {
-    padding: calc(1.5em / 4);
-    border-right: 1px solid #ddd;
-}
-
-[is=micro-menu].micro-ui-menu > li:first-child > .link {
-    border-left: 1px solid #ddd;
 }
 
 body:not(.micro-ui-settings-have-feedback-url) .micro-ui-feedback {
@@ -714,31 +823,12 @@ main {
 
 .micro-ui-progress {
     margin: calc(3 * 1.5rem) 0;
-    color: var(--micro-color-primary);
     font-size: 3rem;
     text-align: center;
 }
 
-/* ---- Notification ---- */
-
-.micro-notification {
-    display: block;
-    padding: calc(0.5 * 1.5em) 0;
-    border-top: 1px solid #ddd;
-}
-
-.micro-notification .micro-ui-inside > :first-child {
-    margin-top: 0;
-}
-
-.micro-notification .micro-ui-inside > :last-child {
-    margin-bottom: 0;
-}
-
-/* ---- SimpleNotification ---- */
-
-.micro-simple-notification-content > :first-child {
-    margin-top: 0;
+.micro-ui-progress i {
+    color: var(--micro-color-primary);
 }
 
 /* ---- ErrorNotification ---- */
@@ -759,8 +849,8 @@ main {
     text-align: center;
 }
 
-.micro-boot-page h1 {
-    color: #f00;
+.micro-boot-page i {
+    color: red;
 }
 
 .micro-boot-page-detail {
@@ -781,14 +871,6 @@ micro-forbidden-page {
 }
 
 /* ---- EditUserPage ---- */
-
-.micro-edit-user-email header {
-    align-items: flex-end;
-}
-
-.micro-edit-user-email header h1 {
-    flex: auto;
-}
 
 micro-edit-user-page:not(.micro-edit-user-has-email) .micro-edit-user-remove-email {
     display: none;

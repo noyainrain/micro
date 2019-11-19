@@ -4,7 +4,6 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-        <title>Hello</title>
 
         {% raw micro_dependencies() %}
         <script src="{{ static_url('hello.js') }}" defer="defer"></script>
@@ -63,16 +62,22 @@
             <span class="tag">Other</span>
             <span class="tag">Juice</span>
 
-            <micro-list-input data-value="tags" data-order="false">
-            </micro-list-input>
+            <label>
+                <micro-list-input data-value="tags" data-order="false">
+                </micro-list-input>
+            </label>
 
             Unique:
-            <micro-list-input data-value="tags" data-order="false" data-set="true">
-            </micro-list-input>
+            <label>
+                <micro-list-input data-value="tags" data-order="false" data-set="true">
+                </micro-list-input>
+            </label>
 
-            <micro-list-input data-value="tags" data-order="false">
-                <template><span class="tag" data-content="item"></span></template>
-            </micro-list-input>
+            <label>
+                <micro-list-input data-value="tags" data-order="false">
+                    <template><span class="tag" data-content="item"></span></template>
+                </micro-list-input>
+            </label>
 
             </p>
             <label>
@@ -93,11 +98,14 @@
                     </p>
                 </form>
             </div>
-            <ul class="hello-start-greetings" data-content="list greetings 'greeting'">
+            <ul class="hello-start-greetings" data-content="list greetings.items 'greeting'">
                 <template>
                     <li data-id="makeGreetingHash greeting" class="micro-quick-nav" tabindex="0">
-                        <span><micro-user data-user="greeting.authors.0"></micro-user>:</span>
-                        <q data-content="greeting.text"></q>
+                        <header class="micro-panel">
+                            <p><micro-user data-user="greeting.authors.0"></micro-user>:</p>
+                        </header>
+                        <div data-content="renderResource greeting.resource"></div>
+                        <p class="micro-multiline" data-content="markup greeting.text"></p>
                     </li>
                 </template>
             </ul>
@@ -146,26 +154,37 @@
             }
 
             .hello-start-greetings {
+                --micro-link-max-height: calc(1.5em * 5);
+                --micro-image-max-height: calc(1.5em * 5);
                 padding: 0;
                 list-style: none;
             }
 
             .hello-start-greetings > li {
-                padding: calc(1.5em / 2) 0;
-                border-top: 1px solid #ddd;
+                padding: 1px 0;
+                border-top: 1px solid var(--micro-color-delimiter);
             }
 
-            .hello-start-greetings > li span {
-                color: #888;
+            .hello-start-greetings > li > div,
+            .hello-start-greetings > li > p {
+                margin: 0 0 var(--micro-size-rxs) 0;
             }
 
-            .hello-start-greetings > li > q {
-                quotes: "«" "»";
+            .hello-start-greetings > li > header {
+                margin: 0;
             }
 
-            .hello-start-greetings > li > q::before,
-            .hello-start-greetings > li > q::after {
-                color: #888;
+            .hello-start-greetings > li > header > p {
+                padding-left: 0;
+                font-weight: bold;
+            }
+
+            .hello-start-greetings > li > div:empty {
+                display: none;
+            }
+
+            .hello-start-greetings micro-video {
+                width: calc(1.5em * 5 * 16 / 9);
             }
         </style>
 

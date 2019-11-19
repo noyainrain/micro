@@ -14,28 +14,46 @@
 
 """micro application example."""
 
-import json
 import sys
 
-import micro
-from micro import Application, Editable, Object, Settings
-from micro.jsonredis import JSONRedisMapping
-from micro.server import Server, Endpoint
-from micro.util import make_command_line_parser, randstr, setup_logging, str_or_none
+from micro import Application, Collection, Editable, Event, Object, Settings, WithContent, error
+from micro.jsonredis import RedisList
+from micro.server import CollectionEndpoint, Server
+from micro.util import make_command_line_parser, randstr, setup_logging
 
 class Hello(Application):
     """Hello application.
 
     .. attribute:: greetings
 
-       Map of all :class:`Greeting` s.
+       See :class:`Hello.Greetings`.
     """
 
+    class Greetings(Collection):
+        """Collection of all class:`Greeting`s."""
+
+        async def create(self, text, resource):
+            """Create a :class:`Greeting` and return it."""
+            attrs = await WithContent.process_attrs({'text': text, 'resource': resource},
+                                                    app=self.app)
+            if not (attrs['text'] or attrs['resource']):
+                raise error.ValueError('No text and resource')
+
+            greeting = Greeting(
+                id='Greeting:{}'.format(randstr()), app=self.app, authors=[self.app.user.id],
+                text=attrs['text'], resource=attrs['resource'])
+            self.r.oset(greeting.id, greeting)
+            self.r.lpush(self.ids.key, greeting.id)
+            self.app.activity.publish(
+                Event.create('greetings-create', None, detail={'greeting': greeting}, app=self.app))
+            return greeting
+
     def __init__(self, redis_url='', email='bot@localhost', smtp_url='',
-                 render_email_auth_message=None):
-        super().__init__(redis_url, email, smtp_url, render_email_auth_message)
+                 render_email_auth_message=None, *, video_service_keys={}):
+        super().__init__(redis_url, email, smtp_url, render_email_auth_message,
+                         video_service_keys=video_service_keys)
         self.types.update({'Greeting': Greeting})
-        self.greetings = JSONRedisMapping(self.r, 'greetings')
+        self.greetings = Hello.Greetings(RedisList('greetings', self.r.r), app=self)
 
     def create_settings(self):
         # pylint: disable=unexpected-keyword-arg; decorated
@@ -45,17 +63,7 @@ class Hello(Application):
             feedback_url=None, staff=[], push_vapid_private_key=None, push_vapid_public_key=None,
             v=2)
 
-    def create_greeting(self, text):
-        """Create a :class:`Greeting` and return it."""
-        if str_or_none(text) is None:
-            raise micro.ValueError('text_empty')
-        greeting = Greeting(id='Greeting:{}'.format(randstr()), app=self, authors=[self.user.id],
-                            text=text)
-        self.r.oset(greeting.id, greeting)
-        self.r.rpush('greetings', greeting.id)
-        return greeting
-
-class Greeting(Object, Editable):
+class Greeting(Object, Editable, WithContent):
     """Public greeting.
 
     .. attribute:: text
@@ -63,43 +71,46 @@ class Greeting(Object, Editable):
        Text content.
     """
 
-    def __init__(self, id, app, authors, text):
+    def __init__(self, *, id, app, authors, text, resource):
         super().__init__(id, app)
         Editable.__init__(self, authors)
-        self.text = text
+        WithContent.__init__(self, text=text, resource=resource)
 
-    def do_edit(self, **attrs):
-        if 'text' in attrs:
-            if str_or_none(attrs['text']) is None:
-                raise micro.ValueError('text_empty')
-            self.text = attrs['text']
+    async def do_edit(self, **attrs):
+        attrs = await WithContent.pre_edit(self, attrs)
+        if not (attrs.get('text', self.text) or attrs.get('resource', self.resource)):
+            raise error.ValueError('No text and resource')
+        WithContent.do_edit(attrs)
 
     def json(self, restricted=False, include=False):
-        # pylint: disable=redefined-outer-name; fine name
-        json = super().json(restricted, include)
-        json.update(Editable.json(self, restricted, include))
-        json.update({'text': self.text})
-        return json
+        return {
+            **super().json(restricted, include),
+            **Editable.json(self, restricted, include),
+            **WithContent.json(self, restricted=restricted, include=include)
+        }
 
-def make_server(port=8080, url=None, client_path='.', debug=False, redis_url='', smtp_url='',
+def make_server(port=8080, url=None, debug=False, redis_url='', smtp_url='', video_service_keys={},
                 client_map_service_key=None):
     """Create a Hello server."""
-    app = Hello(redis_url, smtp_url=smtp_url)
-    handlers = [(r'/api/greetings$', _GreetingsEndpoint)]
-    return Server(app, handlers, port, url, client_path, client_modules_path='node_modules',
-                  debug=debug, client_map_service_key=client_map_service_key)
+    app = Hello(redis_url, smtp_url=smtp_url, video_service_keys=video_service_keys)
+    handlers = [
+        (r'/api/greetings$', _GreetingsEndpoint, {'get_collection': lambda *args: app.greetings})
+    ]
+    return Server(app, handlers, port=port, url=url, debug=debug, client_config={
+        'path': '.',
+        'modules_path': 'node_modules',
+        'shell': ['hello.js'],
+        'map_service_key': client_map_service_key
+    })
 
-class _GreetingsEndpoint(Endpoint):
+class _GreetingsEndpoint(CollectionEndpoint):
     # pylint: disable=abstract-method; Tornado handlers define a semi-abstract data_received()
     # pylint: disable=arguments-differ; Tornado handler arguments are defined by URLs
+    # pylint: disable=missing-docstring; Tornado handlers are documented globally
 
-    def get(self):
-        greetings = self.app.greetings.values()
-        self.write(json.dumps([g.json(restricted=True, include=True) for g in greetings]))
-
-    def post(self):
-        args = self.check_args({'text': str})
-        greeting = self.app.create_greeting(**args)
+    async def post(self):
+        args = self.check_args({'text': (str, None), 'resource': (str, None)})
+        greeting = await self.app.greetings.create(**args)
         self.write(greeting.json(restricted=True, include=True))
 
 def main(args):
@@ -108,6 +119,9 @@ def main(args):
     *args* is the list of command line arguments.
     """
     args = make_command_line_parser().parse_args(args[1:])
+    if 'video_service_keys' in args:
+        values = iter(args.video_service_keys)
+        args.video_service_keys = dict(zip(values, values))
     setup_logging(args.debug if 'debug' in args else False)
     make_server(**vars(args)).run()
     return 0

@@ -1,7 +1,6 @@
 # jsonredis
-# https://github.com/NoyaInRain/micro/blob/master/jsonredis.py
-# part of Micro
-# released into the public domain
+# Released into the public domain
+# https://github.com/noyainrain/micro/blob/master/micro/jsonredis.py
 
 """Extended :class:`Redis` client for convinient use with JSON objects.
 
@@ -9,22 +8,46 @@ Also includes :class:`JSONRedisMapping`, an utility map interface for JSON objec
 
 .. data:: ExpectFunc
 
-   Function of the form `expect(obj: T) -> U` which asserts that an object *obj* is of a certain
-   type *U* and raises a :exc:`TypeError` if not.
+   Function of the form `expect(obj: object) -> _T` which asserts that *obj* is of a certain type
+   *_T* and raises a :exc:`TypeError` if not.
 """
 
 import json
-from typing import (Callable, Dict, Generic, List, Mapping, Optional, Sequence, Type, TypeVar,
-                    Union, cast, overload)
-from weakref import WeakValueDictionary
+from math import isinf
+import sys
+from time import time
+from typing import (Callable, Dict, Generic, Iterator, List, Mapping, Optional, Sequence, Set,
+                    Tuple, Type, TypeVar, Union, cast, overload)
+from weakref import WeakKeyDictionary, WeakValueDictionary, WeakSet
 
-from redis import StrictRedis
+from redis import Redis
+from redis.client import Script # pylint: disable=unused-import; typing
 from redis.exceptions import ResponseError
+from typing_extensions import Literal
 
 T = TypeVar('T')
 U = TypeVar('U')
 
-ExpectFunc = Callable[[T], U]
+ExpectFunc = Callable[[object], T]
+
+_ZPOPTIMED_SCRIPT = """\
+redis.replicate_commands()
+local key = KEYS[1]
+local result = redis.call("zrange", key, 0, 0, "withscores")
+if result[1] then
+    local value, t = result[1], result[2]
+    local now = redis.call("time")
+    now = string.format("%d.%06d", now[1], now[2])
+    if tonumber(now) >= tonumber(t) then
+        redis.call("zrem", key, value)
+        return {value, t}
+    end
+    return t
+end
+return "+inf"
+"""
+_ZPOPTIMED_CACHE = WeakKeyDictionary() # type: WeakKeyDictionary[Redis, Script]
+_BZPOPTIMED_CACHE = WeakSet() # type: WeakSet[Redis]
 
 class JSONRedis(Generic[T]):
     """Extended :class:`Redis` client for convenient use with JSON objects.
@@ -63,7 +86,7 @@ class JSONRedis(Generic[T]):
     """
 
     def __init__(
-            self, r: StrictRedis, encode: Callable[[T], Dict[str, object]] = None,
+            self, r: Redis, encode: Callable[[T], Dict[str, object]] = None,
             decode: Callable[[Dict[str, object]], Union[T, Dict[str, object]]] = None,
             caching: bool = True) -> None:
         self.r = r
@@ -73,7 +96,8 @@ class JSONRedis(Generic[T]):
         self._cache = WeakValueDictionary() # type: WeakValueDictionary[str, T]
 
     @overload
-    def oget(self, key: str, *, default: None = None, expect: None = None) -> Optional[T]:
+    def oget( # type: ignore
+            self, key: str, *, default: None = None, expect: None = None) -> Optional[T]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
@@ -81,15 +105,16 @@ class JSONRedis(Generic[T]):
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
-    def oget(self, key: str, *, default: None = None, expect: ExpectFunc[T, U]) -> Optional[U]:
+    def oget( # type: ignore
+            self, key: str, *, default: None = None, expect: ExpectFunc[U]) -> Optional[U]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
-    def oget(self, key: str, *, default: Union[T, Type[Exception]], expect: ExpectFunc[T, U]) -> U:
+    def oget(self, key: str, *, default: Union[T, Type[Exception]], expect: ExpectFunc[U]) -> U:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     def oget(self, key: str, default: Union[T, Type[Exception]] = None,
-             expect: ExpectFunc[T, U] = None) -> Union[Optional[T], T, U, Optional[U]]:
+             expect: ExpectFunc[U] = None) -> Union[Optional[T], T, U, Optional[U]]:
         """Return the object at *key*.
 
         If *key* does not exist, *default* is returned. If *default* is an :exc:`Exception`, it is
@@ -123,8 +148,9 @@ class JSONRedis(Generic[T]):
         self.set(key, json.dumps(object, default=self.encode))
 
     @overload
-    def omget(self, keys: Sequence[str], *, default: None = None,
-              expect: None = None) -> List[Optional[T]]:
+    def omget( # type: ignore
+            self, keys: Sequence[str], *, default: None = None,
+            expect: None = None) -> List[Optional[T]]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
@@ -133,18 +159,19 @@ class JSONRedis(Generic[T]):
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
-    def omget(self, keys: Sequence[str], *, default: None = None,
-              expect: ExpectFunc[T, U]) -> List[Optional[U]]:
+    def omget( # type: ignore
+            self, keys: Sequence[str], *, default: None = None,
+            expect: ExpectFunc[U]) -> List[Optional[U]]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
     def omget(self, keys: Sequence[str], *, default: Union[T, Type[Exception]],
-              expect: ExpectFunc[T, U]) -> List[U]:
+              expect: ExpectFunc[U]) -> List[U]:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     def omget(
             self, keys: Sequence[str], default: Union[T, Type[Exception]] = None,
-            expect: ExpectFunc[T, U] = None
+            expect: ExpectFunc[U] = None
         ) -> Union[List[Optional[T]], List[T], List[Optional[U]], List[U]]:
         """Return a list of objects for the given *keys*.
 
@@ -154,7 +181,7 @@ class JSONRedis(Generic[T]):
         objects = [self.oget(k, default=default, expect=expect) for k in keys]
         return cast(Union[List[Optional[T]], List[T], List[Optional[U]], List[U]], objects)
 
-    def omset(self, mapping):
+    def omset(self, mapping: Mapping[str, T]) -> None:
         """Set each key in *mapping* to its corresponding object."""
         # NOTE: Not atomic at the moment
         for key, object in mapping.items():
@@ -163,6 +190,117 @@ class JSONRedis(Generic[T]):
     def __getattr__(self, name):
         # proxy
         return getattr(self.r, name)
+
+class RedisSequence(Sequence[bytes]):
+    """Read-Only sequence interface for Redis collections.
+
+    .. attribute:: key
+
+       Key of the Redis collection.
+
+    .. attribute:: r
+
+       Underlying Redis client.
+    """
+
+    def __init__(self, key: str, r: Redis) -> None:
+        self.key = key
+        self.r = r
+
+class RedisList(RedisSequence):
+    """Read-Only sequence interface for Redis lists.
+
+    Redis operations:
+
+    * index(): 1 full query
+    * count(): 1 full query
+    * len(l): 1
+    * l[k]: 1
+    * iter(l): 1 full query
+    * k in l: 1 full query
+    """
+
+    def index(self, x: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
+        # pylint: disable=missing-docstring; inherited
+        # Optimized
+        return self[:].index(x, start, stop)
+
+    def __len__(self) -> int:
+        return self.r.llen(self.key)
+
+    @overload
+    def __getitem__(self, key: int) -> bytes:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def __getitem__(self, key: slice) -> List[bytes]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    def __getitem__(self, key: Union[int, slice]) -> Union[bytes, List[bytes]]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        if isinstance(key, slice):
+            if key.step:
+                raise NotImplementedError()
+            return self.r.lrange(self.key, *redis_range(key))
+        id = self.r.lindex(self.key, key)
+        if not id:
+            raise IndexError()
+        return id
+
+    def __iter__(self) -> Iterator[bytes]:
+        # Optimized and used by count() and k in l
+        return iter(self[:])
+
+class RedisSortedSet(RedisSequence, Set[bytes]):
+    """Read-Only set / sequence interface for Redis sorted sets.
+
+    Redis operations:
+
+    * index(): 1
+    * count(): 1 full query
+    * len(s): 1
+    * s[k]: 1
+    * iter(s): 1 full query
+    * k in s: 1
+    """
+
+    def index(self, x: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
+        # pylint: disable=missing-docstring; inherited
+        # Optimized
+        if start < 0 or stop < 0:
+            raise NotImplementedError()
+        rank = self.r.zrank(self.key, x)
+        if rank is None or not start <= rank < stop:
+            raise ValueError()
+        return rank
+
+    def __len__(self) -> int:
+        return self.r.zcard(self.key)
+
+    @overload
+    def __getitem__(self, key: int) -> bytes:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def __getitem__(self, key: slice) -> List[bytes]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    def __getitem__(self, key: Union[int, slice]) -> Union[bytes, List[bytes]]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        if isinstance(key, slice):
+            if key.step:
+                raise NotImplementedError()
+            return self.r.zrange(self.key, *redis_range(key))
+        # Raises IndexError for empty range
+        return self.r.zrange(self.key, key, key)[0]
+
+    def __iter__(self) -> Iterator[bytes]:
+        # Optimized and used by count()
+        return iter(self[:])
+
+    def __contains__(self, item: object) -> bool:
+        # Optimized
+        return isinstance(item, bytes) and self.r.zscore(self.key, item) is not None
 
 class JSONRedisSequence(Sequence[T]):
     """Read-Only list interface for JSON objects stored in Redis.
@@ -185,27 +323,26 @@ class JSONRedisSequence(Sequence[T]):
         self.r = r
         self.list_key = list_key
         self.pre = pre
+        self._ids = RedisList(self.list_key, self.r.r)
 
-    def __getitem__(self, key):
+    @overload
+    def __getitem__(self, key: int) -> T:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def __getitem__(self, key: slice) -> List[T]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    def __getitem__(self, key: Union[int, slice]) -> Union[T, List[T]]:
+        # pylint: disable=function-redefined,missing-docstring; overload
         if self.pre:
             self.pre()
-
         if isinstance(key, slice):
-            if key.step:
-                raise NotImplementedError()
-            if key.stop == 0:
-                return []
-            start = 0 if key.start is None else key.start
-            stop = -1 if key.stop is None else key.stop - 1
-            return self.r.omget(k.decode() for k in self.r.lrange(self.list_key, start, stop))
+            return self.r.omget([id.decode() for id in self._ids[key]], default=ReferenceError)
+        return self.r.oget(self._ids[key].decode(), default=ReferenceError)
 
-        id = self.r.lindex(self.list_key, key)
-        if not id:
-            raise IndexError()
-        return self.r.oget(id.decode())
-
-    def __len__(self):
-        return self.r.llen(self.list_key)
+    def __len__(self) -> int:
+        return len(self._ids)
 
 class JSONRedisMapping(Generic[T, U], Mapping[str, T]):
     """Simple, read-only map interface for JSON objects stored in Redis.
@@ -226,37 +363,87 @@ class JSONRedisMapping(Generic[T, U], Mapping[str, T]):
        Function narrowing the type of retrieved objects. May be ``None``.
     """
 
-    def __init__(self, r: JSONRedis[U], map_key: str, expect: ExpectFunc[U, T] = None) -> None:
+    def __init__(self, r: JSONRedis[U], map_key: str, expect: ExpectFunc[T] = None) -> None:
         self.r = r
         self.map_key = map_key
         self.expect = expect
+        self._ids = RedisList(self.map_key, self.r.r)
 
     def __getitem__(self, key: str) -> T:
-        # NOTE: with set:
-        #if key not in self:
-        if key not in iter(self):
+        if key.encode() not in self._ids:
             raise KeyError()
         return cast(T, self.r.oget(key, default=ReferenceError, expect=self.expect))
 
     def __iter__(self):
-        # NOTE: with set:
-        #return (k.decode() for k in self.r.smembers(self.map_key))
-        return (k.decode() for k in self.r.lrange(self.map_key, 0, -1))
+        return (id.decode() for id in self._ids)
 
-    def __len__(self):
-        # NOTE: with set:
-        #return self.r.scard(self.map_key)
-        return self.r.llen(self.map_key)
-
-     # NOTE: with set:
-     #def __contains__(self, key):
-     #    # optimized
-     #    return self.r.sismember(self.map_key, key)
+    def __len__(self) -> int:
+        return len(self._ids)
 
     def __repr__(self):
         return str(dict(self))
 
-def expect_type(cls: Type[T]) -> ExpectFunc[object, T]:
+def zpoptimed(r: Redis, key: str) -> Union[Tuple[bytes, float], float]:
+    """Remove and return the earliest available member (with score) in the sorted set at *key*.
+
+    The score is considered to be the POSIX time a member is available. If no member is available
+    yet, the time of the next one is returned or infinity if the set is empty. *r* is the Redis
+    client to use.
+    """
+    if r not in _ZPOPTIMED_CACHE:
+        _ZPOPTIMED_CACHE[r] = r.register_script(_ZPOPTIMED_SCRIPT)
+    f = _ZPOPTIMED_CACHE[r]
+
+    result = f(keys=[key])
+    if isinstance(result, list):
+        return (expect_type(bytes)(result[0]), float(result[1]))
+    if isinstance(result, bytes):
+        return float(result)
+    raise TypeError()
+
+@overload
+def bzpoptimed(r: Redis, key: str, *, timeout: Literal[0]=0) -> Tuple[bytes, float]:
+    # pylint: disable=function-redefined,missing-docstring,unused-argument; overload
+    pass
+@overload
+def bzpoptimed(r: Redis, key: str, *, timeout: Union[float, int]) -> Optional[Tuple[bytes, float]]:
+    # pylint: disable=function-redefined,missing-docstring,unused-argument; overload
+    pass
+def bzpoptimed(r: Redis, key: str, *,
+               timeout: Union[float, int] = 0) -> Optional[Tuple[bytes, float]]:
+    # pylint: disable=function-redefined,missing-docstring,unused-argument; overload
+    """Pop the earliest member (with score) in the sorted set at *key* as soon as it is available.
+
+    Blocking variant of :meth:`zpoptimed`. *timeout* is the maximum number of seconds to block
+    before returning ``None``, with ``0`` blocking indefinitely.
+    """
+    if r not in _BZPOPTIMED_CACHE:
+        flags = set(r.config_get()['notify-keyspace-events']) | set('Kz')
+        r.config_set('notify-keyspace-events', ''.join(flags))
+        _BZPOPTIMED_CACHE.add(r)
+
+    deadline = time() + timeout if timeout else float('inf')
+    p = r.pubsub()
+    p.subscribe('__keyspace@{}__:{}'.format(r.connection_pool.connection_kwargs['db'], key))
+    while True:
+        result = zpoptimed(r, key)
+        if isinstance(result, tuple):
+            p.close()
+            return result
+        now = time()
+        if now >= deadline:
+            return None
+        sleep = max(min(result, deadline) - now, 0)
+        # get_message() doesn't provide a way to block indefinitely, so just sleep very long
+        p.get_message(timeout=60 * 60 if isinf(sleep) else sleep)
+
+def redis_range(slc: slice) -> Tuple[int, int]:
+    """Convert the slice *slc* to Redis range indices."""
+    if slc.stop == 0:
+        return (1, 0)
+    return (0 if slc.start is None else slc.start, -1 if slc.stop is None else slc.stop - 1)
+
+def expect_type(cls: Type[T]) -> ExpectFunc[T]:
     """Return a function which asserts that a given *obj* is an instance of *cls*."""
     def _f(obj: object) -> T:
         if not isinstance(obj, cls):

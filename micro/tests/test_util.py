@@ -16,7 +16,18 @@
 
 from unittest import TestCase
 
-from micro.util import version
+from micro.tests import RES_PATH
+from micro.util import look_up_files, version
+
+class LookUpFilesTest(TestCase):
+    def test_call(self) -> None:
+        files = look_up_files(['*.html', 'in', '!in/b.txt', '!in/out'], top=RES_PATH)
+        result = [RES_PATH / 'loop.html', RES_PATH / 'webpage.html', RES_PATH / 'in/a.txt']
+        self.assertEqual(files, result)
+
+    def test_call_no_file(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'paths'):
+            look_up_files(['foo'], top=RES_PATH)
 
 class VersionTest(TestCase):
     @version(1)

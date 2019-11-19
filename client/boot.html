@@ -43,7 +43,7 @@
 
     var features = {};
     features.dom4ClassList = "classList" in document.createElement("div");
-    features.dom4QuerySelector = "querySelector" in document;
+    features.dom4ParentNode = "append" in document.body;
     try {
         eval("var x = () => {};");
         features.es6ArrowFunction = true;
@@ -76,10 +76,20 @@
     } catch (e) {
         features.es6TemplateLiteral = false;
     }
+    try {
+        // Make sure async implementation covers arrow functions and use in class scope (see
+        // https://bugs.webkit.org/show_bug.cgi?id=166879)
+        eval("new class {constructor() {(async() => {})();}}()");
+        features.es8AsyncFunction = true;
+    } catch (e) {
+        features.es8AsyncFunction = false;
+    }
     features.html5Constraints = "validity" in document.createElement("input");
+    features.html5ErrorEvent = "error" in new ErrorEvent("error");
     features.html5History = "pushState" in history;
     features.html5Storage = "localStorage" in window;
     features.html5Template = "content" in document.createElement("template");
+    features.fetch = "fetch" in window;
 
     var compatible = Object.keys(features).reduce(
         function(p, c) { return p && features[c]; }, true);

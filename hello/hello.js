@@ -45,12 +45,13 @@ hello.UI = class extends micro.UI {
 hello.StartPage = class extends micro.Page {
     createdCallback() {
         super.createdCallback();
+        this._activity = null;
+
         this.appendChild(
             document.importNode(ui.querySelector(".hello-start-page-template").content, true));
-
         this._data = new micro.bind.Watchable({
             settings: ui.settings,
-            greetings: null,
+            greetings: new micro.Collection("/api/greetings"),
 
             options: ["foo", "bar", "fobax"],
 
@@ -58,13 +59,24 @@ hello.StartPage = class extends micro.Page {
 
             createGreeting: async() => {
                 try {
-                    let form = this.querySelector("form");
-                    let greeting = await ui.call("POST", "/api/greetings",
-                                                 {text: form.elements.text.value});
-                    this._data.greetings.unshift(greeting);
+                    const form = this.querySelector("form");
+                    const text = form.elements.text.value;
+                    const match = text.match(/^https?:\/\/\S+/u);
+                    const resource = match ? match[0] : null;
+                    await ui.call("POST", "/api/greetings", {text, resource});
                     form.reset();
                 } catch (e) {
-                    ui.handleCallError(e);
+                    if (
+                        e instanceof micro.APIError &&
+                        [
+                            "CommunicationError", "NoResourceError", "ForbiddenResourceError",
+                            "BrokenResourceError"
+                        ].includes(e.error.__type__)
+                    ) {
+                        ui.notify("Oops, there was a problem opening the link. Please try again in a few moments.");
+                    } else {
+                        ui.handleCallError(e);
+                    }
                 }
             },
 
@@ -79,12 +91,22 @@ hello.StartPage = class extends micro.Page {
         super.attachedCallback();
         this.ready.when((async() => {
             try {
-                let greetings = await ui.call("GET", "/api/greetings");
-                this._data.greetings = new micro.bind.Watchable(greetings);
+                await this._data.greetings.fetch();
+                this._activity = await micro.Activity.open("/api/activity/stream");
+                this._activity.events.addEventListener(
+                    "greetings-create",
+                    event => this._data.greetings.items.unshift(event.detail.event.detail.greeting)
+                );
             } catch (e) {
                 ui.handleCallError(e);
             }
         })().catch(micro.util.catch));
+    }
+
+    detachedCallback() {
+        if (this._activity) {
+            this._activity.close();
+        }
     }
 };
 

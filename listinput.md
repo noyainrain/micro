@@ -1,5 +1,8 @@
 # listinput
 
+* SNIPPET ctx refactor
+* TODO list_input -> list_input.html and list_input.js
+
 * TODO options
 
 * what if current/given values are not unique and set = true? should we filter?

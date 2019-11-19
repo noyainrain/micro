@@ -6,11 +6,15 @@ disable=
     # Good design is best figured out by humans (yet)
     design,
     too-many-lines,
+    too-many-nested-blocks,
+    # Fails for Generic (see https://github.com/PyCQA/pylint/issues/2717)
+    duplicate-bases,
     # Arguments should not be manipulated anyway
     dangerous-default-value,
     # There are built-ins with common names like id
     redefined-builtin,
     # Handled by mypy
+    iterable_check,
     typecheck
 
 [reports]

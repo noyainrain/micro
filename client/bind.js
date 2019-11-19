@@ -372,6 +372,25 @@ micro.bind.filter = function(arr, callback, thisArg = null) {
 };
 
 /**
+ * Create a new :class:`Watchable` live array from *arr*, applying a function to every item.
+ *
+ * *arr* is a :class:`Watchable` array. *callback* and *thisArg* are equivalent to
+ * :func:`Array.map`.
+ */
+micro.bind.map = function(arr, callback, thisArg = null) {
+    let mapped = new micro.bind.Watchable(arr.map(callback, thisArg));
+    arr.watch(Symbol.for("*"), (prop, value) => {
+        mapped[prop] = callback.call(thisArg, value);
+    });
+    arr.watch(
+        Symbol.for("+"),
+        (prop, value) => mapped.splice(parseInt(prop), 0, callback.call(thisArg, value))
+    );
+    arr.watch(Symbol.for("-"), prop => mapped.splice(parseInt(prop), 1));
+    return mapped;
+};
+
+/**
  * TODO.
  */
 micro.bind.difference = function(arr, other, equals = (a, b) => a === b) {
@@ -415,6 +434,15 @@ micro.bind.transforms = {
     },
 
     /**
+     * Bind *args* to *func*.
+     *
+     * The returned function will call *func* with *args* prepended and ``this`` set to *thisArg*.
+     */
+    bindThis(ctx, func, thisArg, ...args) {
+        return func.bind(thisArg, ...args);
+    },
+
+    /**
      * Format a string containing placeholders.
      *
      * *str* is a format string with placeholders of the form ``{key}``. *args* is a flat list of
@@ -429,6 +457,19 @@ micro.bind.transforms = {
     formatPlural(ctx, singular, plural, ...args) {
         let n = new Map(micro.bind.chunk(args, 2)).get("n");
         return micro.bind.transforms.format(ctx, n === 1 ? singular : plural, ...args);
+    },
+
+    /**
+     * Return a string representation of the given :class:`Date` *date*.
+     *
+     * Alternatively, *date* may be a string parsable by :class:`Date`. *format* is equivalent to
+     * the *options* argument of :meth:`Date.toLocaleString`.
+     */
+    formatDate(ctx, date, format) {
+        if (typeof date === "string") {
+            date = new Date(date);
+        }
+        return date.toLocaleString("en", format);
     },
 
     /**
@@ -518,6 +559,7 @@ micro.bind.transforms = {
     },
 
     filter: micro.bind.filter,
+    map: micro.bind.map,
     difference: micro.bind.difference,
 
     /**

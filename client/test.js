@@ -39,6 +39,9 @@ exports.startBrowser = function(test, subject) {
 
     let capabilities = {
         browserName,
+        // Work around Safari 13 missing elements on click (see
+        // https://bugs.webkit.org/show_bug.cgi?id=202589)
+        version: process.env.BROWSER_VERSION,
         platform: process.env.PLATFORM,
         tunnelIdentifier: process.env.TUNNEL_ID,
         name: `[${subject}]${tag} ${test.fullTitle()}`
@@ -46,6 +49,17 @@ exports.startBrowser = function(test, subject) {
     let browser = new Builder().usingServer(webdriverURL).withCapabilities(capabilities).build();
     browser.remote = Boolean(webdriverURL);
     return browser;
+};
+
+/** Navigate *browser* to the given *url* with an active service worker. */
+exports.getWithServiceWorker = async function(browser, url) {
+    async function f(callback) {
+        await navigator.serviceWorker.ready;
+        callback();
+    }
+    await browser.get(url);
+    await browser.executeAsyncScript(f);
+    await browser.get(url);
 };
 
 /**

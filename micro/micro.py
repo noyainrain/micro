@@ -1,5 +1,4 @@
 # micro
-
 # Copyright (C) 2018 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
@@ -15,34 +14,43 @@
 
 """Core parts of micro."""
 
+from asyncio import (CancelledError, Task, Queue, # pylint: disable=unused-import; typing
+                     ensure_future, get_event_loop, shield)
 import builtins
-from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
-import errno
+from functools import partial
+from inspect import isawaitable
 import json
 from logging import getLogger
-import os
 import re
 from smtplib import SMTP
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union, cast, overload
-from urllib.parse import urlparse
-from warnings import catch_warnings
+import sys
+from typing import (AsyncIterator, Awaitable, Callable, Coroutine, Dict, Generic, Iterator, List,
+                    Optional, Set, Tuple, Type, TypeVar, Union, cast, overload)
+from urllib.parse import SplitResult, urlparse, urlsplit
 
 from pywebpush import WebPusher, WebPushException
 from py_vapid import Vapid
 from py_vapid.utils import b64urlencode
 from redis import StrictRedis
 from redis.exceptions import ResponseError
-from tornado.httpclient import AsyncHTTPClient, HTTPResponse
-from tornado.simple_httpclient import HTTPStreamClosedError, HTTPTimeoutError
+from requests.exceptions import RequestException
 from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
-from micro.jsonredis import JSONRedis, JSONRedisSequence, JSONRedisMapping, expect_type
-from .util import check_email, randstr, parse_isotime, str_or_none, version
+from .error import CommunicationError, ValueError
+from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
+                        RedisSequence, bzpoptimed)
+from .resource import ( # pylint: disable=unused-import; typing
+    Analyzer, HandleResourceFunc, Image, Resource, Video, handle_image, handle_webpage,
+    handle_youtube)
+from .util import (Expect, OnType, check_email, expect_opt_type, expect_type, parse_isotime,
+                   randstr, run_instant, str_or_none)
 
 _PUSH_TTL = 24 * 60 * 60
+
+O = TypeVar('O', bound='Object')
 
 class JSONifiable(Protocol):
     """Object which can be encoded to and decoded from a JSON representation."""
@@ -61,7 +69,16 @@ class JSONifiable(Protocol):
         :attr:`Application.user` are excluded. If *include* is ``True``, additional fields that may
         be of interest to the caller are included.
         """
-        pass
+
+class JSONifiableWithParse(JSONifiable, Protocol):
+    # pylint: disable=missing-docstring; semi-public
+
+    @staticmethod
+    def parse(data: Dict[str, object], **args: object) -> JSONifiable:
+        """Parse the given JSON *data* into an object.
+
+        Additional keyword arguments *args* are passed to the constructor.
+        """
 
 class Application:
     """Social micro web app.
@@ -72,7 +89,11 @@ class Application:
 
     .. attribute:: users
 
-       Map of all :class:`User` s.
+       Collection of all :class:`User`s.
+
+    .. attribute:: analytics
+
+       Analytics unit.
 
     .. attribute:: redis_url
 
@@ -92,14 +113,23 @@ class Application:
        for rendering an email message for the authentication request *auth_request*. *email* is the
        email address to authenticate and *auth* is the secret authentication code.
 
+    .. attribute:: video_service_keys
+
+       See ``--video-service-keys`` command line option.
+
     .. attribute:: r
 
        :class:`Redis` database. More precisely a :class:`JSONRedis` instance.
+
+    .. attribute:: analyzer
+
+       Web resource analyzer.
     """
 
     def __init__(
             self, redis_url: str = '', email: str = 'bot@localhost', smtp_url: str = '',
-            render_email_auth_message: Callable[[str, 'AuthRequest', str], str] = None) -> None:
+            render_email_auth_message: Callable[[str, 'AuthRequest', str], str] = None, *,
+            video_service_keys: Dict[str, str] = {}) -> None:
         check_email(email)
         try:
             # pylint: disable=pointless-statement; port errors are only triggered on access
@@ -109,28 +139,46 @@ class Application:
 
         self.redis_url = redis_url
         try:
-            self.r = JSONRedis(StrictRedis.from_url(self.redis_url), self._encode, self._decode)
+            urlparts = urlsplit(self.redis_url)
+            url = SplitResult(
+                urlparts.scheme or 'redis', urlparts.netloc or 'localhost', urlparts.path,
+                urlparts.query, urlparts.fragment
+            ).geturl()
+            self.r = JSONRedis(StrictRedis.from_url(url), self._encode, self._decode)
         except builtins.ValueError:
             raise ValueError('redis_url_invalid')
 
+        # pylint: disable=import-outside-toplevel; circular dependency
+        from .analytics import Analytics, Referral
         self.types = {
             'User': User,
             'Settings': Settings,
             'Activity': Activity,
             'Event': Event,
-            'AuthRequest': AuthRequest
+            'AuthRequest': AuthRequest,
+            'Resource': Resource,
+            'Image': Image,
+            'Video': Video,
+            'Referral': Referral
         } # type: Dict[str, Type[JSONifiable]]
-        self.user = None
-        self.users = JSONRedisMapping(self.r, 'users', expect_type(User))
+        self.user = None # type: Optional[User]
+        self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)
+        self.analytics = Analytics(app=self)
 
         self.email = email
         self.smtp_url = smtp_url
         self.render_email_auth_message = render_email_auth_message
 
+        self.video_service_keys = video_service_keys
+        handlers = [handle_image, handle_webpage] # type: List[HandleResourceFunc]
+        if 'youtube' in self.video_service_keys:
+            handlers.insert(0, handle_youtube(self.video_service_keys['youtube']))
+        self.analyzer = Analyzer(handlers=handlers)
+
     @property
-    def settings(self):
+    def settings(self) -> 'Settings':
         """App :class:`Settings`."""
-        return self.r.oget('Settings')
+        return self.r.oget('Settings', default=AssertionError, expect=expect_type(Settings))
 
     @property
     def activity(self) -> 'Activity':
@@ -139,6 +187,11 @@ class Application:
         activity.pre = self.check_user_is_staff
         return activity
 
+    @staticmethod
+    def now() -> datetime:
+        """Return the current UTC date and time, as aware object with second accuracy."""
+        return datetime.now(timezone.utc).replace(microsecond=0)
+
     def update(self):
         """Update the database.
 
@@ -146,77 +199,123 @@ class Application:
         nothing will be done. It is thus safe to call :meth:`update` without knowing if an update is
         necessary or not.
         """
-        v = self.r.get('micro_version')
+        vb = cast(Optional[bytes], self.r.get('micro_version'))
 
         # If fresh, initialize database
-        if not v:
+        if not vb:
             settings = self.create_settings()
             settings.push_vapid_private_key, settings.push_vapid_public_key = (
                 self._generate_push_vapid_keys())
             self.r.oset(settings.id, settings)
             activity = Activity(id='Activity', app=self, subscriber_ids=[])
             self.r.oset(activity.id, activity)
-            self.r.set('micro_version', 6)
+            self.r.set('micro_version', 9)
             self.do_update()
             return
 
-        v = int(v)
-        r = JSONRedis(self.r.r)
+        v = int(vb)
+        r = JSONRedis[Dict[str, object]](self.r.r)
         r.caching = False
+        expect_str = expect_type(str)
 
         # Deprecated since 0.15.0
         if v < 3:
-            settings = r.oget('Settings')
-            settings['provider_name'] = None
-            settings['provider_url'] = None
-            settings['provider_description'] = {}
-            r.oset(settings['id'], settings)
+            data = r.oget('Settings', default=AssertionError)
+            data['provider_name'] = None
+            data['provider_url'] = None
+            data['provider_description'] = {}
+            r.oset('Settings', data)
             r.set('micro_version', 3)
 
         # Deprecated since 0.6.0
         if v < 4:
             for obj in self._scan_objects(r):
-                if not issubclass(self.types[obj['__type__']], Trashable):
+                if not issubclass(self.types[expect_str(obj['__type__'])], Trashable):
                     del obj['trashed']
-                    r.oset(obj['id'], obj)
+                    r.oset(expect_str(obj['id']), obj)
             r.set('micro_version', 4)
 
         # Deprecated since 0.13.0
         if v < 5:
-            settings = r.oget('Settings')
-            settings['icon_small'] = settings['favicon']
-            del settings['favicon']
-            settings['icon_large'] = None
-            r.oset(settings['id'], settings)
+            data = r.oget('Settings', default=AssertionError)
+            data['icon_small'] = data['favicon']
+            del data['favicon']
+            data['icon_large'] = None
+            r.oset('Settings', data)
             r.set('micro_version', 5)
 
         # Deprecated since 0.14.0
         if v < 6:
-            settings = r.oget('Settings')
-            settings['push_vapid_private_key'], settings['push_vapid_public_key'] = (
-                self._generate_push_vapid_keys())
-            r.oset(settings['id'], settings)
-            activity = Activity(id='Activity', app=self, subscriber_ids=[]).json()
-            r.oset(activity['id'], activity)
+            data = r.oget('Settings', default=AssertionError)
+            data['push_vapid_private_key'], data['push_vapid_public_key'] = (
+                cast(Tuple[str, str], self._generate_push_vapid_keys())) # type: ignore
+            r.oset('Settings', data)
+            activity = Activity(id='Activity', app=self, subscriber_ids=[])
+            r.oset(activity.id, activity.json())
 
-            users = r.omget(r.lrange('users', 0, -1))
+            users = r.omget([id.decode() for id in cast(List[bytes], r.lrange('users', 0, -1))],
+                            default=AssertionError)
             for user in users:
                 user['device_notification_status'] = 'off'
                 user['push_subscription'] = None
-            r.omset({user['id']: user for user in users})
+            r.omset({expect_str(user['id']): user for user in users})
             r.set('micro_version', 6)
+
+        # Deprecated since 0.24.1
+        if v < 7:
+            ids = cast(List[bytes], r.lrange('activity', 0, -1))
+            if ids:
+                r.rpush('Activity.items', *ids)
+                r.delete('activity')
+            r.set('micro_version', 7)
+
+        # Deprecated since 0.33.0
+        if v < 8:
+            for obj in self._scan_objects(r, Trashable):
+                if obj['trashed']:
+                    t = (datetime.now(timezone.utc) + Trashable.RETENTION).timestamp()
+                    r.zadd('micro_trash', {obj['id'].encode(): t})
+            r.set('micro_version', 8)
+
+        # Deprecated since 0.39.0
+        if v < 9:
+            activity = {}
+            for event in self._scan_objects(r, Event):
+                user_id = event['user']
+                t = parse_isotime(event['time'], aware=True)
+                first, last = activity.get(user_id) or (t, t)
+                activity[user_id] = (min(first, t), max(last, t))
+
+            now = self.now()
+            users = r.omget(r.lrange('users', 0, -1))
+            for user in users:
+                first, last = activity.get(user['id']) or (now, now)
+                user['create_time'] = first.isoformat()
+                user['authenticate_time'] = last.isoformat()
+            r.omset({user['id']: user for user in users})
+            r.set('micro_version', 9)
 
         self.do_update()
 
-    def do_update(self):
+    def do_update(self) -> None:
         """Subclass API: Perform the database update.
 
         May be overridden by subclass. Called by :meth:`update`, which takes care of updating (or
         initializing) micro specific data. The default implementation does nothing.
         """
-        pass
 
-    def create_settings(self):
+    def create_user(self, data: Dict[str, object]) -> 'User':
+        """Subclass API: Create a new user.
+
+        *data* is the JSON data required for :class:`User`.
+
+        May be overridden by subclass. Called by :meth:`login` for new users, which takes care of
+        storing the object. By default, a standard :class:`User` is returned.
+        """
+        # pylint: disable=no-self-use; part of subclass API
+        return User(**data) # type: ignore
+
+    def create_settings(self) -> 'Settings':
         """Subclass API: Create and return the app :class:`Settings`.
 
         *id* must be set to ``Settings``.
@@ -225,44 +324,61 @@ class Application:
         """
         raise NotImplementedError()
 
-    def authenticate(self, secret):
+    def authenticate(self, secret: str) -> 'User':
         """Authenticate an :class:`User` (device) with *secret*.
 
         The identified user is set as current *user* and returned. If the authentication fails, an
         :exc:`AuthenticationError` is raised.
         """
-        id = self.r.hget('auth_secret_map', secret)
+        id = self.r.r.hget('auth_secret_map', secret.encode())
         if not id:
             raise AuthenticationError()
-        self.user = self.users[id.decode()]
-        return self.user
+        user = self.users[id.decode()]
+        self.user = user
 
-    def login(self, code=None):
+        now = self.now()
+        if now - user.authenticate_time >= timedelta(hours=1): # type: ignore
+            user.authenticate_time = now
+            self.r.oset(user.id, user)
+        return user
+
+    def login(self, code: str = None) -> 'User':
         """See :http:post:`/api/login`.
 
         The logged-in user is set as current *user*.
         """
         if code:
-            id = self.r.hget('auth_secret_map', code)
+            id = self.r.r.hget('auth_secret_map', code.encode())
             if not id:
                 raise ValueError('code_invalid')
-            user = self.users[id.decode()]
+            id = id.decode()
+            user = self.users[id]
 
         else:
             id = 'User:' + randstr()
-            user = User(
-                id=id, app=self, authors=[id], name='Guest', email=None, auth_secret=randstr(),
-                device_notification_status='off', push_subscription=None)
+            now = self.now()
+            user = self.create_user({
+                'id': id,
+                'app': self,
+                'authors': [id],
+                'name': 'Guest',
+                'email': None,
+                'auth_secret': randstr(),
+                'create_time': now.isoformat(),
+                'authenticate_time': now.isoformat(),
+                'device_notification_status': 'off',
+                'push_subscription': None
+            })
             self.r.oset(user.id, user)
             self.r.rpush('users', user.id)
             self.r.hset('auth_secret_map', user.auth_secret, user.id)
 
             # Promote first user to staff
             if len(self.users) == 1:
-                settings = self.settings
+                settings = self.settings # type: ignore
                 # pylint: disable=protected-access; Settings is a friend
-                settings._staff = [user.id]
-                self.r.oset(settings.id, settings)
+                settings._staff = [user.id] # type: ignore
+                self.r.oset(settings.id, settings) # type: ignore
 
         return self.authenticate(user.auth_secret)
 
@@ -282,8 +398,41 @@ class Application:
     def check_user_is_staff(self) -> None:
         """Check if the current :attr:`user` is a staff member."""
         # pylint: disable=protected-access; Settings is a friend
-        if not (self.user and self.user.id in self.settings._staff):
+        if not (self.user and self.user.id in self.settings._staff): # type: ignore
             raise PermissionError()
+
+    def start_empty_trash(self) -> 'Task[None]':
+        """Start the empty trash job."""
+        async def _empty_trash() -> None:
+            loop = get_event_loop()
+            while True:
+                coro = cast(
+                    Awaitable[Tuple[bytes, float]],
+                    loop.run_in_executor(None, partial(bzpoptimed, self.r.r, 'micro_trash')))
+                try:
+                    id, _ = await shield(coro)
+                except CancelledError:
+                    # Note that we assume there is only a single consumer of micro_trash
+                    self.r.r.zadd('micro_trash', {b'int': 0})
+                    await coro
+                    raise
+
+                obj = self.r.oget(id.decode(), default=AssertionError,
+                                  expect=expect_type(Trashable))
+                # pylint: disable=broad-except; catch unhandled exceptions
+                try:
+                    obj.delete()
+                except Exception as e:
+                    t = (
+                        datetime.now(timezone.utc) + Trashable.RETENTION).timestamp() # type: ignore
+                    self.r.r.zadd('micro_trash', {id: t})
+                    loop.call_exception_handler(
+                        cast(Dict[str, object], {
+                            'message': 'Unexpected exception in delete()',
+                            'exception': e
+                        }))
+                del obj
+        return cast('Task[None]', ensure_future(_empty_trash()))
 
     @staticmethod
     def _encode(object: JSONifiable) -> Dict[str, object]:
@@ -292,23 +441,27 @@ class Application:
     def _decode(self, json: Dict[str, object]) -> Union[JSONifiable, Dict[str, object]]:
         # pylint: disable=redefined-outer-name; good name
         try:
-            type = self.types[str(json.pop('__type__'))]
+            type = self.types[str(json['__type__'])]
         except KeyError:
             return json
+        if hasattr(type, 'parse'):
+            return cast(JSONifiableWithParse, type).parse(json, app=self)
         # Compatibility for Settings without icon_large (deprecated since 0.13.0)
         if issubclass(type, Settings):
             json['v'] = 2
+        del json['__type__']
         return type(app=self, **json)
 
-    @staticmethod
-    def _scan_objects(r):
-        for key in r.keys('*'):
+    def _scan_objects(self, r: JSONRedis[Dict[str, object]],
+                      cls: 'Type[Object]' = None) -> Iterator[Dict[str, object]]:
+        for key in cast(List[bytes], r.keys('*')):
             try:
-                obj = r.oget(key)
+                obj = r.oget(key.decode(), default=AssertionError)
             except ResponseError:
                 pass
             else:
-                if isinstance(obj, Mapping) and '__type__' in obj:
+                if ('__type__' in obj and
+                        issubclass(self.types[expect_type(str)(obj['__type__'])], cls or Object)):
                     yield obj
 
     @staticmethod
@@ -344,6 +497,14 @@ class Object:
     def __repr__(self):
         return '<{}>'.format(self.id)
 
+class Gone:
+    """See :ref:`Gone`."""
+
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
+        """See :meth:`JSONifiable.json`."""
+        # pylint: disable=unused-argument; part of API
+        return {'__type__': type(self).__name__}
+
 class Editable:
     """:class:`Object` that can be edited."""
 
@@ -351,7 +512,8 @@ class Editable:
     app = None # type: Application
     trashed = None # type: bool
 
-    def __init__(self, authors: List[str], activity: 'Activity' = None) -> None:
+    def __init__(self, authors: List[str],
+                 activity: Union['Activity', Callable[[], 'Activity']] = None) -> None:
         self._authors = authors
         self.__activity = activity
 
@@ -360,23 +522,42 @@ class Editable:
         # pylint: disable=missing-docstring; already documented
         return self.app.r.omget(self._authors, default=AssertionError, expect=expect_type(User))
 
-    def edit(self, **attrs):
+    @overload
+    def edit(self, *, asynchronous: None, **attrs: object) -> None:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    @overload
+    def edit(self, *, asynchronous: OnType, **attrs: object) -> Awaitable[None]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        pass
+    def edit(self, *, asynchronous: OnType = None, **attrs: object) -> Optional[Awaitable[None]]:
+        # pylint: disable=function-redefined,missing-docstring; overload
+        # Compatibility for synchronous edit (deprecated since 0.27.0)
+        coro = self._edit(**attrs)
+        if asynchronous is None:
+            run_instant(coro)
+            return None
+        return coro
+
+    async def _edit(self, **attrs: object) -> None:
         """See :http:post:`/api/(object-url)`."""
         if not self.app.user:
             raise PermissionError()
         if isinstance(self, Trashable) and self.trashed:
             raise ValueError('object_trashed')
 
-        self.do_edit(**attrs)
+        coro = self.do_edit(**attrs)
+        if isawaitable(coro):
+            await cast(Awaitable[None], coro)
         if not self.app.user.id in self._authors:
             self._authors.append(self.app.user.id)
         self.app.r.oset(self.id, self)
 
         if self.__activity is not None:
             activity = self.__activity() if callable(self.__activity) else self.__activity
-            activity.publish(Event.create('editable-edit', self, app=self.app))
+            activity.publish(Event.create('editable-edit', self, app=self.app)) # type: ignore
 
-    def do_edit(self, **attrs):
+    def do_edit(self, **attrs: object) -> Optional[Awaitable[None]]:
         """Subclass API: Perform the edit operation.
 
         More precisely, validate and then set the given *attrs*.
@@ -391,14 +572,28 @@ class Editable:
         return {'authors': [a.json(restricted) for a in self.authors] if include else self._authors}
 
 class Trashable:
-    """Mixin for :class:`Object` which can be trashed and restored."""
-    # pylint: disable=no-member; mixin
+    """Mixin for :class:`Object` which can be trashed and restored.
 
-    def __init__(self, trashed, activity=None):
+    .. attribute:: RETENTION
+
+       Duration after a trashed object will permanently be deleted.
+    """
+
+    RETENTION = timedelta(days=7)
+
+    id = None # type: str
+    app = None # type: Application
+
+    def __init__(self, trashed: bool,
+                 activity: Union['Activity', Callable[[], 'Activity']] = None) -> None:
         self.trashed = trashed
         self.__activity = activity
 
-    def trash(self):
+    def delete(self) -> None:
+        """Subclass API: Permanently delete the object."""
+        raise NotImplementedError()
+
+    def trash(self) -> None:
         """See :http:post:`/api/(object-url)/trash`."""
         if not self.app.user:
             raise PermissionError()
@@ -407,11 +602,14 @@ class Trashable:
 
         self.trashed = True
         self.app.r.oset(self.id, self)
+        self.app.r.r.zadd(
+            'micro_trash',
+            {self.id.encode(): (datetime.now(timezone.utc) + Trashable.RETENTION).timestamp()})
         if self.__activity is not None:
             activity = self.__activity() if callable(self.__activity) else self.__activity
-            activity.publish(Event.create('trashable-trash', self, app=self.app))
+            activity.publish(Event.create('trashable-trash', cast(Object, self), app=self.app))
 
-    def restore(self):
+    def restore(self) -> None:
         """See :http:post:`/api/(object-url)/restore`."""
         if not self.app.user:
             raise PermissionError()
@@ -420,67 +618,250 @@ class Trashable:
 
         self.trashed = False
         self.app.r.oset(self.id, self)
+        self.app.r.r.zrem('micro_trash', self.id.encode())
         if self.__activity is not None:
             activity = self.__activity() if callable(self.__activity) else self.__activity
-            activity.publish(Event.create('trashable-restore', self, app=self.app))
+            activity.publish(Event.create('trashable-restore', cast(Object, self), app=self.app))
 
     def json(self, restricted=False, include=False):
         """Subclass API: Return a JSON representation of the trashable part of the object."""
         # pylint: disable=unused-argument; part of subclass API
         return {'trashed': self.trashed}
 
-class Collection(JSONRedisMapping):
-    """Collection of :class:`Object` s.
+class WithContent:
+    """:class:`Editable` :class:`Object` with content."""
+
+    app = None # type: Application
+
+    @staticmethod
+    async def process_attrs(attrs: Dict[str, object], *, app: Application) -> Dict[str, object]:
+        """Pre-Process the given attributes *attrs* for editing."""
+        if 'text' in attrs:
+            text = attrs['text']
+            if text is not None:
+                attrs['text'] = str_or_none(expect_type(str)(text))
+        if 'resource' in attrs:
+            url = attrs['resource']
+            if url is not None:
+                attrs['resource'] = await app.analyzer.analyze(expect_type(str)(url))
+        return attrs
+
+    def __init__(self, *, text: str = None, resource: Resource = None) -> None:
+        self.text = text
+        self.resource = resource
+
+    async def pre_edit(self, attrs: Dict[str, object]) -> Dict[str, object]:
+        """Prepare the edit operation.
+
+        More precisely, validate and pre-process the given *attrs*.
+        """
+        if 'resource' in attrs and self.resource and attrs['resource'] == self.resource.url:
+            del attrs['resource']
+        return await self.process_attrs(attrs, app=self.app)
+
+    def do_edit(self, **attrs: object) -> Optional[Awaitable[None]]: # type: ignore
+        """See :meth:`Editable.do_edit`."""
+        if 'text' in attrs:
+            self.text = expect_opt_type(str)(attrs['text'])
+        if 'resource' in attrs:
+            self.resource = expect_opt_type(Resource)(attrs['resource'])
+
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
+        """See :meth:`JSONifiable.json`."""
+        # pylint: disable=unused-argument; part of API
+        return {'text': self.text, 'resource': self.resource.json() if self.resource else None}
+
+class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
+    """See :ref:`Collection`.
+
+    All sequence operations but iteration are supported for now.
+
+    .. attribute:: ids
+
+       Redis sequence tracking the (IDs of) objects that the collection contains.
+
+    .. attribute:: check
+
+       Function of the form *check(key)*, which is called before an object is retrieved via *key*.
+       May be ``None``.
+
+    .. attribute:: expect
+
+       Function narrowing the type of a retrieved object.
+
+    .. attribute:: app
+
+       Context application.
 
     .. attribute:: host
 
        Tuple ``(object, attr)`` that specifies the attribute name *attr* on the host *object*
        (:class:`Object` or :class:`Application`) the collection is attached to.
 
-    .. attribute:: app
+       .. deprecated:: 0.24.0
 
-       Context :class:`Application`.
+          Extend :class:`Collection` to implement hosting manually.
+
+    .. describe:: c[key]
+
+       *key* may also be a string, in which case the object with the given ID is retrieved.
+
+       Redis operations: ``RedisSequence[k] + n``, where n is the number of retrieved items, or
+       ``i in RedisSequence + 1`` if *key* is a string.
+
+    .. describe:: item in c
+
+       *item* may also be a string, in which case the membership of the object with the given ID is
+       tested.
+
+    .. deprecated: 0.24.0
+
+       :class:`JSONRedisMapping` interface. Use :attr:`ids`, ``c[key]`` and ``item in c`` instead.
     """
 
-    def __init__(self, host):
+    @overload
+    def __init__(
+            self, ids: RedisSequence, *,
+            check: Callable[[Union[int, slice, str]], None] = None,
+            expect: ExpectFunc[O] = cast(ExpectFunc[O], expect_type(Object)),
+            app: Application) -> None:
+        # pylint: disable=function-redefined, super-init-not-called; overload
+        pass
+    @overload
+    def __init__(self, host: Tuple[Union[Object, Application], str]) -> None:
+        # pylint: disable=function-redefined, super-init-not-called; overload
+        pass
+    def __init__(
+            self, *args: object,
+            check: Callable[[Union[int, slice, str]], None] = None,
+            expect: ExpectFunc[O] = cast(ExpectFunc[O], expect_type(Object)),
+            **kwargs: object) -> None:
+        # pylint: disable=function-redefined, super-init-not-called; overload
+        # Compatibility for host (deprecated since 0.24.0)
+        ids = kwargs.get('ids') or kwargs.get('host') or args[0] if args else None
+        if isinstance(ids, tuple):
+            host = cast(Tuple[Union[Object, Application], str], ids)
+            app = host[0] if isinstance(host[0], Application) else host[0].app
+            ids = RedisList(
+                ('' if isinstance(host[0], Application) else host[0].id + '.') + host[1], app.r.r)
+        elif isinstance(ids, RedisSequence):
+            arg = kwargs.get('app')
+            assert isinstance(arg, Application)
+            app = arg
+            host = (app, '')
+        else:
+            raise TypeError()
+        JSONRedisMapping.__init__(self, app.r, ids.key, expect)
         self.host = host
-        self.app = host[0] if isinstance(host[0], Application) else host[0].app
-        super().__init__(
-            self.app.r,
-            ('' if isinstance(host[0], Application) else host[0].id + '.') + self.host[1])
+
+        self.ids = ids
+        self.check = check
+        self.app = app
+
+    def index(self, x: Union[O, str], start: int = 0, stop: int = sys.maxsize) -> int:
+        """See :meth:`Sequence.index`.
+
+        *x* may also be a string, in which case the index of the object with the given ID is
+        returned.
+        """
+        if isinstance(x, Object):
+            return self.index(x.id, start, stop)
+        return self.ids.index(x.encode(), start, stop)
+
+    def __len__(self) -> int:
+        return len(self.ids)
+
+    @overload
+    def __getitem__(self, key: Union[int, str]) -> O:
+        # pylint: disable=function-redefined; overload
+        pass
+    @overload
+    def __getitem__(self, key: slice) -> List[O]:
+        # pylint: disable=function-redefined; overload
+        pass
+    def __getitem__(self, key: Union[int, slice, str]) -> Union[O, List[O]]:
+        # pylint: disable=function-redefined; overload
+        # Compatibility with JSONRedisMapping (deprecated since 0.24.0)
+        assert self.expect
+
+        if self.check:
+            self.check(key)
+        if isinstance(key, str):
+            if key not in self:
+                raise KeyError()
+            return self.app.r.oget(key, default=ReferenceError, expect=self.expect)
+        if isinstance(key, slice):
+            return self.app.r.omget([id.decode() for id in self.ids[key]],
+                                    default=ReferenceError, expect=self.expect)
+        return self.app.r.oget(self.ids[key].decode(), default=ReferenceError,
+                               expect=self.expect)
+
+    def __iter__(self) -> Iterator[str]:
+        # Compatibility with JSONRedisMapping (deprecated since 0.24.0)
+        return (id.decode() for id in self.ids)
+
+    def __contains__(self, item: object) -> bool:
+        if isinstance(item, Object):
+            return item.id in self
+        return isinstance(item, str) and item.encode() in self.ids
+
+    def json(self, restricted: bool = False, include: bool = False, *,
+             slc: slice = None) -> Dict[str, object]:
+        """See :meth:`JSONifiable.json`.
+
+        *slc* is a slice of items to include, if any.
+        """
+        count = len(self)
+        if slc:
+            items = self[slc]
+            start = 0 if slc.start is None else slc.start
+            stop = start + len(items)
+        return {
+            'count': count,
+            **(
+                {'items': [item.json(restricted, include) for item in items],
+                 'slice': [start, stop]}
+                if slc else {})
+        }
 
 class Orderable:
-    """Mixin for :class:`Collection` whose items can be ordered."""
-    # pylint: disable=no-member; mixin
-    # pylint: disable=unsupported-membership-test; mixin
+    """Mixin for :class:`Collection` whose items can be ordered.
 
-    def move(self, item, to):
+    The underlying Redis collection must be a Redis list.
+    """
+
+    ids = None # type: RedisSequence
+    app = None # type: Application
+
+    def move(self, item: Object, to: Optional[Object]) -> None:
         """See :http:post:`/api/(collection-path)/move`."""
         if to:
-            if to.id not in self:
+            if to.id not in self: # type: ignore
                 raise ValueError('to_not_found')
             if to == item:
                 # No op
                 return
-        if not self.r.lrem(self.map_key, 1, item.id):
+        if not cast(int, self.app.r.lrem(self.ids.key, 1, item.id)):
             raise ValueError('item_not_found')
         if to:
-            self.r.linsert(self.map_key, 'after', to.id, item.id)
+            self.app.r.linsert(self.ids.key, 'after', to.id, item.id)
         else:
-            self.r.lpush(self.map_key, item.id)
+            self.app.r.lpush(self.ids.key, item.id)
 
 class User(Object, Editable):
     """See :ref:`User`."""
 
     def __init__(
-            self, id: str, app: Application, authors: List[str], name: str, email: str,
-            auth_secret: str, device_notification_status: str,
-            push_subscription: Optional[str]) -> None:
+            self, *, id: str, app: Application, authors: List[str], name: str, email: str,
+            auth_secret: str, create_time: str, authenticate_time: str,
+            device_notification_status: str, push_subscription: Optional[str]) -> None:
         super().__init__(id, app)
         Editable.__init__(self, authors=authors)
         self.name = name
         self.email = email
         self.auth_secret = auth_secret
+        self.create_time = parse_isotime(create_time, aware=True)
+        self.authenticate_time = parse_isotime(authenticate_time, aware=True)
         self.device_notification_status = device_notification_status
         self.push_subscription = push_subscription
 
@@ -551,14 +932,14 @@ class User(Object, Editable):
             raise ValueError('user_no_email')
         self._send_email(self.email, msg)
 
-    def notify(self, event):
+    def notify(self, event: 'Event') -> None:
         """Notify the user about the :class:`Event` *event*.
 
         If :attr:`push_subscription` has expired, device notifications are disabled.
         """
         if self.device_notification_status != 'on':
             return
-        IOLoop.current().add_callback(self._notify, event)
+        IOLoop.current().add_callback(self._notify, event) # type: ignore
 
     async def enable_device_notifications(self, push_subscription):
         """See :http:patch:`/api/users/(id)` (``enable_device_notifications``)."""
@@ -626,6 +1007,8 @@ class User(Object, Editable):
                 {} if restricted and self.app.user != self else {
                     'email': self.email,
                     'auth_secret': self.auth_secret,
+                    'create_time': self.create_time.isoformat(),
+                    'authenticate_time': self.authenticate_time.isoformat(),
                     'device_notification_status': self.device_notification_status,
                     'push_subscription': self.push_subscription
                 })
@@ -666,9 +1049,9 @@ class User(Object, Editable):
             push_subscription = json.loads(push_subscription)
             if not isinstance(push_subscription, dict):
                 raise builtins.ValueError()
-            urlparts = urlparse(push_subscription.get('endpoint'))
-            pusher = WebPusher(push_subscription, self._HTTPClient)
-        except (builtins.ValueError, WebPushException):
+            urlparts = urlparse(push_subscription['endpoint'])
+            pusher = WebPusher(push_subscription)
+        except (builtins.ValueError, KeyError, WebPushException):
             raise ValueError('push_subscription_invalid')
 
         # Unfortunately sign() tries to validate the email address
@@ -679,39 +1062,25 @@ class User(Object, Editable):
         })
 
         try:
-            response = await pusher.send(json.dumps(event.json(restricted=True, include=True)),
-                                         headers, ttl=_PUSH_TTL)
-        except OSError as e:
-            raise CommunicationError(str(e))
-        if response.code in (404, 410):
+            # Firefox does not yet support aes128gcm encoding (see
+            # https://bugzilla.mozilla.org/show_bug.cgi?id=1525872)
+            send = partial(pusher.send, json.dumps(event.json(restricted=True, include=True)),
+                           headers=headers, ttl=_PUSH_TTL, content_encoding='aesgcm')
+            response = await get_event_loop().run_in_executor(None, send)
+        except RequestException as e:
+            raise CommunicationError(
+                '{} for POST {}'.format(str(e.args[0]), push_subscription['endpoint']))
+        if response.status_code in (404, 410):
             raise ValueError('push_subscription_invalid')
-        if response.code != 201:
-            raise CommunicationError('Server responded with status {}'.format(response.code))
+        if response.status_code != 201:
+            raise CommunicationError(
+                'Unexpected response status {} for POST {}'.format(response.status_code,
+                                                                   push_subscription['endpoint']))
 
     def _disable_device_notifications(self, reason: str = None) -> None:
         self.device_notification_status = 'off.{}'.format(reason) if reason else 'off'
         self.push_subscription = None
         self.app.r.oset(self.id, self)
-
-    class _HTTPClient:
-        @staticmethod
-        async def post(endpoint: str, data: bytes, headers: Dict[str, str],
-                       timeout: float) -> HTTPResponse:
-            # pylint: disable=unused-argument, missing-docstring; part of API
-            try:
-                # raise_error=False triggers a deprecation warning in Tornado 5. Reraise suppressed
-                # IO errors to match the future behavior.
-                with catch_warnings(record=True):
-                    response = await AsyncHTTPClient().fetch(
-                        endpoint, method='POST', headers=headers, body=data, raise_error=False)
-                    if response.code == 599:
-                        assert response.error is not None
-                        raise response.error
-                    return response
-            except HTTPStreamClosedError:
-                raise BrokenPipeError(errno.ESHUTDOWN, os.strerror(errno.ESHUTDOWN))
-            except HTTPTimeoutError:
-                raise TimeoutError(errno.ETIMEDOUT, os.strerror(errno.ETIMEDOUT))
 
 class Settings(Object, Editable):
     """See :ref:`Settings`.
@@ -721,35 +1090,29 @@ class Settings(Object, Editable):
        VAPID private key used for sending device notifications.
     """
 
-    @version(1)
     def __init__(
-            self, id, app, authors, title, icon, favicon, provider_name, provider_url,
-            provider_description, feedback_url, staff):
-        # pylint: disable=non-parent-init-called, super-init-not-called; versioned
-        icon_small, icon_large = favicon, None
-        self.__init__(id, app, authors, title, icon, icon_small, icon_large, provider_name,
-                      provider_url, provider_description, feedback_url, staff, v=2)
-
-    @__init__.version(2) # type: ignore
-    def __init__(
-            self, id, app, authors, title, icon, icon_small, icon_large, provider_name,
-            provider_url, provider_description, feedback_url, staff, push_vapid_private_key=None,
-            push_vapid_public_key=None):
-        # pylint: disable=function-redefined; decorated
-        # Compatibility for Settings without VAPID keys (deprecated since 0.14.0)
+            self, *, id: str, app: Application, authors: List[str], title: str, icon: Optional[str],
+            icon_small: str = None, icon_large: str = None, provider_name: Optional[str],
+            provider_url: Optional[str], provider_description: Optional[Dict[str, str]],
+            feedback_url: Optional[str], staff: List[str], push_vapid_private_key: str = None,
+            push_vapid_public_key: str = None, favicon: str = None, v: int = 1) -> None:
+        # pylint: disable=unused-argument; part of API
+        # Compatibility for versioned function (deprecated since 0.40.0)
         super().__init__(id, app)
         Editable.__init__(self, authors=authors, activity=lambda: app.activity)
         self.title = title
         self.icon = icon
-        self.icon_small = icon_small
+        # Compatibility for favicon (deprecated since 0.13.0)
+        self.icon_small = icon_small or favicon
         self.icon_large = icon_large
         self.provider_name = provider_name
         self.provider_url = provider_url
         self.provider_description = provider_description
         self.feedback_url = feedback_url
         self._staff = staff
-        self.push_vapid_private_key = push_vapid_private_key
-        self.push_vapid_public_key = push_vapid_public_key
+        # Compatibility for Settings without VAPID keys (deprecated since 0.14.0)
+        self.push_vapid_private_key = push_vapid_private_key or ''
+        self.push_vapid_public_key = push_vapid_public_key or ''
 
     @property
     def staff(self):
@@ -805,22 +1168,65 @@ class Settings(Object, Editable):
                {'push_vapid_private_key': self.push_vapid_private_key})
         }
 
-class Activity(Object, JSONRedisSequence):
+class Activity(Object, JSONRedisSequence[JSONifiable]):
     """See :ref:`Activity`."""
+
+    class Stream(AsyncIterator['Event']):
+        """:cls:`collections.abc.AsyncGenerator` of events."""
+        # Syntax for Python 3.6+:
+        #
+        # async def stream(self) -> AsyncGenerator['Event', None]:
+        #     """Return a live stream of events."""
+        #     queue = Queue() # type: Queue[Event]
+        #     self._streams.add(queue)
+        #     try:
+        #         while True:
+        #             yield await cast(Coroutine[object, None, Event], queue.get())
+        #     except GeneratorExit as e:
+        #         self._streams.remove(queue)
+        #         # Work around https://bugs.python.org/issue34730
+        #         queue.put_nowait(None) # type: ignore
+
+        def __init__(self, streams: Set['Queue[Optional[Event]]']) -> None:
+            self._queue = Queue() # type: Queue[Optional[Event]]
+            self._streams = streams
+            self._streams.add(self._queue)
+
+        async def asend(self, value: None) -> 'Event':
+            # pylint: disable=unused-argument, missing-docstring; part of API
+            event = await cast(Coroutine[object, None, Optional[Event]], self._queue.get())
+            if event is None:
+                raise StopAsyncIteration()
+            return event
+
+        async def athrow(self, typ: Type[BaseException], val: BaseException = None,
+                         tb: object = None) -> 'Event':
+            # pylint: disable=unused-argument, missing-docstring; part of API
+            raise val if val else typ()
+
+        async def aclose(self) -> None:
+            # pylint: disable=missing-docstring; part of API
+            self._streams.remove(self._queue)
+            self._queue.put_nowait(None)
+
+        async def __anext__(self) -> 'Event':
+            return await self.asend(None)
 
     def __init__(self, id: str, app: Application, subscriber_ids: List[str],
                  pre: Callable[[], None] = None) -> None:
         super().__init__(id, app)
         JSONRedisSequence.__init__(self, app.r, '{}.items'.format(id), pre)
-        self.host = None
+        self.host = None # type: Optional[object]
         self._subscriber_ids = subscriber_ids
+        self._streams = set() # type: Set[Queue[Optional[Event]]]
 
     @property
-    def subscribers(self):
+    def subscribers(self) -> List[User]:
         """List of :class:`User`s who subscribed to the activity."""
-        return self.app.r.omget(self._subscriber_ids)
+        return self.app.r.omget(self._subscriber_ids, default=AssertionError,
+                                expect=expect_type(User))
 
-    def publish(self, event):
+    def publish(self, event: 'Event') -> None:
         """Publish an *event* to the feed.
 
         All :attr:`subscribers`, except the user who triggered the event, are notified.
@@ -832,6 +1238,8 @@ class Activity(Object, JSONRedisSequence):
         for subscriber in self.subscribers:
             if subscriber is not event.user:
                 subscriber.notify(event)
+        for stream in self._streams:
+            stream.put_nowait(event)
 
     def subscribe(self):
         """See :http:patch:`/api/(activity-url)` (``subscribe``)."""
@@ -851,21 +1259,37 @@ class Activity(Object, JSONRedisSequence):
             pass
         self.app.r.oset(self.host.id if self.host else self.id, self.host or self)
 
-    def json(self, restricted=False, include=False, slice=None):
+    def stream(self) -> 'Activity.Stream':
+        """Return a live stream of events."""
+        return Activity.Stream(self._streams)
+
+    def json(self, restricted: bool = False, include: bool = False,
+             slice: 'slice' = None) -> Dict[str, object]:
         # pylint: disable=arguments-differ; extension
         return {
             **super().json(restricted, include),
-            **({'user_subscribed': self.app.user.id in self._subscriber_ids} if restricted else
-               {'subscriber_ids': self._subscriber_ids}),
-            **({'items': event.json(True, True) for event in self[slice]} if slice else {})
+            **({'subscriber_ids': self._subscriber_ids} if not restricted else {}),
+            **({'user_subscribed': self.app.user and self.app.user.id in self._subscriber_ids}
+               if restricted else {}),
+            **({'items': [event.json(True, True) for event in self[slice]]} if slice else {})
         }
 
 class Event(Object):
-    """See :ref:`Event`."""
+    """See :ref:`Event`.
+
+    .. attribute:: time
+
+       .. deprecated:: 0.39.0
+
+          Naive time. Work with aware object instead (with
+          :meth:`datetime.datetime.replace` (``tzinfo=timezone.utc``)).
+    """
 
     @staticmethod
-    def create(type, object, detail={}, app=None):
+    def create(type: str, object: Optional[Object], detail: Dict[str, object] = {},
+               app: Application = None) -> 'Event':
         """Create an event."""
+        assert app
         if not app.user:
             raise PermissionError()
         if not str_or_none(type):
@@ -883,52 +1307,54 @@ class Event(Object):
             id='Event:' + randstr(), type=type, object=object.id if object else None,
             user=app.user.id, time=datetime.utcnow().isoformat() + 'Z', detail=transformed, app=app)
 
-    def __init__(self, id: str, type: str, object: str, user: str, time: str,
+    def __init__(self, id: str, type: str, object: Optional[str], user: str, time: str,
                  detail: Dict[str, object], app: Application) -> None:
         super().__init__(id, app)
         self.type = type
-        self.time = parse_isotime(time) if time else None
+        self.time = parse_isotime(time)
         self._object_id = object
         self._user_id = user
         self._detail = detail
 
     @property
-    def object(self):
+    def object(self) -> Optional[Union[Object, Gone]]:
         # pylint: disable=missing-docstring; already documented
-        return self.app.r.oget(self._object_id) if self._object_id else None
+        return (
+            self.app.r.oget(self._object_id, expect=expect_type(Object)) or Gone()
+            if self._object_id else None)
 
     @property
-    def user(self):
+    def user(self) -> User:
         # pylint: disable=missing-docstring; already documented
         return self.app.users[self._user_id]
 
     @property
-    def detail(self):
+    def detail(self) -> Dict[str, builtins.object]:
         # pylint: disable=missing-docstring; already documented
         detail = {}
         for key, value in self._detail.items():
             if key.endswith('_id'):
+                assert isinstance(value, str)
                 key = key[:-3]
-                value = self.app.r.oget(value)
+                value = self.app.r.oget(value) or Gone()
             detail[key] = value
         return detail
 
-    def json(self, restricted=False, include=False):
-        # pylint: disable=redefined-outer-name; good name
-        json = super().json(restricted=restricted, include=include)
-        json.update({
-            'type': self.type,
-            'object': self._object_id,
-            'user': self._user_id,
-            'time': self.time.isoformat() + 'Z' if self.time else None,
-            'detail': self._detail
-        })
+    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, builtins.object]:
+        obj = self._object_id # type: Optional[Union[str, Dict[str, object]]]
+        detail = self._detail
         if include:
-            json['object'] = self.object.json(restricted=restricted) if self.object else None
-            json['user'] = self.user.json(restricted=restricted)
-            json['detail'] = {k: v.json(restricted=restricted) if isinstance(v, Object) else v
-                              for k, v in self.detail.items()}
-        return json
+            obj = self.object.json(restricted, include) if self.object else None
+            detail = {k: v.json(restricted, include) if isinstance(v, (Object, Gone)) else v
+                      for k, v in self.detail.items()}
+        return {
+            **super().json(restricted, include),
+            'type': self.type,
+            'object': obj,
+            'user': self.user.json(restricted) if include else self._user_id,
+            'time': self.time.isoformat() + 'Z' if self.time else None,
+            'detail': detail
+        }
 
     def __str__(self) -> str:
         return '<{} {} on {} by {}>'.format(type(self).__name__, self.type, self._object_id,
@@ -963,30 +1389,18 @@ class Location:
     @staticmethod
     def parse(data: Dict[str, object]) -> 'Location':
         """Parse the given location JSON *data* into a :class:`Location`."""
-        name, coords = data.get('name'), data.get('coords')
-        if not isinstance(name, str):
-            raise TypeError()
-        if coords is not None:
-            if not (isinstance(coords, Sequence) and len(coords) == 2 and
-                    all(isinstance(value, float) for value in coords)):
+        coords_list = Expect.opt(Expect.list(Expect.float))(data.get('coords'))
+        if coords_list is None:
+            coords = None
+        else:
+            if len(coords_list) != 2:
                 raise TypeError()
-            coords = cast(Tuple[float, float], tuple(coords))
-        return Location(name, coords)
+            coords = (float(coords_list[0]), float(coords_list[1]))
+        return Location(Expect.str(data.get('name')), coords)
 
     def json(self) -> Dict[str, object]:
         """Return a JSON representation of the location."""
         return {'name': self.name, 'coords': list(self.coords) if self.coords else None}
-
-class ValueError(builtins.ValueError):
-    """See :ref:`ValueError`.
-
-    The first item of *args* is also available as *code*.
-    """
-
-    @property
-    def code(self):
-        # pylint: disable=missing-docstring; already documented
-        return self.args[0] if self.args else None
 
 class InputError(ValueError):
     """See :ref:`InputError`.
@@ -1001,7 +1415,7 @@ class InputError(ValueError):
            # ...
     """
 
-    def __init__(self, errors={}):
+    def __init__(self, errors: Dict[str, str] = {}) -> None:
         super().__init__('input_invalid')
         self.errors = dict(errors)
 
@@ -1015,16 +1429,9 @@ class InputError(ValueError):
 
 class AuthenticationError(Exception):
     """See :ref:`AuthenticationError`."""
-    pass
 
 class PermissionError(Exception):
     """See :ref:`PermissionError`."""
-    pass
-
-class CommunicationError(Exception):
-    """See :ref:`CommunicationError`."""
-    pass
 
 class EmailError(Exception):
     """Raised if communication with the SMTP server fails."""
-    pass

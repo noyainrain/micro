@@ -17,13 +17,13 @@ VERSION=${VERSION:?}
 git checkout master
 git fetch
 git merge
-git merge --no-ff --no-commit $FEATURE
-[ -f .git/MERGE_HEAD ]
+git merge --squash $FEATURE
+git diff --cached --quiet && false
 
 # Bump version
 bump_version setup.py "^\( *version='\)\(.*\)\(',\)$"
 bump_version client/package.json '^\( *"version": "\)\(.*\)\(",\)$'
-bump_version boilerplate/requirements.txt "^\(.*micro.git@\)\(.*\)\(\)$"
+bump_version boilerplate/requirements.txt "^\(noyainrain.micro ~= \)\(.*\)\(\)$"
 (VERSION=$(echo $VERSION | cut -d . -f -2) bump_version \
     boilerplate/client/package.json '^\( *"@noyainrain\/micro": "\^\)\(.*\)\("\)$')
 
