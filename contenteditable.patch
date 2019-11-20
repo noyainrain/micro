@@ -1,0 +1,117 @@
+diff --git a/client/components/list_input.html b/client/components/list_input.html
+index 988cc9c..8a9c32b 100644
+--- a/client/components/list_input.html
++++ b/client/components/list_input.html
+@@ -37,7 +37,26 @@ micro.ListInputElement = class extends HTMLElement {
+             },
+ 
+             onClick: event => {
+-                this.nativeInput.focus();
++                console.log("TARGET", event.target);
++                if (event.target === this.querySelector(".micro-input-wrapper > div")) {
++                // this.nativeInput.focus();
++                    this.querySelector(".micro-input-wrapper > div > .micro-list-input-placeholder").click();
++                }
++            },
++
++            onplaceholderclick: event => {
++                const i = Array.from(this.querySelector(".micro-list-input-items").children).indexOf(event.target.parentElement);
++                this._data.value.splice(i, 0, "");
++                console.log("INDEX", i);
++                this.querySelector(".micro-list-input-items").children.item(i).lastElementChild.focus();
++            },
++
++            onitemblur: event => {
++                // if (event.target.value === "") {
++                if (event.target.textContent.trim() === "") {
++                    const i = Array.from(this.querySelector(".micro-list-input-items").children).indexOf(event.target.parentElement);
++                    this._data.value.splice(i, 1);
++                }
+             },
+ 
+             onItemClick: item => {
+@@ -108,7 +127,7 @@ micro.ListInputElement = class extends HTMLElement {
+ 
+         this.parentElement.addEventListener("click", event => {
+             event.preventDefault();
+-            this.nativeInput.focus();
++            //this.nativeInput.focus();
+         });
+     }
+ 
+@@ -171,7 +190,7 @@ document.registerElement("micro-list-input", micro.ListInputElement);
+ 
+ <template id="micro-list-input-template">
+     <div class="micro-input-wrapper" data-class-micro-list-input-order="order" data-class-focus-within="focus" data-onclick="onClick">
+-        <ol is="micro-ol" data-content="list ctx value 'item'">
++        <!--<ol is="micro-ol" data-content="list ctx value 'item'">
+             <template>
+                 <li class="micro-panel" data-onclick="bind onItemClick item" style="cursor: pointer;">
+                     <span data-class-micro-ol-handle="order">
+@@ -184,28 +203,59 @@ document.registerElement("micro-list-input", micro.ListInputElement);
+                         is="micro-button" type="button" class="action" tabindex="-1"
+                         data-run="bind remove item" style="display: none;"
+                     >
+-                        <!--<i class="far fa-times-circle"></i>-->
+-                        <!--<i class="fa fa-times"></i>-->
++                        <!-x-<i class="far fa-times-circle"></i>-x->
++                        <!-x-<i class="fa fa-times"></i>-x->
+                         <i class="far fa-times-circle"></i>
+-                    </button><!--
+-             --></li>
++                    </button><!-x-
++                -x-></li>
+             </template>
+-        </ol>
+-        <input data-onkeydown="onKeyPress" data-onfocus="onFocus" data-onblur="onBlur" />
++        </ol>-->
++        <div>
++            <span class="micro-list-input-items" data-content="list ctx value 'item'">
++                <template>
++                    <span><!--
++                     --><span class="micro-list-input-placeholder" data-onclick="onplaceholderclick"></span><!--
++                     --><span class="foooo" contenteditable="true" data-content="item" width="10" data-onblur="onitemblur"></span><!--
++                  --></span>
++                </template>
++            </span><!--
++         --><span class="micro-list-input-placeholder" data-onclick="onplaceholderclick"></span><!--
++        </div>
++
++        <!--<input data-onkeydown="onKeyPress" data-onfocus="onFocus" data-onblur="onBlur" />
+         <micro-options
+             data-options="difference options optionsValue" data-onselect="onSelect"
+             data-xcontent="template"
+         >
+-        </micro-options>
++        </micro-options>-->
+     </div>
+ </template>
+ 
+ <style>
++    .micro-list-input-placeholder {
++        display: inline-block;
++        min-width: var(--micro-size-xs);
++        height: 1em;
++        background: gray;
++    }
++
++    label micro-list-input .micro-input-wrapper .foooo {
++        border: 1px solid #ddd;
++        display: inline-block;
++        padding: 1px;
++        min-width: 1em;
++        min-height: 1em;
++    }
++
+     micro-list-input .micro-panel .action {
+         padding: 1px 0.25em;
+         color: var(--micro-color-text-subtle);
+     }
+ 
++    micro-list-input .micro-input-wrapper {
++        padding: var(--micro-size-xs) 0;
++    }
++
+     micro-list-input .micro-input-wrapper > ol {
+         display: flex;
+         padding: 0;
