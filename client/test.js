@@ -78,3 +78,11 @@ exports.untilElementTextLocated = function(locator, text) {
         return t.includes(text) ? elem : null;
     });
 };
+
+/** Create a condition that will wait for the attribute with *attributeName* to match *regex*. */
+exports.untilElementAttributeMatches = function(element, attributeName, regex) {
+    return new WebElementCondition("until element attribute matches", async () => {
+        const value = await element.getAttribute(attributeName);
+        return regex.test(value) ? element : null;
+    });
+};

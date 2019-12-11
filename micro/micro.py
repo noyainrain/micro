@@ -523,7 +523,7 @@ class Editable:
         return self.app.r.omget(self._authors, default=AssertionError, expect=expect_type(User))
 
     @overload
-    def edit(self, *, asynchronous: None, **attrs: object) -> None:
+    def edit(self, *, asynchronous: None = None, **attrs: object) -> None:
         # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
@@ -851,19 +851,16 @@ class Orderable:
 class User(Object, Editable):
     """See :ref:`User`."""
 
-    def __init__(
-            self, *, id: str, app: Application, authors: List[str], name: str, email: str,
-            auth_secret: str, create_time: str, authenticate_time: str,
-            device_notification_status: str, push_subscription: Optional[str]) -> None:
-        super().__init__(id, app)
-        Editable.__init__(self, authors=authors)
-        self.name = name
-        self.email = email
-        self.auth_secret = auth_secret
-        self.create_time = parse_isotime(create_time, aware=True)
-        self.authenticate_time = parse_isotime(authenticate_time, aware=True)
-        self.device_notification_status = device_notification_status
-        self.push_subscription = push_subscription
+    def __init__(self, *, app: Application, **data: Dict[str, object]) -> None:
+        super().__init__(id=cast(str, data['id']), app=app)
+        Editable.__init__(self, authors=cast(List[str], data['authors']))
+        self.name = cast(str, data['name'])
+        self.email = cast(Optional[str], data['email'])
+        self.auth_secret = cast(str, data['auth_secret'])
+        self.create_time = parse_isotime(cast(str, data['create_time']), aware=True)
+        self.authenticate_time = parse_isotime(cast(str, data['authenticate_time']), aware=True)
+        self.device_notification_status = cast(str, data['device_notification_status'])
+        self.push_subscription = cast(Optional[str], data['push_subscription'])
 
     def store_email(self, email):
         """Update the user's *email* address.
@@ -1169,7 +1166,13 @@ class Settings(Object, Editable):
         }
 
 class Activity(Object, JSONRedisSequence[JSONifiable]):
-    """See :ref:`Activity`."""
+    """See :ref:`Activity`.
+
+    .. attribute:: post
+
+       Hook of the form ``post(event)`` that is called after :meth:`publish` with the corresponding
+       *event*. May be ``None``.
+    """
 
     class Stream(AsyncIterator['Event']):
         """:cls:`collections.abc.AsyncGenerator` of events."""
@@ -1216,6 +1219,7 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
                  pre: Callable[[], None] = None) -> None:
         super().__init__(id, app)
         JSONRedisSequence.__init__(self, app.r, '{}.items'.format(id), pre)
+        self.post = None # type: Optional[Callable[[Event], None]]
         self.host = None # type: Optional[object]
         self._subscriber_ids = subscriber_ids
         self._streams = set() # type: Set[Queue[Optional[Event]]]
@@ -1240,6 +1244,8 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
                 subscriber.notify(event)
         for stream in self._streams:
             stream.put_nowait(event)
+        if self.post:
+            self.post(event)
 
     def subscribe(self):
         """See :http:patch:`/api/(activity-url)` (``subscribe``)."""

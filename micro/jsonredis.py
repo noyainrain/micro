@@ -30,23 +30,7 @@ U = TypeVar('U')
 
 ExpectFunc = Callable[[object], T]
 
-_ZPOPTIMED_SCRIPT = """\
-redis.replicate_commands()
-local key = KEYS[1]
-local result = redis.call("zrange", key, 0, 0, "withscores")
-if result[1] then
-    local value, t = result[1], result[2]
-    local now = redis.call("time")
-    now = string.format("%d.%06d", now[1], now[2])
-    if tonumber(now) >= tonumber(t) then
-        redis.call("zrem", key, value)
-        return {value, t}
-    end
-    return t
-end
-return "+inf"
-"""
-_ZPOPTIMED_CACHE = WeakKeyDictionary() # type: WeakKeyDictionary[Redis, Script]
+_SCRIPT_CACHE = WeakKeyDictionary() # type: WeakKeyDictionary[Redis, Dict[str, Script]]
 _BZPOPTIMED_CACHE = WeakSet() # type: WeakSet[Redis]
 
 class JSONRedis(Generic[T]):
@@ -383,6 +367,19 @@ class JSONRedisMapping(Generic[T, U], Mapping[str, T]):
     def __repr__(self):
         return str(dict(self))
 
+def script(r: Redis, code: str) -> Script:
+    """Define a Redis script with the given Lua *code*.
+
+    Scripts are cached for the lifetime of the underlying Redis client *r*.
+    """
+    cache = _SCRIPT_CACHE.setdefault(r, {})
+    try:
+        return cache[code]
+    except KeyError:
+        f = r.register_script(code)
+        cache[code] = f
+        return f
+
 def zpoptimed(r: Redis, key: str) -> Union[Tuple[bytes, float], float]:
     """Remove and return the earliest available member (with score) in the sorted set at *key*.
 
@@ -390,11 +387,23 @@ def zpoptimed(r: Redis, key: str) -> Union[Tuple[bytes, float], float]:
     yet, the time of the next one is returned or infinity if the set is empty. *r* is the Redis
     client to use.
     """
-    if r not in _ZPOPTIMED_CACHE:
-        _ZPOPTIMED_CACHE[r] = r.register_script(_ZPOPTIMED_SCRIPT)
-    f = _ZPOPTIMED_CACHE[r]
-
-    result = f(keys=[key])
+    f = script(r, """\
+        redis.replicate_commands()
+        local key = KEYS[1]
+        local result = redis.call("zrange", key, 0, 0, "withscores")
+        if result[1] then
+            local value, t = result[1], result[2]
+            local now = redis.call("time")
+            now = string.format("%d.%06d", now[1], now[2])
+            if tonumber(now) >= tonumber(t) then
+                redis.call("zrem", key, value)
+                return {value, t}
+            end
+            return t
+        end
+        return "+inf"
+    """)
+    result = f([key])
     if isinstance(result, list):
         return (expect_type(bytes)(result[0]), float(result[1]))
     if isinstance(result, bytes):
