@@ -1135,11 +1135,10 @@ micro.OptionsElement = class extends HTMLElement {
                 );
             }
         );
-        if (this._input.readOnly) {
-            // Listen for mouseup to prevent reopening if the element is inside a label (as clicking
-            // on label content will trigger a click event on the input)
-            this._input.addEventListener("mouseup", () => this.activate());
-        }
+        this._input.addEventListener("focus", () => this.activate());
+        // Listen for mouseup to prevent reopening if the element is inside a label (as clicking on
+        // label content will trigger a click event on the input)
+        this._input.addEventListener("mouseup", () => this.activate());
         this._input.addEventListener("blur", () => this.deactivate());
     }
 

@@ -306,6 +306,8 @@ select {
 input:not([type=checkbox]),
 textarea,
 select {
+    display: block;
+    width: 100%;
     padding: calc(1.5rem / 4);
     border: 1px solid var(--micro-color-border);
     border-radius: 0;
@@ -323,6 +325,10 @@ input[type=checkbox]:focus {
     box-shadow: none;
 }
 
+textarea {
+    height: calc(5 * 1.5em + 2 * 0.25 * 1.5em);
+}
+
 .micro-input-wrapper {
     border: 1px solid var(--micro-color-border);
 }
@@ -337,19 +343,8 @@ label {
     display: block;
 }
 
-label input:not([type=checkbox]),
-label textarea,
-label select {
-    display: block;
-    width: 100%;
-}
-
 h1 > label {
     margin-bottom: calc(1.5rem / 4);
-}
-
-label textarea {
-    height: calc(5 * 1.5em + 2 * 0.25 * 1.5em);
 }
 
 label > small {
@@ -416,6 +411,11 @@ legend {
     border-bottom: none;
     margin: 0;
     font-size: 1em;
+}
+
+.micro-panel > input,
+.micro-panel > div > input {
+    border: none;
 }
 
 .micro-panel > .link:focus,

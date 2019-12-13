@@ -37,6 +37,11 @@ micro.keyboard.ShortcutContext = class {
         }
 
         this.elem.addEventListener("keydown", event => {
+            // Work around Chrome dispatching KeybordEvent with undefined key (see
+            // https://bugs.chromium.org/p/chromium/issues/detail?id=904420)
+            if (!event.key) {
+                return;
+            }
             if (!this._prefix) {
                 return;
             }
@@ -51,6 +56,11 @@ micro.keyboard.ShortcutContext = class {
         }, true);
 
         this.elem.addEventListener("keydown", event => {
+            // Work around Chrome dispatching KeybordEvent with undefined key (see
+            // https://bugs.chromium.org/p/chromium/issues/detail?id=904420)
+            if (!event.key) {
+                return;
+            }
             // If the event reaches us in the target phase, both listeners are called, irrespective
             // of stopPropagation. Ignore the event if it has been marked as handled by the capture
             // listener.
