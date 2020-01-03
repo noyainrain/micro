@@ -43,7 +43,7 @@ micro.components.analytics.AnalyticsPage = class extends micro.Page {
             document.importNode(ui.querySelector("#micro-analytics-page-template").content, true)
         );
         this._data = new micro.bind.Watchable({
-            referrals: new micro.Collection("/api/analytics/referrals"),
+            referrals: new micro.Collection("/api/stats/referrals"),
             referralsComplete: false
         });
         micro.bind.bind(this.children, this._data);
@@ -132,9 +132,7 @@ micro.components.analytics.Chart = class extends HTMLElement {
             try {
                 Chart = await importChartjs();
                 statistics = await Promise.all(
-                    this.statistics.map(
-                        topic => ui.call("GET", `/api/analytics/statistics/${topic}`)
-                    )
+                    this.statistics.map(topic => ui.call("GET", `/api/stats/statistics/${topic}`))
                 );
             } catch (e) {
                 ui.handleCallError(e);

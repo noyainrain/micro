@@ -7,15 +7,15 @@ module.exports = function(config) {
     config.set({
         frameworks: ["mocha"],
         files: [
-            "node_modules/whatwg-fetch/fetch.js",
             "node_modules/webcomponents.js/webcomponents-lite.min.js",
+            "node_modules/event-source-polyfill/src/eventsource.min.js",
             "node_modules/chai/chai.js",
             "bind.js",
             "keyboard.js",
             "util.js",
             "index.js",
-            "components/analytics.js",
             "components/contextual.js",
+            "components/stats.js",
             "!(node_modules)/**/test*.js",
             {pattern: "templates.html", type: "dom"}
         ],

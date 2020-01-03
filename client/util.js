@@ -275,7 +275,7 @@ micro.util.parseCoords = function(str) {
 micro.util.withAlpha = function(color, alpha) {
     function normalize(c) {
         if (c.length === 4) {
-            const value = Array.map(c.slice(1), component => component + component).join("");
+            const value = Array.from(c.slice(1), component => component + component).join("");
             return `#${value}`;
         }
         return c;

@@ -246,8 +246,9 @@ class Server:
             *make_list_endpoints(r'/api/activity(?:/v1)?', get_activity),
             (r'/api/activity/stream', ActivityStreamEndpoint,
              {'get_activity': cast(object, get_activity)}),
-            (r'/api/analytics/statistics/([^/]+)$', _StatisticEndpoint),
-            (r'/api/analytics/referrals$', _ReferralsEndpoint),
+            # Provide alias because /api/analytics triggers popular ad blocking filters
+            (r'/api/(?:analytics|stats)/statistics/([^/]+)$', _StatisticEndpoint),
+            (r'/api/(?:analytics|stats)/referrals$', _ReferralsEndpoint),
             *handlers,
             # UI
             (r'/log-client-error$', _LogClientErrorEndpoint),
@@ -679,6 +680,7 @@ class _BuildManifest(RequestHandler):
         '!{}/@noyainrain/micro/service.js',
         '!{}/@noyainrain/micro/karma.conf.js',
         '{}/@noyainrain/micro/components/*.js',
+        '!{}/@noyainrain/micro/components/analytics.js',
         '{}/@noyainrain/micro/micro.css',
         '{}/@noyainrain/micro/images',
         '{}/webcomponents.js/webcomponents-lite.min.js',
