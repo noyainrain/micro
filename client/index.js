@@ -152,7 +152,8 @@ micro.UI = class extends HTMLBodyElement {
         this._data = new micro.bind.Watchable({
             user: null,
             settings: null,
-            offline: false
+            offline: false,
+            dialog: null
         });
         micro.bind.bind(this.children, this._data);
 
@@ -170,8 +171,9 @@ micro.UI = class extends HTMLBodyElement {
             this.classList.toggle("micro-ui-settings-have-feedback-url",
                                   this._data.settings && this._data.settings.feedback_url);
             this.classList.toggle("micro-ui-offline", this._data.offline);
+            this.classList.toggle("micro-ui-dialog", this._data.dialog);
         };
-        ["user", "settings", "offline"].forEach(prop => this._data.watch(prop, update));
+        ["user", "settings", "offline", "dialog"].forEach(prop => this._data.watch(prop, update));
 
         this.features = {
             es6TypedArray: "ArrayBuffer" in window,
@@ -318,6 +320,17 @@ micro.UI = class extends HTMLBodyElement {
             micro.Page.prototype.attachedCallback.call(this._page);
             this._updateTitle();
         }
+    }
+
+    /** TODO. */
+    get dialog() {
+        return this._data.dialog;
+    }
+
+    /** TODO. */
+    set dialog(value) {
+        console.log("SETTING DIALOG");
+        this._data.dialog = value;
     }
 
     /** Current :ref:`User`. */

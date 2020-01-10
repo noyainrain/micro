@@ -79,6 +79,24 @@
 
         <div class="micro-ui-notification-space"></div>
     </header>
+
+    <div class="micro-ui-dialog-space" data-content="dialog">
+        <!--<div class="micro-dialog">
+            <header class="micro-panel">
+                <h1 class="micro-panel-main">Share list</h1>
+                <button is="micro-button" type="button" class="link">
+                    <i class="fa fa-times-circle"></i>
+                </button>
+            </header>
+            <div>
+				<div class="micro-panel"><p>Simply pass along this link to share the list with others.</p></div>
+				<div class="micro-panel"><p>Like this:</p></div>
+				<div class="micro-panel"  style="border-top: 1px solid var(--micro-color-delimiter);">
+					<input type="url" readonly="readonly" value="https://listling.org/list/foo" />
+				</div>
+            </div>
+        </div>-->
+    </div>
 </template>
 <style>
     body[noninteractive] .micro-interactive {
@@ -138,6 +156,30 @@
     body:not(.micro-ui-user-is-staff) .micro-ui-edit-settings {
         display: none;
     }
+
+    .micro-ui-dialog-space {
+        position: fixed;
+        z-index: 1;
+        z-index: 2;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        padding: var(--micro-size-rm);
+        padding: calc(2 * var(--micro-size-rm) + 2 * var(--micro-size-rxs)) var(--micro-size-rm);
+        background: rgba(0, 0, 0, 0.5);
+        overflow: hidden auto;
+    }
+
+    body:not(.micro-ui-dialog) .micro-ui-dialog-space {
+        display: none;
+    }
+
+    /*body.micro-ui-dialog main,
+    body.micro-ui-dialog .micro-ui-header {
+        filter: blur(1px);
+        pointer-events: none;
+    }*/
 </style>
 
 <template class="micro-simple-notification-template">
@@ -503,6 +545,7 @@
 
 {% include 'components/analytics.html' %}
 {% include 'components/contextual.html' %}
+{% include 'components/dialog.html' %}
 {% include 'components/image.html' %}
 {% include 'components/link.html' %}
 {% include 'components/video.html' %}
