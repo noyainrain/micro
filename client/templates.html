@@ -80,7 +80,10 @@
         <div class="micro-ui-notification-space"></div>
     </header>
 
-    <div class="micro-ui-dialog-space" data-content="dialog">
+    <div
+        class="micro-ui-dialog-space" data-content="dialog" tabindex="-1"
+        data-shortcut-context="new ShortcutContext"
+    >
         <!--<div class="micro-dialog">
             <header class="micro-panel">
                 <h1 class="micro-panel-main">Share list</h1>
@@ -169,6 +172,10 @@
         padding: calc(2 * var(--micro-size-rm) + 2 * var(--micro-size-rxs)) var(--micro-size-rm);
         background: rgba(0, 0, 0, 0.5);
         overflow: hidden auto;
+    }
+
+    .micro-ui-dialog-space:focus {
+        box-shadow: none;
     }
 
     body:not(.micro-ui-dialog) .micro-ui-dialog-space {
@@ -545,7 +552,6 @@
 
 {% include 'components/analytics.html' %}
 {% include 'components/contextual.html' %}
-{% include 'components/dialog.html' %}
 {% include 'components/image.html' %}
 {% include 'components/link.html' %}
 {% include 'components/video.html' %}

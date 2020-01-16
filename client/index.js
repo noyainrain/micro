@@ -331,6 +331,9 @@ micro.UI = class extends HTMLBodyElement {
     set dialog(value) {
         console.log("SETTING DIALOG");
         this._data.dialog = value;
+        if (this._data.dialog) {
+            this.querySelector(".micro-ui-dialog-space").focus();
+        }
     }
 
     /** Current :ref:`User`. */
@@ -542,6 +545,7 @@ micro.UI = class extends HTMLBodyElement {
 
         if (oldLocation === null || location.pathname !== oldLocation.pathname) {
             this._progressElem.style.display = "block";
+            this.dialog = null;
             this.page = null;
             this.page = await this._route(location.pathname);
             this._progressElem.style.display = "none";
