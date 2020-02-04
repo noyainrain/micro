@@ -31,8 +31,7 @@ watch-test-client:
 
 .PHONY: type
 type:
-	mypy -m micro -m micro.error -m micro.jsonredis -m micro.micro -m micro.resource \
-	     -m micro.server -m micro.templates -m micro.test -m micro.util -m micro.webapi
+	mypy --show-error-codes -p micro
 
 .PHONY: lint
 lint:

@@ -1824,6 +1824,7 @@ micro.EditUserPage = class extends micro.Page {
             if (e instanceof micro.APIError && e.__type__ === "ValueError") {
                 // If the email address has already been removed, we just update the UI
                 this.user.email = null;
+                // eslint-disable-next-line no-self-assign
                 this.user = this.user;
             } else {
                 ui.handleCallError(e);

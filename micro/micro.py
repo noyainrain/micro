@@ -766,7 +766,7 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
         """
         if isinstance(x, Object):
             return self.index(x.id, start, stop)
-        return self.ids.index(x.encode(), start, stop)
+        return self.ids.index(cast(str, x).encode(), start, stop)
 
     def __len__(self) -> int:
         return len(self.ids)
@@ -790,7 +790,7 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
             if key not in self:
                 raise KeyError()
             return self.app.r.oget(key, default=ReferenceError, expect=self.expect)
-        if isinstance(key, slice):
+        if isinstance(key, slice): # type: ignore[misc]
             return self.app.r.omget([id.decode() for id in self.ids[key]],
                                     default=ReferenceError, expect=self.expect)
         return self.app.r.oget(self.ids[key].decode(), default=ReferenceError,
@@ -814,7 +814,7 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
         count = len(self)
         if slc:
             items = self[slc]
-            start = 0 if slc.start is None else slc.start
+            start = 0 if cast(Optional[int], slc.start) is None else cast(int, slc.start)
             stop = start + len(items)
         return {
             'count': count,

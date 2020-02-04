@@ -7,7 +7,6 @@ import micro
 extensions = ['sphinx.ext.autodoc', 'sphinxcontrib.httpdomain']
 source_suffix = ['.rst', '.md']
 source_parsers = {'.md': 'recommonmark.parser.CommonMarkParser'}
-master_doc = 'index'
 
 project = '{name}'
 copyright = '{year} {name} contributors'

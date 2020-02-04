@@ -281,7 +281,7 @@ class _MetaParser(HTMLParser):
         self.meta = {} # type: Dict[str, str]
         self._read_tag_data = None # type: Optional[str]
 
-    def handle_starttag(self, tag: str, attrs: List[Tuple[str, str]]) -> None:
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         if not self._read_tag_data:
             if tag == 'title':
                 self.meta['title'] = ''

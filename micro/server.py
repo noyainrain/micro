@@ -260,9 +260,9 @@ class Server:
             (r'/.*$', UI), # type: ignore
         ] # type: List[Handler]
 
-        application = Application( # type: ignore
-            self.handlers, compress_response=True, template_path=self.client_path, debug=self.debug,
-            server=self)
+        application = Application(
+            self.handlers, compress_response=True, # type: ignore[arg-type]
+            template_path=self.client_path, debug=self.debug, server=self)
         # Install static file handler manually to allow pre-processing
         cast(_ApplicationSettings, application.settings).update({'static_path': self.client_path})
         self._server = HTTPServer(application)

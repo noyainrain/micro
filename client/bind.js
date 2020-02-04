@@ -506,7 +506,7 @@ micro.bind.transforms = {
      * *separator* is inserted between adjacent items. *transform* and *args* are equivalent to the
      * arguments of :func:`micro.bind.list`.
      */
-    join(ctx, arr, itemName, separator = ", ", transform, ...args) {
+    join(ctx, arr, itemName, separator = ", ", transform = null, ...args) {
         if (!ctx.elem.__templates__) {
             ctx.elem.__templates__ = Array.from(ctx.elem.querySelectorAll("template"));
         }
@@ -646,7 +646,7 @@ micro.bind.list = function(elem, arr, itemName, transform, ...args) {
  *
  *    Use :func:`micro.bind.transforms.join`.
  */
-micro.bind.join = function(elem, arr, itemName, separator = ", ", transform, ...args) {
+micro.bind.join = function(elem, arr, itemName, separator = ", ", transform = null, ...args) {
     if (!elem.__templates__) {
         elem.__templates__ = Array.from(elem.querySelectorAll("template"));
     }
