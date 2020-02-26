@@ -116,7 +116,7 @@ micro.UI = class extends HTMLBodyElement {
         window.addEventListener("popstate", () => this._navigate().catch(micro.util.catch));
         this.addEventListener("click", event => {
             let a = micro.findAncestor(event.target, e => e instanceof HTMLAnchorElement, this);
-            if (a && a.origin === location.origin) {
+            if (a && a.origin === location.origin && !a.pathname.startsWith("/files/")) {
                 event.preventDefault();
                 this.navigate(a.pathname + a.hash).catch(micro.util.catch);
             }

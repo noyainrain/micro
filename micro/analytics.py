@@ -22,11 +22,13 @@
 from asyncio import Task, ensure_future, sleep # pylint: disable=unused-import; typing
 import json
 from datetime import datetime, timedelta
+from logging import getLogger
 import typing
 from typing import Callable, Dict, Iterator, List, Mapping, Optional, cast
 from urllib.parse import urlsplit
 
 from . import error
+from .core import RewriteFunc
 from .jsonredis import RedisSortedSet
 from .micro import Collection, Object, User
 from .util import expect_type, parse_isotime, randstr
@@ -83,6 +85,7 @@ class Analytics:
                 t += timedelta(days=1)
                 await sleep((t - self.app.now()).total_seconds())
                 self.collect_statistics(_t=t)
+                getLogger(__name__).info('Collected statistics for %s', format(t, '%d %b %Y'))
         return cast('Task[None]', ensure_future(_run()))
 
     def _count_users(self, t: datetime) -> float:
@@ -162,9 +165,10 @@ class Referral(Object):
         self.url = url
         self.time = parse_isotime(time, aware=True)
 
-    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
+    def json(self, restricted: bool = False, include: bool = False, *,
+             rewrite: RewriteFunc = None) -> Dict[str, object]:
         return {
-            **super().json(restricted=restricted, include=include),
+            **super().json(restricted=restricted, include=include, rewrite=rewrite),
             'url': self.url,
             'time': self.time.isoformat()
         }

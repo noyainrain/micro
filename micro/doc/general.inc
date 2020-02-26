@@ -293,6 +293,12 @@ Only staff members can query the referrals.
 
    Record a :ref:`Referral` from *url* and return it.
 
+Files
+-----
+
+To upload a file, ``POST`` to ``/files``. Supported file types are ``image/bmp``, ``image/gif``,
+``image/jpeg``, ``image/png`` and ``image/svg+xml``.
+
 Errors
 ------
 

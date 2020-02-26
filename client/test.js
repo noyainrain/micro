@@ -23,6 +23,7 @@
 "use strict";
 
 let {Builder, WebElementCondition} = require("selenium-webdriver");
+const {FileDetector} = require("selenium-webdriver/remote");
 
 /**
  * Start a WebDriver session for running the given Mocha *test*.
@@ -47,6 +48,7 @@ exports.startBrowser = function(test, subject) {
         name: `[${subject}]${tag} ${test.fullTitle()}`
     };
     let browser = new Builder().usingServer(webdriverURL).withCapabilities(capabilities).build();
+    browser.setFileDetector(new FileDetector());
     browser.remote = Boolean(webdriverURL);
     return browser;
 };

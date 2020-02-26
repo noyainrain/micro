@@ -14,12 +14,13 @@
 
 """Test utilites."""
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urljoin
 
 from tornado.httpclient import AsyncHTTPClient
 from tornado.testing import AsyncTestCase
 
+from .core import RewriteFunc
 from .jsonredis import JSONRedis, RedisList
 from .micro import (Activity, Application, Collection, Editable, Object, Orderable, Settings,
                     Trashable, WithContent)
@@ -76,8 +77,8 @@ class CatApp(Application):
             self.app.r.rpush('cats', cat.id)
             return cat
 
-    def __init__(self, redis_url: str = '') -> None:
-        super().__init__(redis_url=redis_url)
+    def __init__(self, redis_url: str = '', *, files_path: str = 'data') -> None:
+        super().__init__(redis_url=redis_url, files_path=files_path)
         self.types.update({'Cat': Cat})
         self.cats = self.Cats(app=self)
 
@@ -145,12 +146,13 @@ class Cat(Object, Editable, Trashable, WithContent):
         if 'name' in attrs:
             self.name = expect_opt_type(str)(attrs['name'])
 
-    def json(self, restricted=False, include=False):
+    def json(self, restricted: bool = False, include: bool = False, *,
+             rewrite: RewriteFunc = None) -> Dict[str, object]:
         return {
-            **super().json(restricted, include),
-            **Editable.json(self, restricted, include),
-            **Trashable.json(self, restricted, include),
-            **WithContent.json(self, restricted, include),
+            **super().json(restricted=restricted, include=include, rewrite=rewrite),
+            **Editable.json(self, restricted=restricted, include=include, rewrite=rewrite),
+            **Trashable.json(self, restricted=restricted, include=include, rewrite=rewrite),
+            **WithContent.json(self, restricted=restricted, include=include, rewrite=rewrite),
             'name': self.name,
-            'activity': self.activity.json(restricted)
+            'activity': self.activity.json(restricted=restricted, rewrite=rewrite)
         }

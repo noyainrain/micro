@@ -17,6 +17,7 @@
 
 import http.client
 import json
+from tempfile import mkdtemp
 
 from tornado.httpclient import HTTPClientError
 from tornado.testing import gen_test
@@ -28,7 +29,7 @@ from micro.test import ServerTestCase, CatApp
 class ServerTest(ServerTestCase):
     def setUp(self):
         super().setUp()
-        self.app = CatApp(redis_url='15')
+        self.app = CatApp(redis_url='15', files_path=mkdtemp())
         self.app.r.flushdb()
         handlers = [
             (r'/api/cats$', CollectionEndpoint, {'get_collection': lambda: self.app.cats}),
@@ -44,6 +45,8 @@ class ServerTest(ServerTestCase):
 
     @gen_test
     async def test_availability(self):
+        file_url = await self.app.files.write(b'Meow!', 'text/plain')
+
         # UI
         await self.request('/')
         await self.request('/manifest.webmanifest')
@@ -60,6 +63,9 @@ class ServerTest(ServerTestCase):
         await self.request('/api/settings')
         await self.request('/api/analytics/referrals', method='POST',
                            body='{"url": "https://example.org/"}')
+        await self.request(self.server.rewrite(file_url))
+        await self.request('/files', method='POST', body=b'<svg />',
+                           headers={'Content-Type': 'image/svg+xml'})
 
         # API (generic)
         cat = self.app.cats.create()

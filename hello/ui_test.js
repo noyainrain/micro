@@ -20,6 +20,8 @@
 "use strict";
 
 let {exec, spawn} = require("child_process");
+const {mkdtemp} = require("fs").promises;
+const {tmpdir} = require("os");
 let {promisify} = require("util");
 
 let {until} = require("selenium-webdriver");
@@ -38,8 +40,12 @@ describe("UI", function() {
 
     beforeEach(async function() {
         await promisify(exec)("redis-cli -n 15 flushdb");
-        server = spawn("python3", ["-m", "hello", "--port", "8081", "--redis-url", "15"],
-                       {stdio: "inherit"});
+        const filesPath = await mkdtemp(`${tmpdir()}/`);
+        server = spawn(
+            "python3",
+            ["-m", "hello", "--port", "8081", "--redis-url", "15", "--files-path", filesPath],
+            {stdio: "inherit"}
+        );
         browser = startBrowser(this.currentTest, "micro");
         timeout = browser.remote ? 10 * 1000 : 1000;
     });

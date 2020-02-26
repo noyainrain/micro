@@ -100,6 +100,7 @@ micro.service.Service = class {
 
         const handlers = [
             ["^/api/.*$", () => {}],
+            ["^/files/.*$", () => {}],
             ["^/log-client-error$", () => {}],
             ["^/manifest.webmanifest$", () => {}],
             [
