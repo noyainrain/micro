@@ -9,7 +9,8 @@
         <script src="{{ static_url('hello.js') }}" defer="defer"></script>
     </head>
 
-    <body is="hello-ui">
+    <body>
+        <hello-ui>
         {% raw micro_boot() %}
 
         {% raw micro_templates() %}
@@ -106,5 +107,6 @@
                 project-copyright="Copyright © 2018 micro contributors">
             </micro-about-page>
         </template>
+        </hello-ui>
     </body>
 </html>

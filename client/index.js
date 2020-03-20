@@ -76,8 +76,10 @@ micro.findAncestor = micro.keyboard.findAncestor;
  *    :meth:`navigate` or initially on app launch). *oldURL* and *newURL* are the previous and now
  *    current URL respectively.
  */
-micro.UI = class extends HTMLBodyElement {
-    createdCallback() {
+micro.UI = class extends HTMLElement {
+    constructor() {
+        super();
+
         this.mapServiceKey =
             document.querySelector("meta[itemprop=map-service-key]").content || null;
         this._url = null;
@@ -315,7 +317,8 @@ micro.UI = class extends HTMLBodyElement {
             this._pageSpace.appendChild(this._page);
             // Compatibility for overriding attachedCallback without chaining (deprecated since
             // 0.19.0)
-            micro.Page.prototype.attachedCallback.call(this._page);
+            // micro.Page.prototype.attachedCallback.call(this._page);
+            micro.Page.prototype.connectedCallback.call(this._page);
             this._updateTitle();
         }
     }
@@ -565,7 +568,8 @@ micro.UI = class extends HTMLBodyElement {
         }
 
         if (!match) {
-            return document.createElement("micro-not-found-page");
+            // return document.createElement("micro-not-found-page");
+            return new micro.NotFoundPage();
         }
         if (typeof route.page === "string") {
             return document.createElement(route.page);
@@ -575,13 +579,16 @@ micro.UI = class extends HTMLBodyElement {
             return await Promise.resolve(route.page(...args));
         } catch (e) {
             if (e instanceof micro.NetworkError) {
-                return document.createElement("micro-offline-page");
+                // return document.createElement("micro-offline-page");
+                return new micro.OfflinePage();
             } else if (e instanceof micro.APIError &&
                        e.error.__type__ === "NotFoundError") {
-                return document.createElement("micro-not-found-page");
+                // return document.createElement("micro-not-found-page");
+                return new micro.NotFoundPage();
             } else if (e instanceof micro.APIError &&
                        e.error.__type__ === "PermissionError") {
-                return document.createElement("micro-forbidden-page");
+                // return document.createElement("micro-forbidden-page");
+                return new micro.ForbiddenPage();
             }
             throw e;
         }
@@ -1390,7 +1397,8 @@ document.registerElement("micro-map", micro.MapElement);
  *    this element.
  */
 micro.LocationInputElement = class extends HTMLElement {
-    createdCallback() {
+    constructor() {
+        super();
         this._valueAsObject = null;
 
         this.appendChild(
@@ -1529,7 +1537,7 @@ micro.LocationInputElement = class extends HTMLElement {
         this.nativeInput.placeholder = value;
     }
 };
-document.registerElement("micro-location-input", micro.LocationInputElement);
+customElements.define("micro-location-input", micro.LocationInputElement);
 
 /**
  * User element.
@@ -1571,7 +1579,8 @@ micro.UserElement = class extends HTMLElement {
  *    ready. By default, the page is considered all set after it has been attached to the DOM.
  */
 micro.Page = class extends HTMLElement {
-    createdCallback() {
+    constructor() {
+        super();
         this.ready = new micro.util.PromiseWhen();
         this._caption = null;
     }
@@ -1581,7 +1590,7 @@ micro.Page = class extends HTMLElement {
      *
      *    Overriding without chaining.
      */
-    attachedCallback() {
+    connectedCallback() {
         setTimeout(
             () => {
                 try {
@@ -1616,45 +1625,47 @@ micro.Page = class extends HTMLElement {
 
 /** Offline page. */
 micro.OfflinePage = class extends micro.Page {
-    createdCallback() {
-        super.createdCallback();
+    constructor() {
+        super();
         this.caption = "Offline";
         this.appendChild(
             document.importNode(ui.querySelector("#micro-offline-page-template").content, true));
     }
 };
-document.registerElement("micro-offline-page", micro.OfflinePage);
+customElements.define("micro-offline-page", micro.OfflinePage);
 
 /**
  * Not found page.
  */
 micro.NotFoundPage = class extends micro.Page {
-    createdCallback() {
-        super.createdCallback();
+    constructor() {
+        super();
         this.caption = "Not found";
         this.appendChild(document.importNode(
             ui.querySelector(".micro-not-found-page-template").content, true));
     }
 };
+customElements.define("micro-not-found-page", micro.NotFoundPage);
 
 /**
  * Forbidden page.
  */
 micro.ForbiddenPage = class extends micro.Page {
-    createdCallback() {
-        super.createdCallback();
+    constructor() {
+        super();
         this.caption = "Forbidden";
         this.appendChild(document.importNode(
             ui.querySelector(".micro-forbidden-page-template").content, true));
     }
 };
+customElements.define("micro-forbidden-page", micro.ForbiddenPage);
 
 /**
  * About page.
  */
 micro.AboutPage = class extends micro.Page {
-    createdCallback() {
-        super.createdCallback();
+    constructor() {
+        super();
         this.caption = `About ${ui.settings.title}`;
         this.appendChild(document.importNode(
             ui.querySelector(".micro-about-page-template").content, true));
@@ -1698,6 +1709,7 @@ micro.AboutPage = class extends micro.Page {
             this.getAttribute("project-copyright");
     }
 };
+customElements.define("micro-about-page", micro.AboutPage);
 
 /**
  * Edit user page.
@@ -1707,15 +1719,17 @@ micro.EditUserPage = class extends micro.Page {
         id = id || ui.user.id;
         let user = await ui.call("GET", `/api/users/${id}`);
         if (!(ui.user.id === user.id)) {
-            return document.createElement("micro-forbidden-page");
+            // return document.createElement("micro-forbidden-page");
+            return new micro.ForbiddenPage();
         }
-        let page = document.createElement("micro-edit-user-page");
+        // let page = document.createElement("micro-edit-user-page");
+        let page = new micro.EditUserPage();
         page.user = user;
         return page;
     }
 
-    createdCallback() {
-        super.createdCallback();
+    constructor() {
+        super();
         this._user = null;
         this.caption = "Edit user settings";
         this.appendChild(document.importNode(
@@ -1736,8 +1750,8 @@ micro.EditUserPage = class extends micro.Page {
         this._setEmailForm.addEventListener("submit", e => e.preventDefault());
     }
 
-    attachedCallback() {
-        super.attachedCallback();
+    connectedCallback() {
+        super.connectedCallback();
         this.ready.when((async() => {
             let match = /^#set-email=([^:]+):([^:]+)$/u.exec(location.hash);
             if (match) {
@@ -1881,6 +1895,7 @@ micro.EditUserPage = class extends micro.Page {
         }
     }
 };
+customElements.define("micro-edit-user-page", micro.EditUserPage);
 
 /**
  * Edit settings page.
@@ -1888,13 +1903,15 @@ micro.EditUserPage = class extends micro.Page {
 micro.EditSettingsPage = class extends micro.Page {
     static make() {
         if (!ui.staff) {
-            return document.createElement("micro-forbidden-page");
+            // return document.createElement("micro-forbidden-page");
+            return new micro.ForbiddenPage();
         }
-        return document.createElement("micro-edit-settings-page");
+        // return document.createElement("micro-edit-settings-page");
+        return new micro.EditSettingsPage();
     }
 
-    createdCallback() {
-        super.createdCallback();
+    constructor() {
+        super();
         this.caption = "Edit site settings";
         this.appendChild(
             document.importNode(ui.querySelector(".micro-edit-settings-page-template").content,
@@ -1933,17 +1950,20 @@ micro.EditSettingsPage = class extends micro.Page {
         micro.bind.bind(this.children, this._data);
     }
 };
+customElements.define("micro-edit-settings-page", micro.EditSettingsPage);
 
 micro.ActivityPage = class extends micro.Page {
     static make() {
         if (!ui.staff) {
-            return document.createElement("micro-forbidden-page");
+            // return document.createElement("micro-forbidden-page");
+            return new micro.ForbiddenPage();
         }
-        return document.createElement("micro-activity-page");
+        // return document.createElement("micro-activity-page");
+        return new micro.ActivityPage();
     }
 
-    createdCallback() {
-        super.createdCallback();
+    constructor() {
+        super();
         this.caption = "Site activity";
         this.appendChild(document.importNode(
             ui.querySelector(".micro-activity-page-template").content, true));
@@ -1952,8 +1972,8 @@ micro.ActivityPage = class extends micro.Page {
         this._start = 0;
     }
 
-    attachedCallback() {
-        super.attachedCallback();
+    connectedCallback() {
+        super.connectedCallback();
         this.ready.when(this._showMoreButton.trigger().catch(micro.util.catch));
     }
 
@@ -2100,18 +2120,11 @@ Object.assign(micro.bind.transforms, {
     ShortcutContext: micro.keyboard.ShortcutContext,
     Shortcut: micro.keyboard.Shortcut
 });
+customElements.define("micro-activity-page", micro.ActivityPage);
 
-document.registerElement("micro-ui", {prototype: micro.UI.protoype, extends: "body"});
 document.registerElement("micro-simple-notification", micro.SimpleNotification);
 document.registerElement("micro-error-notification", micro.ErrorNotification);
 document.registerElement("micro-ol", {prototype: micro.OL.prototype, extends: "ol"});
 document.registerElement("micro-button", {prototype: micro.Button.prototype, extends: "button"});
 document.registerElement("micro-menu", {prototype: micro.Menu.prototype, extends: "ul"});
 document.registerElement("micro-user", micro.UserElement);
-document.registerElement("micro-page", micro.Page);
-document.registerElement("micro-not-found-page", micro.NotFoundPage);
-document.registerElement("micro-forbidden-page", micro.ForbiddenPage);
-document.registerElement("micro-about-page", micro.AboutPage);
-document.registerElement("micro-edit-user-page", micro.EditUserPage);
-document.registerElement("micro-edit-settings-page", micro.EditSettingsPage);
-document.registerElement("micro-activity-page", micro.ActivityPage);

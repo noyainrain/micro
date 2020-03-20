@@ -784,11 +784,11 @@ section section .micro-heading > h1 {
     margin: 0;
 }
 
-body:not(.micro-ui-settings-have-feedback-url) .micro-ui-feedback {
+body > :first-child:not(.micro-ui-settings-have-feedback-url) .micro-ui-feedback {
     display: none;
 }
 
-body:not(.micro-ui-user-is-staff) .micro-ui-activity {
+body > :first-child:not(.micro-ui-user-is-staff) .micro-ui-activity {
     display: none;
 }
 

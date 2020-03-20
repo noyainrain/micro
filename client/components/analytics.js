@@ -32,13 +32,15 @@ micro.components.analytics = {};
 micro.components.analytics.AnalyticsPage = class extends micro.Page {
     static make() {
         if (!ui.staff) {
-            return document.createElement("micro-forbidden-page");
+            // return document.createElement("micro-forbidden-page");
+            return new micro.ForbiddenPage();
         }
-        return document.createElement("micro-analytics-page");
+        // return document.createElement("micro-analytics-page");
+        return new micro.components.analytics.AnalyticsPage();
     }
 
-    createdCallback() {
-        super.createdCallback();
+    constructor() {
+        super();
         this.appendChild(
             document.importNode(ui.querySelector("#micro-analytics-page-template").content, true)
         );
@@ -54,13 +56,13 @@ micro.components.analytics.AnalyticsPage = class extends micro.Page {
         });
     }
 
-    attachedCallback() {
-        super.attachedCallback();
+    connectedCallback() {
+        super.connectedCallback();
         const button = this.querySelector(".micro-analytics-more-referrals");
         this.ready.when(button.trigger().catch(micro.util.catch));
     }
 };
-document.registerElement("micro-analytics-page", micro.components.analytics.AnalyticsPage);
+customElements.define("micro-analytics-page", micro.components.analytics.AnalyticsPage);
 
 /**
  * Line chart showing one ore more statistics over time.

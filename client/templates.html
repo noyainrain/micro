@@ -81,7 +81,7 @@
     </header>
 </template>
 <style>
-    body[noninteractive] .micro-interactive {
+    body > :first-child[noninteractive] .micro-interactive {
         display: none;
     }
 
@@ -131,11 +131,11 @@
         font-weight: bold;
     }
 
-    body > [slot],
-    body:not(.micro-ui-settings-have-icon-small) .micro-ui-logo img,
-    body:not(.micro-ui-offline) .micro-ui-header-offline,
-    body:not(.micro-ui-user-is-staff) .micro-ui-analytics,
-    body:not(.micro-ui-user-is-staff) .micro-ui-edit-settings {
+    body > :first-child > [slot],
+    body > :first-child:not(.micro-ui-settings-have-icon-small) .micro-ui-logo img,
+    body > :first-child:not(.micro-ui-offline) .micro-ui-header-offline,
+    body > :first-child:not(.micro-ui-user-is-staff) .micro-ui-analytics,
+    body > :first-child:not(.micro-ui-user-is-staff) .micro-ui-edit-settings {
         display: none;
     }
 </style>

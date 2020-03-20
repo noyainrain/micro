@@ -33,18 +33,20 @@ hello.UI = class extends micro.UI {
         }
 
         this.pages = this.pages.concat([
-            {url: "^/$", page: "hello-start-page"},
+            // {url: "^/$", page: "hello-start-page"},
+            {url: "^/$", page: () => new hello.StartPage()},
             {url: "^/about$", page: makeAboutPage}
         ]);
     }
 };
+customElements.define("hello-ui", hello.UI);
 
 /**
  * Start page.
  */
 hello.StartPage = class extends micro.Page {
-    createdCallback() {
-        super.createdCallback();
+    constructor() {
+        super();
         this._activity = null;
 
         this.appendChild(
@@ -83,8 +85,8 @@ hello.StartPage = class extends micro.Page {
         micro.bind.bind(this.children, this._data);
     }
 
-    attachedCallback() {
-        super.attachedCallback();
+    connectedCallback() {
+        super.connectedCallback();
         this.ready.when((async() => {
             try {
                 await this._data.greetings.fetch();
@@ -99,12 +101,10 @@ hello.StartPage = class extends micro.Page {
         })().catch(micro.util.catch));
     }
 
-    detachedCallback() {
+    disconnectedCallback() {
         if (this._activity) {
             this._activity.close();
         }
     }
 };
-
-document.registerElement("hello-ui", {prototype: hello.UI.prototype, extends: "body"});
-document.registerElement("hello-start-page", hello.StartPage);
+customElements.define("hello-start-page", hello.StartPage);
