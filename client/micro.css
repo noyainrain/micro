@@ -341,10 +341,11 @@ textarea {
 
 label {
     display: block;
+    margin: 1.5rem 0;
 }
 
 h1 > label {
-    margin-bottom: calc(1.5rem / 4);
+    margin: 0 0 var(--micro-size-rxs) 0;
 }
 
 label > small {
@@ -354,10 +355,6 @@ label > small {
 
 label > small:first-of-type {
     color: inherit;
-}
-
-form > label {
-    margin: 1.5rem 0;
 }
 
 .compact form > label {
@@ -372,6 +369,10 @@ fieldset {
 
 legend {
     padding: 0;
+}
+
+fieldset > label {
+    margin: 0;
 }
 
 /**
