@@ -38,6 +38,15 @@
     src="{{ static_url('{}/@noyainrain/micro/components/contextual.js'.format(modules_path)) }}"
     defer="defer"
 ></script>
+<script
+    src="{{ static_url(f'{modules_path}/@noyainrain/micro/components/image.js') }}" defer="defer"
+></script>
+<script
+    src="{{ static_url(f'{modules_path}/@noyainrain/micro/components/link.js') }}" defer="defer"
+></script>
+<script
+    src="{{ static_url(f'{modules_path}/@noyainrain/micro/components/video.js') }}" defer="defer"
+></script>
 <!-- Use alias because analytics.js triggers popular ad blocking filters -->
 <script
     src="{{ static_url('{}/@noyainrain/micro/components/stats.js'.format(modules_path)) }}"

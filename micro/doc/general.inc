@@ -270,7 +270,7 @@ Referral from another site.
 
 .. describe:: url
 
-   HTTP(S) referrer URL.
+   Absolute referrer URL.
 
 .. describe:: time
 

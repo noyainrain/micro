@@ -650,6 +650,16 @@ class UI(RequestHandler):
         } # type: Dict[str, object]
 
         self.set_header('Cache-Control', 'no-cache')
+        self.set_header('Content-Security-Policy', '; '.join([
+            "default-src 'self'",
+            # Allow boot script and third party APIs
+            "script-src * 'sha256-P4JqQi52XRk4d4LReDaKYGMuOGGbkQf0J2K7+Dk6vzU=' 'unsafe-eval'",
+            "style-src 'self' 'unsafe-inline'",
+            # Allow third party image APIs
+            "img-src * data:",
+            # Allow third party embeds
+            "frame-src *"
+        ]))
         self.render(
             'index.html',
             micro_dependencies=partial(self._render_micro_dependencies, data), # type: ignore
@@ -759,6 +769,7 @@ class _Service(RequestHandler):
             _Service._version = response.headers['Etag'].strip('"') # type: ignore
 
         self.set_header('Content-Type', 'text/javascript')
+        self.set_header('Content-Security-Policy', "default-src 'self'")
         self.set_header('Service-Worker-Allowed', '/')
         self.render(self._server.client_service_path, version=self._version)
 

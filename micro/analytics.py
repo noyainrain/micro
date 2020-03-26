@@ -183,8 +183,8 @@ class Referrals(Collection[Referral]):
     def add(self, url: str, *, user: Optional[User]) -> Referral:
         """See :http:post:`/api/analytics/referrals`."""
         # pylint: disable=unused-argument; part of API
-        if urlsplit(url).scheme not in {'http', 'https'}:
-            raise error.ValueError('Bad url scheme {}'.format(url))
+        if not urlsplit(url).scheme:
+            raise error.ValueError('Relative url {}'.format(url))
         referral = Referral(id=randstr(), app=self.app, url=url, time=self.app.now().isoformat())
         self.app.r.oset(referral.id, referral)
         self.app.r.r.zadd(self.ids.key, {referral.id.encode(): -referral.time.timestamp()})
