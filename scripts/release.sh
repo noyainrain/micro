@@ -31,7 +31,7 @@ bump_version boilerplate/requirements.txt "^\(noyainrain.micro ~= \)\(.*\)\(\)$"
 make check
 
 # Publish
-git commit
+git commit --author="$(git log master..$FEATURE --format="%aN <%aE>" | tail -n 1)"
 git tag $VERSION
 git push origin master $VERSION
 

@@ -652,9 +652,10 @@ class UI(RequestHandler):
         self.set_header('Cache-Control', 'no-cache')
         self.set_header('Content-Security-Policy', '; '.join([
             "default-src 'self'",
-            # Allow boot script and third party APIs
-            "script-src * 'sha256-P4JqQi52XRk4d4LReDaKYGMuOGGbkQf0J2K7+Dk6vzU=' 'unsafe-eval'",
             "style-src 'self' 'unsafe-inline'",
+            # Allow third party APIs and boot script
+            "script-src * 'sha256-P4JqQi52XRk4d4LReDaKYGMuOGGbkQf0J2K7+Dk6vzU=' 'unsafe-eval'",
+            "connect-src *",
             # Allow third party image APIs
             "img-src * data:",
             # Allow third party embeds
