@@ -15,9 +15,12 @@
 # type: ignore
 # pylint: disable=missing-docstring; test module
 
+from datetime import timedelta
 import http.client
 import json
 from tempfile import mkdtemp
+from unittest.mock import patch
+from urllib import parse
 
 from tornado.httpclient import HTTPClientError
 from tornado.testing import gen_test
@@ -131,3 +134,53 @@ class ServerTest(ServerTestCase):
         self.assertEqual(cats.get('count'), 3)
         self.assertEqual([cat.get('name') for cat in cats.get('items', [])], ['Grumpy', 'Long'])
         self.assertEqual(cats.get('slice'), [1, 3])
+
+    @gen_test
+    async def test_summary_endpoint_get_no_param(self):
+        """ without a parameter the api should default to data from the last 7 days """
+        ten_days_ago = self.app.now() - timedelta(days=10)
+        with patch.object(self.app, "now", return_value=ten_days_ago):
+            self.app.analytics.referrals.add('https://example.org/', user=self.user)
+
+        self.app.analytics.referrals.add('https://foo.org/', user=self.user)
+        response = await self.request('/api/stats/referrals')
+        data = json.loads(response.body.decode())
+
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0][0], 'https://foo.org/')
+
+    @gen_test
+    async def test_summary_endpoint_get_with_param(self):
+        ten_days_ago = self.app.now() - timedelta(days=10)
+        with patch.object(self.app, "now", return_value=ten_days_ago):
+            self.app.analytics.referrals.add('https://example.org/', user=self.user)
+
+        self.app.analytics.referrals.add('https://foo.org/', user=self.user)
+
+        two_days_ago = self.app.now() - timedelta(days=2)
+
+        response = await self.request(
+            '/api/stats/referrals?start={start}&end={end}'.format(
+                start=parse.quote(ten_days_ago.isoformat()),
+                end=parse.quote(two_days_ago.isoformat())
+            )
+        )
+        data = json.loads(response.body.decode())
+        self.assertEqual(len(data), 1)
+
+        # should also work without time
+        response = await self.request(
+            '/api/stats/referrals?start={start}&end={end}'.format(
+                start=parse.quote(ten_days_ago.date().isoformat()),
+                end=parse.quote(two_days_ago.date().isoformat())
+            )
+        )
+        data = json.loads(response.body.decode())
+        self.assertEqual(len(data), 1)
+
+    @gen_test
+    async def test_summary_endpoint_get_error(self):
+        with self.assertRaises(HTTPClientError) as cm:
+            await self.request('/api/stats/referrals?start=9uia0a&end=hfhfhf')
+        e = cm.exception
+        self.assertEqual(e.code, http.client.BAD_REQUEST)

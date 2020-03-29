@@ -21,6 +21,7 @@
 from asyncio import (CancelledError, Future, Task, gather, # pylint: disable=unused-import; typing
                      get_event_loop, ensure_future)
 from collections.abc import Mapping
+from datetime import datetime, timedelta
 from functools import partial
 from http import HTTPStatus
 import http.client
@@ -964,6 +965,36 @@ class _ReferralsEndpoint(CollectionEndpoint):
         referral = self.app.analytics.referrals.add(url, user=self.current_user)
         self.set_status(HTTPStatus.CREATED) # type: ignore
         self.write(referral.json(restricted=True, include=True))
+
+    def get(self) -> None:
+        """ Return a summary of referrals over a period of time.
+
+            Query parameters:
+
+            * `start` an iso timestamp or date representing the start of the period of interest
+            * `end` an iso timestamp or date representing the end of the period of interest
+
+            If `start` or `end` are missing, the period will default to [now - 7 days, now]
+
+            Returns a JSON representation of the result created by analytics.Referrals.summarize
+        """
+        start = self.get_query_argument("start", None)
+        end = self.get_query_argument("end", None)
+
+        if start is None or end is None:
+            end = self.app.now()
+            start = end - timedelta(days=7)
+        else:
+            try:
+                end = datetime.fromisoformat(end)
+                start = datetime.fromisoformat(start)
+            except ValueError:
+                raise HTTPError(HTTPStatus.BAD_REQUEST)
+
+        self.set_status(HTTPStatus.CREATED) # type: ignore
+        data = self.app.analytics.referrals.summarize((start, end))
+        self.write(json.dumps(data))
+
 
 class _FilesEndpoint(RequestHandler):
     CONTENT_TYPES = {'image/bmp', 'image/gif', 'image/jpeg', 'image/png', 'image/svg+xml'}
