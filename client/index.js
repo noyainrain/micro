@@ -951,21 +951,34 @@ micro.OL = class extends HTMLOListElement {
  *
  *    Hook function of the form *run()*, which performs the associated action. If it returns a
  *    promise, the button will be suspended until the promise resolves.
+ *
+ * .. attribute:: suspended
+ *
+ *    Indicates if the button is suspended.
+ *
+ * .. describe: .micro-button-suspended
+ *
+ *    Indicates if the button is :attr:`suspended`.
  */
 micro.Button = class extends HTMLButtonElement {
     createdCallback() {
         this.run = null;
+        this.suspended = false;
+
         this.addEventListener("click", event => {
             if (this.form && this.type === "submit") {
-                if (this.form.checkValidity()) {
+                if (this.suspended || this.form.checkValidity()) {
                     // Prevent default form submission
                     event.preventDefault();
                 } else {
-                    // Do not trigger the action and let the default validation handling kick in
+                    // Do not trigger action and let form validation kick in
                     return;
                 }
             }
-            this.trigger().catch(micro.util.catch);
+
+            if (!this.suspended) {
+                this.trigger().catch(micro.util.catch);
+            }
         });
     }
 
@@ -976,23 +989,29 @@ micro.Button = class extends HTMLButtonElement {
      * :attr:`run`.
      */
     async trigger() {
+        if (this.suspended) {
+            throw new Error("Suspended button");
+        }
         if (!this.run) {
             return undefined;
         }
 
-        let i = this.querySelector("i");
-        let classes;
-        this.disabled = true;
+        this.suspended = true;
+        this.classList.add("micro-button-suspended");
+        const i = this.querySelector("i");
+        let progressI = null;
         if (i) {
-            classes = i.className;
-            i.className = "fa fa-spinner fa-spin";
+            progressI = document.createElement("i");
+            progressI.className = "fa fa-spinner fa-spin";
+            i.insertAdjacentElement("afterend", progressI);
         }
         try {
-            return await Promise.resolve(this.run());
+            return await this.run();
         } finally {
-            this.disabled = false;
+            this.suspended = false;
+            this.classList.remove("micro-button-suspended");
             if (i) {
-                i.className = classes;
+                progressI.remove();
             }
         }
     }
