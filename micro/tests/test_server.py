@@ -143,7 +143,7 @@ class ServerTest(ServerTestCase):
             self.app.analytics.referrals.add('https://example.org/', user=self.user)
 
         self.app.analytics.referrals.add('https://foo.org/', user=self.user)
-        response = await self.request('/api/stats/referrals')
+        response = await self.request('/api/stats/referrals/summary')
         data = json.loads(response.body.decode())
 
         self.assertEqual(len(data), 1)
@@ -160,7 +160,7 @@ class ServerTest(ServerTestCase):
         two_days_ago = self.app.now() - timedelta(days=2)
 
         response = await self.request(
-            '/api/stats/referrals?start={start}&end={end}'.format(
+            '/api/stats/referrals/summary?start={start}&end={end}'.format(
                 start=parse.quote(ten_days_ago.isoformat()),
                 end=parse.quote(two_days_ago.isoformat())
             )
@@ -170,7 +170,7 @@ class ServerTest(ServerTestCase):
 
         # should also work without time
         response = await self.request(
-            '/api/stats/referrals?start={start}&end={end}'.format(
+            '/api/stats/referrals/summary?start={start}&end={end}'.format(
                 start=parse.quote(ten_days_ago.date().isoformat()),
                 end=parse.quote(two_days_ago.date().isoformat())
             )
@@ -181,6 +181,6 @@ class ServerTest(ServerTestCase):
     @gen_test
     async def test_summary_endpoint_get_error(self):
         with self.assertRaises(HTTPClientError) as cm:
-            await self.request('/api/stats/referrals?start=9uia0a&end=hfhfhf')
+            await self.request('/api/stats/referrals/summary?start=9uia0a&end=hfhfhf')
         e = cm.exception
         self.assertEqual(e.code, http.client.BAD_REQUEST)

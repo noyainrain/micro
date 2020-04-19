@@ -250,6 +250,7 @@ class Server:
             # Provide alias because /api/analytics triggers popular ad blocking filters
             (r'/api/(?:analytics|stats)/statistics/([^/]+)$', _StatisticEndpoint),
             (r'/api/(?:analytics|stats)/referrals$', _ReferralsEndpoint),
+            (r'/api/(?:analytics|stats)/referrals/summary$', _ReferralSummaryEndpoint),
             (r'/files$', _FilesEndpoint), # type: ignore[misc]
             (r'/files/([^/]+)$', _FileEndpoint), # type: ignore[misc]
             *handlers,
@@ -966,6 +967,7 @@ class _ReferralsEndpoint(CollectionEndpoint):
         self.set_status(HTTPStatus.CREATED) # type: ignore
         self.write(referral.json(restricted=True, include=True))
 
+class _ReferralSummaryEndpoint(Endpoint):
     def get(self) -> None:
         """ Return a summary of referrals over a period of time.
 
@@ -989,7 +991,7 @@ class _ReferralsEndpoint(CollectionEndpoint):
                 end = datetime.fromisoformat(end)
                 start = datetime.fromisoformat(start)
             except ValueError:
-                raise HTTPError(HTTPStatus.BAD_REQUEST)
+                raise error.ValueError('Bad start or end')
 
         self.set_status(HTTPStatus.CREATED) # type: ignore
         data = self.app.analytics.referrals.summarize((start, end))
