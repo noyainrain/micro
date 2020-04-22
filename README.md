@@ -54,5 +54,6 @@ are released into the public domain:
 
 * Sven James &lt;sven AT inrain.org>
 * Horacio Lisdero &lt;lisderoh AT gmail.com>
+* Niklas Meinzer &lt;github AT niklas-meinzer.de>
 
 Copyright (C) 2018 micro contributors

@@ -21,6 +21,7 @@
 from asyncio import (CancelledError, Future, Task, gather, # pylint: disable=unused-import; typing
                      get_event_loop, ensure_future)
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from functools import partial
 from http import HTTPStatus
 import http.client
@@ -249,6 +250,7 @@ class Server:
             # Provide alias because /api/analytics triggers popular ad blocking filters
             (r'/api/(?:analytics|stats)/statistics/([^/]+)$', _StatisticEndpoint),
             (r'/api/(?:analytics|stats)/referrals$', _ReferralsEndpoint),
+            (r'/api/(?:analytics|stats)/referrals/summary$', _ReferralSummaryEndpoint),
             (r'/files$', _FilesEndpoint), # type: ignore[misc]
             (r'/files/([^/]+)$', _FileEndpoint), # type: ignore[misc]
             *handlers,
@@ -976,6 +978,22 @@ class _ReferralsEndpoint(CollectionEndpoint):
         referral = self.app.analytics.referrals.add(url, user=self.current_user)
         self.set_status(HTTPStatus.CREATED) # type: ignore
         self.write(referral.json(restricted=True, include=True))
+
+class _ReferralSummaryEndpoint(Endpoint):
+    def get(self) -> None:
+        period: Optional[Tuple[datetime, datetime]] = None
+        period_arg = self.get_query_argument("period", None)
+        if period_arg:
+            try:
+                start, end = period_arg.split('/')
+                period = (datetime.fromisoformat(start).replace(tzinfo=timezone.utc),
+                          datetime.fromisoformat(end).replace(tzinfo=timezone.utc))
+            except (TypeError, ValueError):
+                raise error.ValueError('Bad period format')
+
+        data = self.app.analytics.referrals.summarize(period)
+        data = {'referrers': [{'url': referrer[0], 'count': referrer[1]} for referrer in data]}
+        self.write(data)
 
 class _FilesEndpoint(RequestHandler):
     CONTENT_TYPES = {'image/bmp', 'image/gif', 'image/jpeg', 'image/png', 'image/svg+xml'}

@@ -15,9 +15,11 @@
 # type: ignore
 # pylint: disable=missing-docstring; test module
 
+from datetime import timedelta
 import http.client
 import json
 from tempfile import mkdtemp
+from urllib.parse import quote
 
 from tornado.httpclient import HTTPClientError
 from tornado.testing import gen_test
@@ -84,6 +86,9 @@ class ServerTest(ServerTestCase):
         await self.request('/api/activity/v2', method='PATCH', body='{"op": "unsubscribe"}')
         await self.request('/api/analytics/stats/users')
         await self.request('/api/analytics/referrals')
+        start = quote((self.app.now() - timedelta(days=10)).isoformat())
+        end = quote((self.app.now() - timedelta(days=2)).isoformat())
+        await self.request(f'/api/analytics/referrals/summary?period={start}/{end}')
 
     @gen_test
     def test_endpoint_request(self):

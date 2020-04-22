@@ -293,6 +293,17 @@ Only staff members can query the referrals.
 
    Record a :ref:`Referral` from *url* and return it.
 
+.. http:get:: /api/analytics/referrals/summary?period
+
+   Get a referral summary for the given time *period*.
+
+   *period* is a simple ISO 8601 time interval string and defaults to the last 7 days.
+
+   The summary is an object ``{referrers}``, where *referrers* is a sorted array of objects
+   ``{url, count}`` with the referrer *url* and *count* of occurrences.
+
+   Permission: Staff members.
+
 Files
 -----
 

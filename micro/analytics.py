@@ -21,10 +21,11 @@
 
 from asyncio import Task, ensure_future, sleep # pylint: disable=unused-import; typing
 import json
+from collections import defaultdict
 from datetime import datetime, timedelta
 from logging import getLogger
 import typing
-from typing import Callable, Dict, Iterator, List, Mapping, Optional, cast
+from typing import Callable, DefaultDict, Dict, Iterator, List, Mapping, Optional, Tuple, cast
 from urllib.parse import urlsplit
 
 from . import error
@@ -189,3 +190,22 @@ class Referrals(Collection[Referral]):
         self.app.r.oset(referral.id, referral)
         self.app.r.r.zadd(self.ids.key, {referral.id.encode(): -referral.time.timestamp()})
         return referral
+
+    def summarize(self, period: Tuple[datetime, datetime] = None) -> List[Tuple[str, int]]:
+        """See :http:get:`/api/analytics/referrals/summary?period`."""
+        self.app.check_user_is_staff()
+
+        if period is None:
+            end = self.app.now()
+            period = (end - timedelta(days=7), end)
+        # Since the scores of the entries are timestamps * -1, we must also multiply the given
+        # timestamps by -1 and invert the order so it is still a valid interval
+        period = (-period[1].timestamp(), -period[0].timestamp())
+        keys = [key.decode() for key in self.app.r.r.zrangebyscore(self.ids.key, *period)]
+
+        result: DefaultDict[str, int] = defaultdict(lambda: 0)
+        referrals = self.app.r.omget(keys, default=AssertionError, expect=expect_type(Referral))
+        for referral in referrals:
+            result[referral.url] += 1
+
+        return sorted(result.items(), key=lambda x: (-x[1], x[0]))
