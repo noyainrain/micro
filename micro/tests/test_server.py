@@ -65,6 +65,8 @@ class ServerTest(ServerTestCase):
         await self.request('/api/settings')
         await self.request('/api/analytics/referrals', method='POST',
                            body='{"url": "https://example.org/"}')
+        url = quote(f'{self.server.url}/static/hello.js', safe='')
+        await self.request(f'/api/previews/{url}')
         await self.request(self.server.rewrite(file_url))
         await self.request('/files', method='POST', body=b'<svg />',
                            headers={'Content-Type': 'image/svg+xml'})

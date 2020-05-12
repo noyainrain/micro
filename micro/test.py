@@ -114,6 +114,7 @@ class CatApp(Application):
 
 class Cat(Object, Editable, Trashable, WithContent):
     """Cute cat."""
+    # pylint: disable=invalid-overridden-method; do_edit may be async
 
     app = None # type: CatApp
 

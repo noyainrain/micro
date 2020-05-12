@@ -335,10 +335,20 @@ textarea {
     border: 1px solid var(--micro-color-border);
 }
 
+.micro-input-wrapper:focus-within {
+    box-shadow: var(--micro-focus-shadow);
+}
+
 .micro-input-wrapper input:not([type=checkbox]),
 .micro-input-wrapper textarea,
 .micro-input-wrapper select {
     border: none;
+}
+
+.micro-input-wrapper input:not([type=checkbox]):focus,
+.micro-input-wrapper textarea:focus,
+.micro-input-wrapper select:focus {
+    box-shadow: none;
 }
 
 label {
@@ -389,12 +399,14 @@ fieldset > label {
 }
 
 .micro-panel > *,
+.micro-block > *,
 .micro-panel > div > * {
     margin: 0;
 }
 
 .micro-panel > h1,
 .micro-panel > p,
+.micro-block > p,
 .micro-panel > .link,
 .micro-panel > div > p,
 .micro-panel > div > .link {

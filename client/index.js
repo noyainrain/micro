@@ -2019,68 +2019,6 @@ Object.assign(micro.bind.transforms, {
     },
 
     /**
-     * Render *markup text* into a :class:`DocumentFragment`.
-     *
-     * HTTP(S) URLs are automatically converted to links.
-     */
-    markup(ctx, text) {
-        if (!text) {
-            return document.createDocumentFragment();
-        }
-
-        const patterns = {
-            // Do not capture trailing whitespace because of link pattern
-            item: "(^[^\\S\n]*[*+-](?=\\s|$))",
-            strong: "\\*\\*(.+?)\\*\\*",
-            em: "\\*(.+?)\\*",
-            // Work around missing look behind by capturing whitespace
-            link: "(^|[\\s!-.:-@])(https?://.+?)(?=[!-.:-@]?(\\s|$))"
-        };
-        const pattern = new RegExp(
-            `${patterns.item}|${patterns.strong}|${patterns.em}|${patterns.link}`, "ugm"
-        );
-
-        const fragment = document.createDocumentFragment();
-        let match;
-        do {
-            const skipStart = pattern.lastIndex;
-            match = pattern.exec(text);
-            const skipStop = match ? match.index : text.length;
-            if (skipStop > skipStart) {
-                fragment.appendChild(document.createTextNode(text.slice(skipStart, skipStop)));
-            }
-            if (match) {
-                const [, item, strong, em, linkPrefix, linkURL] = match;
-                if (item) {
-                    fragment.appendChild(document.createTextNode("\u00a0•"));
-                } else if (strong) {
-                    const elem = document.createElement("strong");
-                    elem.textContent = strong;
-                    fragment.appendChild(elem);
-                } else if (em) {
-                    const elem = document.createElement("em");
-                    elem.textContent = em;
-                    fragment.appendChild(elem);
-                } else if (linkURL) {
-                    if (linkPrefix) {
-                        fragment.appendChild(document.createTextNode(linkPrefix));
-                    }
-                    const a = document.createElement("a");
-                    a.classList.add("link");
-                    a.href = linkURL;
-                    a.target = "_blank";
-                    a.textContent = linkURL;
-                    fragment.appendChild(a);
-                } else {
-                    // Unreachable
-                    throw new Error();
-                }
-            }
-        } while (match);
-        return fragment;
-    },
-
-    /**
      * Fetch the next *n* items for *collection*.
      *
      * Wrapper around :meth:`Collection.fetch` that handles common call errors.

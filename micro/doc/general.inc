@@ -191,10 +191,13 @@ Location.
 
    Coordinates as latitude-longitude pair. May be ``null``.
 
+Resources
+---------
+
 .. _Resource:
 
 Resource
---------
+^^^^^^^^
 
 Web resource description.
 
@@ -203,7 +206,7 @@ Web resource description.
 .. _Image:
 
 Image
------
+^^^^^
 
 Image :ref:`Resource` description.
 
@@ -214,11 +217,20 @@ Note that the *image* representation is always ``null``.
 .. _Video:
 
 Video
------
+^^^^^
 
 Video :ref:`Resource` description.
 
 .. include:: micro/resource-attributes.inc
+
+Previews
+^^^^^^^^
+
+Web :ref:`Resource` previews.
+
+.. http:get:: /api/previews/(url)
+
+   Get a description of the web :ref:`Resource` at *url*.
 
 Analytics
 ---------

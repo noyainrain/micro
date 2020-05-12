@@ -72,6 +72,7 @@ class Greeting(Object, Editable, WithContent):
 
        Text content.
     """
+    # pylint: disable=invalid-overridden-method; do_edit may be async
 
     def __init__(self, *, id, app, authors, text, resource):
         super().__init__(id, app)

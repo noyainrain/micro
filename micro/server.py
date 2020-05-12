@@ -243,7 +243,7 @@ class Server:
             (r'/api/users/([^/]+)/remove-email$', _UserRemoveEmailEndpoint),
             (r'/api/settings$', _SettingsEndpoint),
             # Compatibility with non-object Activity (deprecated since 0.14.0)
-            make_activity_endpoint(r'/api/activity/v2', get_activity),
+            *make_activity_endpoints(r'/api/activity/v2', get_activity),
             *make_list_endpoints(r'/api/activity(?:/v1)?', get_activity),
             (r'/api/activity/stream', ActivityStreamEndpoint,
              {'get_activity': cast(object, get_activity)}),
@@ -251,6 +251,7 @@ class Server:
             (r'/api/(?:analytics|stats)/statistics/([^/]+)$', _StatisticEndpoint),
             (r'/api/(?:analytics|stats)/referrals$', _ReferralsEndpoint),
             (r'/api/(?:analytics|stats)/referrals/summary$', _ReferralSummaryEndpoint),
+            (r'/api/previews/([^/]+)$', _PreviewEndpoint),
             (r'/files$', _FilesEndpoint), # type: ignore[misc]
             (r'/files/([^/]+)$', _FileEndpoint), # type: ignore[misc]
             *handlers,
@@ -565,13 +566,17 @@ def make_orderable_endpoints(url, get_collection):
     """
     return [(url + r'/move$', _OrderableMoveEndpoint, {'get_collection': get_collection})]
 
-def make_activity_endpoint(url: str, get_activity: Callable[[VarArg(str)], Activity]) -> Handler:
-    """Make an API endpoint for an :class:`Activity` at *url*.
+def make_activity_endpoints(url: str,
+                            get_activity: Callable[[VarArg(str)], Activity]) -> List[Handler]:
+    """Make API endpoints for an :class:`Activity` at *url*.
 
-    *get_activity* is a function of the form *get_activity(*args)*, responsible for retrieving the
+    *get_activity* is a function of the form ``get_activity(*args)``, responsible for retrieving the
     activity. *args* are the URL arguments.
     """
-    return (r'{}{}$'.format(url, SLICE_URL), _ActivityEndpoint, {'get_activity': get_activity})
+    return [
+        (fr'{url}{SLICE_URL}$', _ActivityEndpoint, {'get_activity': get_activity}),
+        (fr'{url}/stream$', ActivityStreamEndpoint, {'get_activity': get_activity})
+    ]
 
 class _Static(StaticFileHandler):
     def set_extra_headers(self, path):
@@ -994,6 +999,11 @@ class _ReferralSummaryEndpoint(Endpoint):
         data = self.app.analytics.referrals.summarize(period)
         data = {'referrers': [{'url': referrer[0], 'count': referrer[1]} for referrer in data]}
         self.write(data)
+
+class _PreviewEndpoint(Endpoint):
+    async def get(self, url: str) -> None:
+        resource = await self.app.analyzer.analyze(self.server.rewrite(url, reverse=True))
+        self.write(resource.json(rewrite=self.server.rewrite))
 
 class _FilesEndpoint(RequestHandler):
     CONTENT_TYPES = {'image/bmp', 'image/gif', 'image/jpeg', 'image/png', 'image/svg+xml'}
