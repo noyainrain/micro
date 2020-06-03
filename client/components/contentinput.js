@@ -40,17 +40,6 @@ micro.components.contentinput.ContentInputElement = class extends HTMLElement {
             getPlaceholder: (ctx, placeholder, resource) => resource ? "" : placeholder,
             attaching: false,
 
-            attachFile: async () => {
-                const [file] = this._upload.files;
-                if (!file) {
-                    return;
-                }
-                const response = await fetch("/files", {method: "POST", body: file});
-                const url = response.headers.get("Location");
-                this._upload.value = "";
-                await this.attach(url);
-            },
-
             deleteResource: () => {
                 this._data.resource = null;
                 this._data.validate();
@@ -69,7 +58,13 @@ micro.components.contentinput.ContentInputElement = class extends HTMLElement {
             },
 
             onUploadChange: () => {
-                this.querySelector(".micro-content-input-attach").trigger();
+                const [file] = this._upload.files;
+                if (file) {
+                    (async () => {
+                        await this.attach(file);
+                        this._upload.value = "";
+                    })();
+                }
             },
 
             onURLInput: event => {
@@ -131,10 +126,18 @@ micro.components.contentinput.ContentInputElement = class extends HTMLElement {
         this._data.placeholder = value;
     }
 
-    /** Attach the web resource at *url*. */
+    /**
+     * Attach the web resource at *url*.
+     *
+     * Alternatively, *url* may be a :class:`File` to upload and attach.
+     */
     async attach(url) {
         this._data.attaching = true;
         try {
+            if (url instanceof File) {
+                const response = await fetch("/files", {method: "POST", body: url});
+                url = response.headers.get("Location");
+            }
             this._data.resource = await micro.call(
                 "GET", `/api/previews/${encodeURIComponent(url)}`
             );

@@ -37,6 +37,10 @@ html {
     box-shadow: var(--micro-focus-shadow);
 }
 
+[tabindex] {
+    cursor: pointer;
+}
+
 html {
     color: var(--micro-color-text);
     background: white;

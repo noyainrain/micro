@@ -154,6 +154,12 @@ class Server:
        - ``map_service_key``: See ``--client-map-service-key`` command line option
        - ``description``: Short description of the service
        - ``color``: CSS primary color of the service
+       - ``share_target``: Indicates if the client accepts content via the Web Share Target API.
+         Defaults to ``False``. Shared content is received at ``/share`` with a
+         :data:`navigator.serviceWorker` message ``{type, data}``, where *type* is ``share`` and
+         *data* is a *ShareData* object.
+       - ``share_target_accept``: Media types and filename extensions (starting with ``.``) of
+         accepted files, if any. Defaults to ``[]``.
 
     .. deprecated:: 0.21.0
 
@@ -167,7 +173,9 @@ class Server:
         'shell': Sequence[str],
         'map_service_key': Optional[str],
         'description': str,
-        'color': str
+        'color': str,
+        'share_target': bool,
+        'share_target_accept': Sequence[str]
     })
     ClientConfigArg = TypedDict('ClientConfigArg', {
         'path': str,
@@ -176,7 +184,9 @@ class Server:
         'shell': Sequence[str],
         'map_service_key': Optional[str],
         'description': str,
-        'color': str
+        'color': str,
+        'share_target': bool,
+        'share_target_accept': Sequence[str]
     }, total=False)
 
     def __init__(
@@ -217,6 +227,8 @@ class Server:
             'map_service_key': None,
             'description': 'Social micro web app',
             'color': '#08f',
+            'share_target': False,
+            'share_target_accept': [],
             **client_config, # type: ignore
             'shell': list(client_config.get('shell') or [])
         } # type: Server.ClientConfig
@@ -705,6 +717,24 @@ class _WebManifest(RequestHandler):
             'background_color': 'white',
             'start_url': '/',
             'display': 'standalone',
+            **({
+                'share_target': {
+                    'action': '/share',
+                    'method': 'POST',
+                    'enctype': 'multipart/form-data',
+                    'params': {
+                        'title': 'title',
+                        'text': 'text',
+                        'url': 'url',
+                        **({
+                            'files': { # type: ignore
+                                'name': 'files',
+                                'accept': self._server.client_config['share_target_accept']
+                            }
+                        } if self._server.client_config['share_target_accept'] else {})
+                    }
+                }
+            } if self._server.client_config['share_target'] else {})
         }
 
         self.set_header('Cache-Control', 'no-cache')

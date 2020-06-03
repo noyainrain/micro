@@ -532,10 +532,10 @@ micro.UI = class extends HTMLBodyElement {
             this.page = null;
             this.page = await this._route(location.pathname);
             this._progressElem.style.display = "none";
+            await this.page.ready;
         }
 
         if (location.hash) {
-            await this.page.ready;
             try {
                 let elem = this.querySelector(location.hash);
                 if (elem) {
