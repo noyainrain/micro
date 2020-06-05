@@ -381,6 +381,10 @@ CommunicationError
 
 Returned if communication with a third party fails.
 
+.. describe:: detail
+
+   TODO.
+
 .. _AnalysisError:
 
 AnalysisError

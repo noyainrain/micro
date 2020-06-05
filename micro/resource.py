@@ -197,7 +197,12 @@ class Analyzer:
                 raise NoResourceError(f'No resource at {url}')
             if e.code in (401, 402, 403, 405, 451):
                 raise ForbiddenResourceError(f'Forbidden resource at {url}')
-            raise CommunicationError(f'Unexpected response status {e.code} for GET {url}')
+            detail = None
+            try:
+                detail = e.response.body.decode()
+            except UnicodeDecodeError:
+                pass
+            raise CommunicationError(f'Unexpected response status {e.code} for GET {url}', detail)
 
     def _get_cache(self, url: str) -> Resource:
         resource, expires = self._cache[url]

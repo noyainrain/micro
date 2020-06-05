@@ -42,6 +42,9 @@ class ValueError(builtins.ValueError, Error):
         # Compatibility for code (deprecated since 0.27.0)
         return {**super().json(), 'code': self.code}
 
+from typing import Optional
+import re
+
 class CommunicationError(Error):
     """See :ref:`CommunicationError`.
 
@@ -49,5 +52,22 @@ class CommunicationError(Error):
 
        Use :exc:`webapi.CommunicationError` instead.
     """
+
+    def __init__(self, message: str = None, detail: str = None, *args: object) -> None:
+        super().__init__(message or None, detail or None, *args)
+
+    @property
+    def message(self) -> Optional[str]:
+        return cast(Optional[str], cast(Tuple[object, ...], self.args)[0])
+
+    @property
+    def detail(self) -> Optional[str]:
+        return cast(Optional[str], cast(Tuple[object, ...], self.args)[1])
+
+    def __str__(self) -> str:
+        detail = '\n' + re.sub(r'\n[^\S\n]*', '⏎', self.detail) if self.detail else ''
+        return f"{self.message or ''}{detail}"
+# raise CommunicationError('Unexpected response status for POST {}\nStatus: {}\nContent: {}'.format(push_subscription['endpoint'], response.status, response.body.decode().replace('\n', r'\n')))
+
 # Compatibility for micro CommunicationError (deprecated since 0.28.0)
 webapi.CommunicationError = CommunicationError # type: ignore

@@ -415,7 +415,8 @@ class Endpoint(RequestHandler):
             })
         elif isinstance(e, CommunicationError):
             self.set_status(http.client.BAD_GATEWAY)
-            self.write({'__type__': type(e).__name__, 'message': str(e)}) # type: ignore
+            data = {'__type__': type(e).__name__, 'message': e.message, 'detail': e.detail}
+            self.write(data)
         elif isinstance(e, error.Error):
             status = {
                 error.ValueError: http.client.BAD_REQUEST,

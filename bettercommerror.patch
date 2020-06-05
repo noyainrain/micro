@@ -1,0 +1,19 @@
+diff --git a/micro/micro.py b/micro/micro.py
+index e05619e..4237176 100644
+--- a/micro/micro.py
++++ b/micro/micro.py
+@@ -1022,10 +1022,11 @@ class User(Object, Editable):
+         # https://bugzilla.mozilla.org/show_bug.cgi?id=1525872)
+         response = await pusher.send(json.dumps(event.json(restricted=True, include=True)), headers,
+                                      ttl=_PUSH_TTL, content_encoding='aesgcm')
+-        if response.code in (404, 410):
+-            raise ValueError('push_subscription_invalid')
++        # TODO
++        # if response.code in (404, 410):
++        #     raise ValueError('push_subscription_invalid')
+         if response.code != 201:
+-            raise CommunicationError('Server responded with status {}'.format(response.code))
++            raise CommunicationError('Unexpected response status for POST {}\nStatus: {}\nContent: {}'.format(push_subscription['endpoint'], response.status, response.body.decode().replace('\n', r'\n')))
+ 
+     def _disable_device_notifications(self, reason: str = None) -> None:
+         self.device_notification_status = 'off.{}'.format(reason) if reason else 'off'
