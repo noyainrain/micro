@@ -24,6 +24,18 @@ micro.core = {};
 // Work around missing look behind by capturing whitespace
 micro.core.URL_PATTERN = "(^|[\\s!-.:-@])(https?://.+?)(?=[!-.:-@]?(\\s|$))";
 
+micro.core.Dialog = class extends HTMLElement {
+    createdCallback() {
+        this.contentNode = document.createElement("div");
+        this.contentNode.classList.add("micro-dialog");
+        this.appendChild(this.contentNode);
+    }
+
+    close() {
+        ui.dialog = null;
+    }
+};
+
 Object.assign(micro.bind.transforms, {
     /**
      * Render *markup text* into a :class:`DocumentFragment`.
