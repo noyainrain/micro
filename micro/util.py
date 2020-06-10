@@ -164,6 +164,9 @@ def make_command_line_parser() -> ArgumentParser:
         '--redis-url',
         help='URL of the Redis database, where path represents the database index. May be relative to redis://localhost/. Defaults to redis://localhost/0.')
     parser.add_argument(
+        '--files-path',
+        help='Directory where files are stored. Must be read and writable by the application. Defaults to data.')
+    parser.add_argument(
         '--smtp-url',
         help='URL of the SMTP server to use for outgoing email. Only host and port are considered, which default to localhost and 25 respectively.')
     parser.add_argument(

@@ -2,6 +2,7 @@
 # Released into the public domain
 # https://github.com/noyainrain/micro/blob/master/micro/jsonredis.py
 
+# type: ignore
 # pylint: disable=missing-docstring; test module
 
 from collections import OrderedDict

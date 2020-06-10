@@ -191,10 +191,13 @@ Location.
 
    Coordinates as latitude-longitude pair. May be ``null``.
 
+Resources
+---------
+
 .. _Resource:
 
 Resource
---------
+^^^^^^^^
 
 Web resource description.
 
@@ -203,7 +206,7 @@ Web resource description.
 .. _Image:
 
 Image
------
+^^^^^
 
 Image :ref:`Resource` description.
 
@@ -214,11 +217,20 @@ Note that the *image* representation is always ``null``.
 .. _Video:
 
 Video
------
+^^^^^
 
 Video :ref:`Resource` description.
 
 .. include:: micro/resource-attributes.inc
+
+Previews
+^^^^^^^^
+
+Web :ref:`Resource` previews.
+
+.. http:get:: /api/previews/(url)
+
+   Get a description of the web :ref:`Resource` at *url*.
 
 Analytics
 ---------
@@ -270,7 +282,7 @@ Referral from another site.
 
 .. describe:: url
 
-   HTTP(S) referrer URL.
+   Absolute referrer URL.
 
 .. describe:: time
 
@@ -292,6 +304,23 @@ Only staff members can query the referrals.
    ``{url}``
 
    Record a :ref:`Referral` from *url* and return it.
+
+.. http:get:: /api/analytics/referrals/summary?period
+
+   Get a referral summary for the given time *period*.
+
+   *period* is a simple ISO 8601 time interval string and defaults to the last 7 days.
+
+   The summary is an object ``{referrers}``, where *referrers* is a sorted array of objects
+   ``{url, count}`` with the referrer *url* and *count* of occurrences.
+
+   Permission: Staff members.
+
+Files
+-----
+
+To upload a file, ``POST`` to ``/files``. Supported file types are ``image/bmp``, ``image/gif``,
+``image/jpeg``, ``image/png`` and ``image/svg+xml``.
 
 Errors
 ------

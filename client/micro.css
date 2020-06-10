@@ -37,6 +37,10 @@ html {
     box-shadow: var(--micro-focus-shadow);
 }
 
+[tabindex] {
+    cursor: pointer;
+}
+
 html {
     color: var(--micro-color-text);
     background: white;
@@ -237,7 +241,8 @@ aside {
     text-decoration: underline;
 }
 
-.link:disabled {
+.link:disabled,
+.link.micro-button-suspended {
     cursor: default;
 }
 
@@ -268,7 +273,8 @@ aside {
     box-shadow: inset 0 0 0 1px var(--micro-color-primary), inset 0 0 0 2px white;
 }
 
-.action:disabled {
+.action:disabled,
+.action.micro-button-suspended {
     cursor: default;
 }
 
@@ -333,18 +339,29 @@ textarea {
     border: 1px solid var(--micro-color-border);
 }
 
+.micro-input-wrapper:focus-within {
+    box-shadow: var(--micro-focus-shadow);
+}
+
 .micro-input-wrapper input:not([type=checkbox]),
 .micro-input-wrapper textarea,
 .micro-input-wrapper select {
     border: none;
 }
 
+.micro-input-wrapper input:not([type=checkbox]):focus,
+.micro-input-wrapper textarea:focus,
+.micro-input-wrapper select:focus {
+    box-shadow: none;
+}
+
 label {
     display: block;
+    margin: 1.5rem 0;
 }
 
 h1 > label {
-    margin-bottom: calc(1.5rem / 4);
+    margin: 0 0 var(--micro-size-rxs) 0;
 }
 
 label > small {
@@ -354,10 +371,6 @@ label > small {
 
 label > small:first-of-type {
     color: inherit;
-}
-
-form > label {
-    margin: 1.5rem 0;
 }
 
 .compact form > label {
@@ -374,6 +387,10 @@ legend {
     padding: 0;
 }
 
+fieldset > label {
+    margin: 0;
+}
+
 /**
  * Panel: Arrangement of controls and text content.
  *
@@ -386,12 +403,14 @@ legend {
 }
 
 .micro-panel > *,
+.micro-block > *,
 .micro-panel > div > * {
     margin: 0;
 }
 
 .micro-panel > h1,
 .micro-panel > p,
+.micro-block > p,
 .micro-panel > .link,
 .micro-panel > div > p,
 .micro-panel > div > .link {
@@ -844,6 +863,12 @@ main {
 
 .micro-error-notification i {
     color: red;
+}
+
+/* Button */
+
+.micro-button-suspended i:first-of-type {
+    display: none;
 }
 
 /* ---- OL ---- */

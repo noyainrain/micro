@@ -21,6 +21,7 @@
 from asyncio import (CancelledError, Future, Task, gather, # pylint: disable=unused-import; typing
                      get_event_loop, ensure_future)
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from functools import partial
 from http import HTTPStatus
 import http.client
@@ -44,7 +45,7 @@ from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandle
 from . import micro, templates, error
 from .micro import ( # pylint: disable=unused-import; typing
     Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError, AuthenticationError,
-    CommunicationError, PermissionError)
+    CommunicationError, PermissionError, Trashable)
 from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
 from .util import (Expect, ExpectFunc, cancel, look_up_files, str_or_none, parse_slice,
                    check_polyglot)
@@ -153,6 +154,12 @@ class Server:
        - ``map_service_key``: See ``--client-map-service-key`` command line option
        - ``description``: Short description of the service
        - ``color``: CSS primary color of the service
+       - ``share_target``: Indicates if the client accepts content via the Web Share Target API.
+         Defaults to ``False``. Shared content is received at ``/share`` with a
+         :data:`navigator.serviceWorker` message ``{type, data}``, where *type* is ``share`` and
+         *data* is a *ShareData* object.
+       - ``share_target_accept``: Media types and filename extensions (starting with ``.``) of
+         accepted files, if any. Defaults to ``[]``.
 
     .. deprecated:: 0.21.0
 
@@ -166,7 +173,9 @@ class Server:
         'shell': Sequence[str],
         'map_service_key': Optional[str],
         'description': str,
-        'color': str
+        'color': str,
+        'share_target': bool,
+        'share_target_accept': Sequence[str]
     })
     ClientConfigArg = TypedDict('ClientConfigArg', {
         'path': str,
@@ -175,7 +184,9 @@ class Server:
         'shell': Sequence[str],
         'map_service_key': Optional[str],
         'description': str,
-        'color': str
+        'color': str,
+        'share_target': bool,
+        'share_target_accept': Sequence[str]
     }, total=False)
 
     def __init__(
@@ -216,6 +227,8 @@ class Server:
             'map_service_key': None,
             'description': 'Social micro web app',
             'color': '#08f',
+            'share_target': False,
+            'share_target_accept': [],
             **client_config, # type: ignore
             'shell': list(client_config.get('shell') or [])
         } # type: Server.ClientConfig
@@ -242,13 +255,17 @@ class Server:
             (r'/api/users/([^/]+)/remove-email$', _UserRemoveEmailEndpoint),
             (r'/api/settings$', _SettingsEndpoint),
             # Compatibility with non-object Activity (deprecated since 0.14.0)
-            make_activity_endpoint(r'/api/activity/v2', get_activity),
+            *make_activity_endpoints(r'/api/activity/v2', get_activity),
             *make_list_endpoints(r'/api/activity(?:/v1)?', get_activity),
             (r'/api/activity/stream', ActivityStreamEndpoint,
              {'get_activity': cast(object, get_activity)}),
             # Provide alias because /api/analytics triggers popular ad blocking filters
             (r'/api/(?:analytics|stats)/statistics/([^/]+)$', _StatisticEndpoint),
             (r'/api/(?:analytics|stats)/referrals$', _ReferralsEndpoint),
+            (r'/api/(?:analytics|stats)/referrals/summary$', _ReferralSummaryEndpoint),
+            (r'/api/previews/([^/]+)$', _PreviewEndpoint),
+            (r'/files$', _FilesEndpoint), # type: ignore[misc]
+            (r'/files/([^/]+)$', _FileEndpoint), # type: ignore[misc]
             *handlers,
             # UI
             (r'/log-client-error$', _LogClientErrorEndpoint),
@@ -260,13 +277,14 @@ class Server:
             (r'/.*$', UI), # type: ignore
         ] # type: List[Handler]
 
-        application = Application( # type: ignore
-            self.handlers, compress_response=True, template_path=self.client_path, debug=self.debug,
-            server=self)
+        application = Application(
+            self.handlers, compress_response=True, # type: ignore[arg-type]
+            template_path=self.client_path, debug=self.debug, server=self)
         # Install static file handler manually to allow pre-processing
         cast(_ApplicationSettings, application.settings).update({'static_path': self.client_path})
         self._server = HTTPServer(application)
 
+        self._garbage_collect_files_task = None # type: Optional[Task[None]]
         self._empty_trash_task = None # type: Optional[Task[None]]
         self._collect_statistics_task = None # type: Optional[Task[None]]
         self._message_templates = DictLoader(templates.MESSAGE_TEMPLATES, autoescape=None)
@@ -276,6 +294,7 @@ class Server:
     def start(self) -> None:
         """Start the server."""
         self.app.update() # type: ignore
+        self._garbage_collect_files_task = self.app.start_garbage_collect_files()
         self._empty_trash_task = self.app.start_empty_trash()
         self._collect_statistics_task = self.app.analytics.start_collect_statistics()
         self._server.listen(self.port)
@@ -283,6 +302,8 @@ class Server:
     async def stop(self) -> None:
         """Stop the server."""
         self._server.stop()
+        if self._garbage_collect_files_task:
+            await cancel(self._garbage_collect_files_task)
         if self._empty_trash_task:
             await cancel(self._empty_trash_task)
         if self._collect_statistics_task:
@@ -298,7 +319,18 @@ class Server:
                 loop.stop()
             ensure_future(_stop())
         loop.add_signal_handler(SIGINT, _on_sigint)
+        getLogger(__name__).info('Started server at %s/', self.url)
         loop.run_forever()
+
+    def rewrite(self, url: str, *, reverse: bool = False) -> str:
+        """Rewrite an internal file *url* to a public URL.
+
+        If *reverse* is ``True``, mapping is done in the opposite direction.
+        """
+        if reverse:
+            prefix = f'{self.url}/files/'
+            return f'file:/{url[len(prefix):]}' if url.startswith(prefix) else url
+        return f'{self.url}/files/{url[6:]}' if url.startswith('file:/') else url
 
     def _render_email_auth_message(self, email, auth_request, auth):
         template = self._message_templates.load('email_auth')
@@ -479,7 +511,8 @@ class CollectionEndpoint(Endpoint):
             slc = parse_slice(cast(str, self.get_query_argument('slice', ':')), limit=LIST_LIMIT)
         except ValueError:
             raise micro.ValueError('bad_slice_format')
-        self.write(collection.json(restricted=True, include=True, slc=slc))
+        self.write(
+            collection.json(restricted=True, include=True, rewrite=self.server.rewrite, slc=slc))
 
 class ActivityStreamEndpoint(Endpoint):
     """Event stream API endpoint for :class:`Activity`.
@@ -505,7 +538,8 @@ class ActivityStreamEndpoint(Endpoint):
         self.flush()
         async for event in self._stream:
             self.app.user = self.current_user
-            data = json.dumps(event.json(restricted=True, include=True)) # type: ignore
+            data = json.dumps(
+                event.json(restricted=True, include=True, rewrite=self.server.rewrite))
             self.write('data: {}\n\n'.format(data))
             self.flush()
 
@@ -544,13 +578,17 @@ def make_orderable_endpoints(url, get_collection):
     """
     return [(url + r'/move$', _OrderableMoveEndpoint, {'get_collection': get_collection})]
 
-def make_activity_endpoint(url: str, get_activity: Callable[[VarArg(str)], Activity]) -> Handler:
-    """Make an API endpoint for an :class:`Activity` at *url*.
+def make_activity_endpoints(url: str,
+                            get_activity: Callable[[VarArg(str)], Activity]) -> List[Handler]:
+    """Make API endpoints for an :class:`Activity` at *url*.
 
-    *get_activity* is a function of the form *get_activity(*args)*, responsible for retrieving the
+    *get_activity* is a function of the form ``get_activity(*args)``, responsible for retrieving the
     activity. *args* are the URL arguments.
     """
-    return (r'{}{}$'.format(url, SLICE_URL), _ActivityEndpoint, {'get_activity': get_activity})
+    return [
+        (fr'{url}{SLICE_URL}$', _ActivityEndpoint, {'get_activity': get_activity}),
+        (fr'{url}/stream$', ActivityStreamEndpoint, {'get_activity': get_activity})
+    ]
 
 class _Static(StaticFileHandler):
     def set_extra_headers(self, path):
@@ -631,6 +669,17 @@ class UI(RequestHandler):
         } # type: Dict[str, object]
 
         self.set_header('Cache-Control', 'no-cache')
+        self.set_header('Content-Security-Policy', '; '.join([
+            "default-src 'self'",
+            "style-src 'self' 'unsafe-inline'",
+            # Allow third party APIs and boot script
+            "script-src * 'sha256-P4JqQi52XRk4d4LReDaKYGMuOGGbkQf0J2K7+Dk6vzU=' 'unsafe-eval'",
+            "connect-src *",
+            # Allow third party image APIs
+            "img-src * data:",
+            # Allow third party embeds
+            "frame-src *"
+        ]))
         self.render(
             'index.html',
             micro_dependencies=partial(self._render_micro_dependencies, data), # type: ignore
@@ -668,6 +717,24 @@ class _WebManifest(RequestHandler):
             'background_color': 'white',
             'start_url': '/',
             'display': 'standalone',
+            **({
+                'share_target': {
+                    'action': '/share',
+                    'method': 'POST',
+                    'enctype': 'multipart/form-data',
+                    'params': {
+                        'title': 'title',
+                        'text': 'text',
+                        'url': 'url',
+                        **({
+                            'files': { # type: ignore
+                                'name': 'files',
+                                'accept': self._server.client_config['share_target_accept']
+                            }
+                        } if self._server.client_config['share_target_accept'] else {})
+                    }
+                }
+            } if self._server.client_config['share_target'] else {})
         }
 
         self.set_header('Cache-Control', 'no-cache')
@@ -740,6 +807,7 @@ class _Service(RequestHandler):
             _Service._version = response.headers['Etag'].strip('"') # type: ignore
 
         self.set_header('Content-Type', 'text/javascript')
+        self.set_header('Content-Security-Policy', "default-src 'self'")
         self.set_header('Service-Worker-Allowed', '/')
         self.render(self._server.client_service_path, version=self._version)
 
@@ -776,28 +844,35 @@ class _ListEndpoint(Endpoint):
     def get(self, *args):
         seq = self.get_list(*args)
         slice = parse_slice(args[-1] or ':', limit=LIST_LIMIT)
-        self.write(json.dumps([i.json(restricted=True, include=True) if isinstance(i, Object) else i
-                               for i in seq[slice]]))
+        self.write(
+            json.dumps([i.json(restricted=True, include=True, rewrite=self.server.rewrite)
+                        if isinstance(i, Object) else i for i in seq[slice]]))
 
 class _TrashableTrashEndpoint(Endpoint):
-    def initialize(self, get_object):
-        super().initialize()
-        self.get_object = get_object
+    def initialize(self, **args: object) -> None:
+        super().initialize(**args)
+        get_object = args.get('get_object')
+        if not callable(get_object):
+            raise TypeError()
+        self.get_object = get_object # type: Callable[[VarArg(str)], Trashable]
 
-    def post(self, *args):
+    def post(self, *args: str) -> None:
         obj = self.get_object(*args)
         obj.trash()
-        self.write(obj.json(restricted=True, include=True))
+        self.write(obj.json(restricted=True, include=True, rewrite=self.server.rewrite))
 
 class _TrashableRestoreEndpoint(Endpoint):
-    def initialize(self, get_object):
-        super().initialize()
-        self.get_object = get_object
+    def initialize(self, **args: object) -> None:
+        super().initialize(**args)
+        get_object = args.get('get_object')
+        if not callable(get_object):
+            raise TypeError()
+        self.get_object = get_object # type: Callable[[VarArg(str)], Trashable]
 
-    def post(self, *args):
+    def post(self, *args: str) -> None:
         obj = self.get_object(*args)
         obj.restore()
-        self.write(obj.json(restricted=True, include=True))
+        self.write(obj.json(restricted=True, include=True, rewrite=self.server.rewrite))
 
 class _OrderableMoveEndpoint(Endpoint):
     def initialize(self, get_collection):
@@ -825,30 +900,30 @@ class _LoginEndpoint(Endpoint):
     def post(self):
         args = self.check_args({'code': (str, 'opt')})
         user = self.app.login(**args)
-        self.write(user.json(restricted=True))
+        self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
 class _UserEndpoint(Endpoint):
-    def get(self, id):
-        self.write(self.app.users[id].json(restricted=True))
+    def get(self, id: str) -> None:
+        self.write(self.app.users[id].json(restricted=True, rewrite=self.server.rewrite))
 
     def post(self, id):
         user = self.app.users[id]
         args = self.check_args({'name': (str, 'opt')})
         user.edit(**args)
-        self.write(user.json(restricted=True))
+        self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
     async def patch_enable_notifications(self, id):
         # pylint: disable=missing-docstring; private
         user = self.app.users[id]
         args = self.check_args({'push_subscription': str})
         await user.enable_device_notifications(**args)
-        self.write(user.json(restricted=True))
+        self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
     def patch_disable_notifications(self, id: str) -> None:
         # pylint: disable=missing-docstring; private
         user = self.app.users[id]
         user.disable_device_notifications(self.current_user)
-        self.write(user.json(restricted=True))
+        self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
 class _UserSetEmailEndpoint(Endpoint):
     def post(self, id):
@@ -865,17 +940,18 @@ class _UserFinishSetEmailEndpoint(Endpoint):
         if not isinstance(args['auth_request'], AuthRequest):
             raise micro.ValueError('auth_request_not_found')
         user.finish_set_email(**args)
-        self.write(user.json(restricted=True))
+        self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
 class _UserRemoveEmailEndpoint(Endpoint):
     def post(self, id):
         user = self.app.users[id]
         user.remove_email()
-        self.write(user.json(restricted=True))
+        self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
 class _SettingsEndpoint(Endpoint):
     def get(self):
-        self.write(self.app.settings.json(restricted=True, include=True))
+        self.write(
+            self.app.settings.json(restricted=True, include=True, rewrite=self.server.rewrite))
 
     def post(self):
         args = self.check_args({
@@ -898,7 +974,7 @@ class _SettingsEndpoint(Endpoint):
 
         settings = self.app.settings
         settings.edit(**args)
-        self.write(settings.json(restricted=True, include=True))
+        self.write(settings.json(restricted=True, include=True, rewrite=self.server.rewrite))
 
 class _ActivityEndpoint(Endpoint):
     def initialize(self, get_activity):
@@ -908,7 +984,8 @@ class _ActivityEndpoint(Endpoint):
     def get(self, *args):
         activity = self.get_activity(*args)
         slice = parse_slice(args[-1] or ':', limit=LIST_LIMIT)
-        self.write(activity.json(restricted=True, include=True, slice=slice))
+        self.write(
+            activity.json(restricted=True, include=True, rewrite=self.server.rewrite, slice=slice))
 
     def patch_subscribe(self, *args):
         # pylint: disable=missing-docstring; private
@@ -936,3 +1013,51 @@ class _ReferralsEndpoint(CollectionEndpoint):
         referral = self.app.analytics.referrals.add(url, user=self.current_user)
         self.set_status(HTTPStatus.CREATED) # type: ignore
         self.write(referral.json(restricted=True, include=True))
+
+class _ReferralSummaryEndpoint(Endpoint):
+    def get(self) -> None:
+        period: Optional[Tuple[datetime, datetime]] = None
+        period_arg = self.get_query_argument("period", None)
+        if period_arg:
+            try:
+                start, end = period_arg.split('/')
+                period = (datetime.fromisoformat(start).replace(tzinfo=timezone.utc),
+                          datetime.fromisoformat(end).replace(tzinfo=timezone.utc))
+            except (TypeError, ValueError):
+                raise error.ValueError('Bad period format')
+
+        data = self.app.analytics.referrals.summarize(period)
+        data = {'referrers': [{'url': referrer[0], 'count': referrer[1]} for referrer in data]}
+        self.write(data)
+
+class _PreviewEndpoint(Endpoint):
+    async def get(self, url: str) -> None:
+        resource = await self.app.analyzer.analyze(self.server.rewrite(url, reverse=True))
+        self.write(resource.json(rewrite=self.server.rewrite))
+
+class _FilesEndpoint(RequestHandler):
+    CONTENT_TYPES = {'image/bmp', 'image/gif', 'image/jpeg', 'image/png', 'image/svg+xml'}
+
+    def initialize(self) -> None:
+        self.server = cast(_ApplicationSettings, self.application.settings)['server']
+
+    async def post(self) -> None:
+        content_type = cast(Optional[str], self.request.headers.get('Content-Type'))
+        if content_type not in self.CONTENT_TYPES:
+            raise HTTPError(HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+        url = await self.server.app.files.write(self.request.body, content_type)
+        self.set_header('Location', self.server.rewrite(url))
+        self.set_status(HTTPStatus.CREATED)
+
+class _FileEndpoint(RequestHandler):
+    def initialize(self) -> None:
+        self.server = cast(_ApplicationSettings, self.application.settings)['server']
+
+    async def get(self, name: str) -> None:
+        try:
+            data, content_type = await self.server.app.files.read(f'file:/{name}')
+        except LookupError:
+            raise HTTPError(HTTPStatus.NOT_FOUND)
+        self.set_header('Content-Type', content_type)
+        self.set_header('Cache-Control', f'max-age={60 * 60 * 24 * 360}')
+        self.write(data)

@@ -54,13 +54,13 @@ hello.StartPage = class extends micro.Page {
             greetings: new micro.Collection("/api/greetings"),
 
             createGreeting: async() => {
+                const input = this.querySelector("micro-content-input");
                 try {
-                    const form = this.querySelector("form");
-                    const text = form.elements.text.value;
-                    const match = text.match(/^https?:\/\/\S+/u);
-                    const resource = match ? match[0] : null;
-                    await ui.call("POST", "/api/greetings", {text, resource});
-                    form.reset();
+                    const {text, resource} = input.valueAsObject;
+                    await ui.call(
+                        "POST", "/api/greetings", {text, resource: resource && resource.url}
+                    );
+                    input.valueAsObject = {text: null, resource: null};
                 } catch (e) {
                     if (
                         e instanceof micro.APIError &&
@@ -69,7 +69,8 @@ hello.StartPage = class extends micro.Page {
                             "BrokenResourceError"
                         ].includes(e.error.__type__)
                     ) {
-                        ui.notify("Oops, there was a problem opening the link. Please try again in a few moments.");
+                        // Delete the resource if it is no longer retrievable
+                        input.valueAsObject = {text: input.valueAsObject.text, resource: null};
                     } else {
                         ui.handleCallError(e);
                     }

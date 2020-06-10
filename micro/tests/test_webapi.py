@@ -2,6 +2,7 @@
 # Released into the public domain
 # https://github.com/noyainrain/micro/blob/master/micro/webapi.py
 
+# type: ignore
 # pylint: disable=missing-docstring; test module
 
 import json

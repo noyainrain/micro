@@ -116,7 +116,7 @@ micro.UI = class extends HTMLBodyElement {
         window.addEventListener("popstate", () => this._navigate().catch(micro.util.catch));
         this.addEventListener("click", event => {
             let a = micro.findAncestor(event.target, e => e instanceof HTMLAnchorElement, this);
-            if (a && a.origin === location.origin) {
+            if (a && a.origin === location.origin && !a.pathname.startsWith("/files/")) {
                 event.preventDefault();
                 this.navigate(a.pathname + a.hash).catch(micro.util.catch);
             }
@@ -549,10 +549,10 @@ micro.UI = class extends HTMLBodyElement {
             this.page = null;
             this.page = await this._route(location.pathname);
             this._progressElem.style.display = "none";
+            await this.page.ready;
         }
 
         if (location.hash) {
-            await this.page.ready;
             try {
                 let elem = this.querySelector(location.hash);
                 if (elem) {
@@ -968,21 +968,34 @@ micro.OL = class extends HTMLOListElement {
  *
  *    Hook function of the form *run()*, which performs the associated action. If it returns a
  *    promise, the button will be suspended until the promise resolves.
+ *
+ * .. attribute:: suspended
+ *
+ *    Indicates if the button is suspended.
+ *
+ * .. describe: .micro-button-suspended
+ *
+ *    Indicates if the button is :attr:`suspended`.
  */
 micro.Button = class extends HTMLButtonElement {
     createdCallback() {
         this.run = null;
+        this.suspended = false;
+
         this.addEventListener("click", event => {
             if (this.form && this.type === "submit") {
-                if (this.form.checkValidity()) {
+                if (this.suspended || this.form.checkValidity()) {
                     // Prevent default form submission
                     event.preventDefault();
                 } else {
-                    // Do not trigger the action and let the default validation handling kick in
+                    // Do not trigger action and let form validation kick in
                     return;
                 }
             }
-            this.trigger().catch(micro.util.catch);
+
+            if (!this.suspended) {
+                this.trigger().catch(micro.util.catch);
+            }
         });
     }
 
@@ -993,23 +1006,29 @@ micro.Button = class extends HTMLButtonElement {
      * :attr:`run`.
      */
     async trigger() {
+        if (this.suspended) {
+            throw new Error("Suspended button");
+        }
         if (!this.run) {
             return undefined;
         }
 
-        let i = this.querySelector("i");
-        let classes;
-        this.disabled = true;
+        this.suspended = true;
+        this.classList.add("micro-button-suspended");
+        const i = this.querySelector("i");
+        let progressI = null;
         if (i) {
-            classes = i.className;
-            i.className = "fa fa-spinner fa-spin";
+            progressI = document.createElement("i");
+            progressI.className = "fa fa-spinner fa-spin";
+            i.insertAdjacentElement("afterend", progressI);
         }
         try {
-            return await Promise.resolve(this.run());
+            return await this.run();
         } finally {
-            this.disabled = false;
+            this.suspended = false;
+            this.classList.remove("micro-button-suspended");
             if (i) {
-                i.className = classes;
+                progressI.remove();
             }
         }
     }
@@ -1256,6 +1275,7 @@ micro.MapElement = class extends HTMLElement {
                     let loc = this._locations.find(item => item.hash === location.hash.slice(1));
                     if (loc) {
                         this._updateView();
+                        this.scrollIntoView();
                         this.querySelector(`#${loc.hash}`).focus();
                     }
                 }
@@ -1841,6 +1861,7 @@ micro.EditUserPage = class extends micro.Page {
             if (e instanceof micro.APIError && e.__type__ === "ValueError") {
                 // If the email address has already been removed, we just update the UI
                 this.user.email = null;
+                // eslint-disable-next-line no-self-assign
                 this.user = this.user;
             } else {
                 ui.handleCallError(e);
@@ -2012,68 +2033,6 @@ Object.assign(micro.bind.transforms, {
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit"
-    },
-
-    /**
-     * Render *markup text* into a :class:`DocumentFragment`.
-     *
-     * HTTP(S) URLs are automatically converted to links.
-     */
-    markup(ctx, text) {
-        if (!text) {
-            return document.createDocumentFragment();
-        }
-
-        const patterns = {
-            // Do not capture trailing whitespace because of link pattern
-            item: "(^[^\\S\n]*[*+-](?=\\s|$))",
-            strong: "\\*\\*(.+?)\\*\\*",
-            em: "\\*(.+?)\\*",
-            // Work around missing look behind by capturing whitespace
-            link: "(^|[\\s!-.:-@])(https?://.+?)(?=[!-.:-@]?(\\s|$))"
-        };
-        const pattern = new RegExp(
-            `${patterns.item}|${patterns.strong}|${patterns.em}|${patterns.link}`, "ugm"
-        );
-
-        const fragment = document.createDocumentFragment();
-        let match;
-        do {
-            const skipStart = pattern.lastIndex;
-            match = pattern.exec(text);
-            const skipStop = match ? match.index : text.length;
-            if (skipStop > skipStart) {
-                fragment.appendChild(document.createTextNode(text.slice(skipStart, skipStop)));
-            }
-            if (match) {
-                const [, item, strong, em, linkPrefix, linkURL] = match;
-                if (item) {
-                    fragment.appendChild(document.createTextNode("\u00a0•"));
-                } else if (strong) {
-                    const elem = document.createElement("strong");
-                    elem.textContent = strong;
-                    fragment.appendChild(elem);
-                } else if (em) {
-                    const elem = document.createElement("em");
-                    elem.textContent = em;
-                    fragment.appendChild(elem);
-                } else if (linkURL) {
-                    if (linkPrefix) {
-                        fragment.appendChild(document.createTextNode(linkPrefix));
-                    }
-                    const a = document.createElement("a");
-                    a.classList.add("link");
-                    a.href = linkURL;
-                    a.target = "_blank";
-                    a.textContent = linkURL;
-                    fragment.appendChild(a);
-                } else {
-                    // Unreachable
-                    throw new Error();
-                }
-            }
-        } while (match);
-        return fragment;
     },
 
     /**

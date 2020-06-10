@@ -222,8 +222,8 @@ class RedisList(RedisSequence):
         pass
     def __getitem__(self, key: Union[int, slice]) -> Union[bytes, List[bytes]]:
         # pylint: disable=function-redefined,missing-docstring; overload
-        if isinstance(key, slice):
-            if key.step:
+        if isinstance(key, slice): # type: ignore[misc]
+            if cast(object, key.step):
                 raise NotImplementedError()
             return self.r.lrange(self.key, *redis_range(key))
         id = self.r.lindex(self.key, key)
@@ -271,8 +271,8 @@ class RedisSortedSet(RedisSequence, Set[bytes]):
         pass
     def __getitem__(self, key: Union[int, slice]) -> Union[bytes, List[bytes]]:
         # pylint: disable=function-redefined,missing-docstring; overload
-        if isinstance(key, slice):
-            if key.step:
+        if isinstance(key, slice): # type: ignore[misc]
+            if cast(object, key.step):
                 raise NotImplementedError()
             return self.r.zrange(self.key, *redis_range(key))
         # Raises IndexError for empty range
@@ -321,7 +321,7 @@ class JSONRedisSequence(Sequence[T]):
         # pylint: disable=function-redefined,missing-docstring; overload
         if self.pre:
             self.pre()
-        if isinstance(key, slice):
+        if isinstance(key, slice): # type: ignore[misc]
             return self.r.omget([id.decode() for id in self._ids[key]], default=ReferenceError)
         return self.r.oget(self._ids[key].decode(), default=ReferenceError)
 
@@ -448,9 +448,12 @@ def bzpoptimed(r: Redis, key: str, *,
 
 def redis_range(slc: slice) -> Tuple[int, int]:
     """Convert the slice *slc* to Redis range indices."""
-    if slc.stop == 0:
+    # Work around slice attributes being Any instead of generic (see
+    # https://github.com/python/typing/issues/159)
+    start, stop = cast(Optional[int], slc.start), cast(Optional[int], slc.stop)
+    if stop == 0:
         return (1, 0)
-    return (0 if slc.start is None else slc.start, -1 if slc.stop is None else slc.stop - 1)
+    return (0 if start is None else start, -1 if stop is None else stop - 1)
 
 def expect_type(cls: Type[T]) -> ExpectFunc[T]:
     """Return a function which asserts that a given *obj* is an instance of *cls*."""

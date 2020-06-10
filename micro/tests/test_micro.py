@@ -16,8 +16,9 @@
 
 from asyncio import sleep
 from datetime import timedelta, timezone
+from pathlib import Path
 import subprocess
-from tempfile import mkdtemp
+from tempfile import gettempdir, mkdtemp
 from unittest.mock import Mock, patch
 
 from typing import List, Tuple, cast
@@ -30,7 +31,7 @@ from micro import Activity, Collection, Event, Gone, Location, Trashable, WithCo
 from micro.jsonredis import RedisList
 from micro.resource import Analyzer, Resource
 from micro.test import CatApp, Cat
-from micro.util import ON
+from micro.util import ON, randstr
 
 SETUP_DB_SCRIPT = """\
 from time import sleep
@@ -76,7 +77,7 @@ app.login()
 class MicroTestCase(AsyncTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.app = CatApp(redis_url='15')
+        self.app = CatApp(redis_url='15', files_path=mkdtemp())
         self.app.r.flushdb()
         self.app.update() # type: ignore
         self.staff_member = self.app.login() # type: ignore
@@ -124,17 +125,19 @@ class ApplicationUpdateTest(AsyncTestCase):
         subprocess.run(clone, check=True)
         subprocess.run(cast(List[str], ['python3', '-c', SETUP_DB_SCRIPT]), cwd=d, check=True)
 
-    def test_update_db_fresh(self):
-        app = CatApp(redis_url='15')
+    def test_update_db_fresh(self) -> None:
+        files_path = str(Path(gettempdir(), randstr()))
+        app = CatApp(redis_url='15', files_path=files_path)
         app.r.flushdb()
-        app.update()
+        app.update() # type: ignore[no-untyped-call]
         self.assertEqual(app.settings.title, 'CatApp')
+        self.assertTrue(Path(files_path).is_dir())
 
-    @gen_test
-    async def test_update_db_version_previous(self) -> None:
+    @gen_test # type: ignore[misc]
+    async def test_update_db_version_previous(self):
         self.setup_db('0.38.1')
         await sleep(1)
-        app = CatApp(redis_url='15')
+        app = CatApp(redis_url='15', files_path=mkdtemp())
         app.update() # type: ignore
 
         app.user = app.settings.staff[0]
@@ -147,13 +150,13 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertAlmostEqual(user.create_time, app.now(), delta=timedelta(minutes=1))
         self.assertGreater(user.create_time, last)
 
-    @gen_test
+    @gen_test # type: ignore[misc]
     async def test_update_db_version_first(self):
         Trashable.RETENTION = timedelta(seconds=0.2)
         # NOTE: Tag tmp can be removed on next database update
         self.setup_db('tmp')
         await sleep(1)
-        app = CatApp(redis_url='15')
+        app = CatApp(redis_url='15', files_path=mkdtemp())
         app.update()
 
         # Update to version 3
@@ -384,7 +387,7 @@ class ActivityTest(MicroTestCase):
         self.assertIn(event, activity)
         notify.assert_called_once_with(self.user, event)
 
-    @gen_test
+    @gen_test # type: ignore[misc]
     async def test_publish_stream(self) -> None:
         activity = self.make_activity()
         stream = activity.stream()

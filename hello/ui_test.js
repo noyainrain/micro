@@ -20,6 +20,9 @@
 "use strict";
 
 let {exec, spawn} = require("child_process");
+const {mkdtemp} = require("fs").promises;
+const {hostname, tmpdir} = require("os");
+const {cwd} = require("process");
 let {promisify} = require("util");
 
 let {until} = require("selenium-webdriver");
@@ -38,8 +41,12 @@ describe("UI", function() {
 
     beforeEach(async function() {
         await promisify(exec)("redis-cli -n 15 flushdb");
-        server = spawn("python3", ["-m", "hello", "--port", "8081", "--redis-url", "15"],
-                       {stdio: "inherit"});
+        const filesPath = await mkdtemp(`${tmpdir()}/`);
+        server = spawn(
+            "python3",
+            ["-m", "hello", "--port", "8081", "--redis-url", "15", "--files-path", filesPath],
+            {stdio: "inherit"}
+        );
         browser = startBrowser(this.currentTest, "micro");
         timeout = browser.remote ? 10 * 1000 : 1000;
     });
@@ -58,18 +65,22 @@ describe("UI", function() {
         let input;
 
         // View start page
-        await getWithServiceWorker(browser, `${URL}/`);
+        // Work around Sauce Labs buffering on localhost
+        await browser.get(`http://${hostname()}:8081/`);
         await browser.wait(
             untilElementTextLocated({css: ".micro-logo"}, "Hello"), timeout);
 
         // Create greeting
-        // form = await browser.findElement({css: "hello-start-page form"});
-        // input = await form.findElement({name: "text"});
-        // await input.sendKeys("Meow!");
-        // await form.findElement({css: "button"}).click();
-        // await browser.wait(
-        //     untilElementTextLocated({css: ".hello-start-greetings > li > p"}, "Meow!"), timeout
-        // )
+        form = await browser.findElement({css: "hello-start-page form"});
+        await form.findElement({css: ".micro-content-input-text"}).sendKeys("Meow!");
+        await form.findElement({css: ".micro-content-input-upload"}).sendKeys(
+            `${cwd()}/node_modules/@noyainrain/micro/images/mapbox.svg`
+        );
+        await browser.wait(until.elementLocated({css: "micro-image"}), timeout);
+        await form.findElement({css: "button:not([type])"}).click();
+        await browser.wait(
+            untilElementTextLocated({css: ".hello-start-greetings > li > p"}, "Meow!"), timeout
+        );
 
         // Edit user
         await browser.findElement({css: ".micro-ui-header-user"}).click();
@@ -97,7 +108,7 @@ describe("UI", function() {
 
     it("should work for staff", async function() {
         // Edit site settings
-        await browser.get(`${URL}/`);
+        await getWithServiceWorker(browser, `${URL}/`);
         let menu = await browser.wait(until.elementLocated({css: ".micro-ui-header-menu"}),
                                       timeout);
         await browser.wait(until.elementIsVisible(menu), timeout);

@@ -12,15 +12,17 @@
 # You should have received a copy of the GNU Lesser General Public License along with this program.
 # If not, see <http://www.gnu.org/licenses/>.
 
+# type: ignore
 # pylint: disable=missing-docstring; test module
 
 import os
+from tempfile import mkdtemp
 
-from tornado.testing import AsyncHTTPTestCase, gen_test
+from tornado.testing import AsyncTestCase, AsyncHTTPTestCase, gen_test
 from tornado.web import Application, RequestHandler
 
 from micro.error import CommunicationError
-from micro.resource import (Analyzer, BrokenResourceError, ForbiddenResourceError, Image,
+from micro.resource import (Analyzer, BrokenResourceError, Files, ForbiddenResourceError, Image,
                             NoResourceError, Resource)
 
 class AnalyzerTestCase(AsyncHTTPTestCase):
@@ -58,6 +60,15 @@ class AnalyzerTestCase(AsyncHTTPTestCase):
         self.assertRegex(webpage.image.url, '/static/image.svg$')
 
     @gen_test
+    async def test_analyze_file(self) -> None:
+        files = Files(mkdtemp())
+        url = await files.write(b'Meow!', 'text/plain')
+        analyzer = Analyzer(files=files)
+        resource = await analyzer.analyze(url)
+        self.assertEqual(resource.url, url)
+        self.assertEqual(resource.content_type, 'text/plain')
+
+    @gen_test
     async def test_analyze_no_resource(self) -> None:
         analyzer = Analyzer()
         with self.assertRaises(NoResourceError):
@@ -86,6 +97,38 @@ class AnalyzerTestCase(AsyncHTTPTestCase):
         analyzer = Analyzer()
         with self.assertRaises(CommunicationError):
             await analyzer.analyze('https://example.invalid/')
+
+class FilesTest(AsyncTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.files = Files(mkdtemp())
+
+    @gen_test # type: ignore[misc]
+    async def test_read(self) -> None:
+        url = await self.files.write(b'Meow!', 'text/plain')
+        data, content_type = await self.files.read(url)
+        self.assertEqual(data, b'Meow!')
+        self.assertEqual(content_type, 'text/plain')
+
+    @gen_test # type: ignore[misc]
+    async def test_read_no(self) -> None:
+        with self.assertRaises(LookupError):
+            await self.files.read('file:/foo.txt')
+
+    @gen_test # type: ignore[misc]
+    async def test_garbage_collect(self) -> None:
+        urls = [await self.files.write(data, 'application/octet-stream')
+                for data in (b'a', b'b', b'c', b'd')]
+        n = await self.files.garbage_collect(urls[:2])
+        self.assertEqual(n, 2)
+        data, _ = await self.files.read(urls[0])
+        self.assertEqual(data, b'a')
+        data, _ = await self.files.read(urls[1])
+        self.assertEqual(data, b'b')
+        with self.assertRaises(LookupError):
+            await self.files.read(urls[2])
+        with self.assertRaises(LookupError):
+            await self.files.read(urls[3])
 
 class CodeEndpoint(RequestHandler):
     # pylint: disable=abstract-method; Tornado handlers define a semi-abstract data_received()

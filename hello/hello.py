@@ -19,7 +19,7 @@ import sys
 from micro import Application, Collection, Editable, Event, Object, Settings, WithContent, error
 from micro.jsonredis import RedisList
 from micro.server import CollectionEndpoint, Server
-from micro.util import make_command_line_parser, randstr, setup_logging
+from micro.util import Expect, make_command_line_parser, randstr, setup_logging
 
 class Hello(Application):
     """Hello application.
@@ -49,9 +49,11 @@ class Hello(Application):
             return greeting
 
     def __init__(self, redis_url='', email='bot@localhost', smtp_url='',
-                 render_email_auth_message=None, *, video_service_keys={}):
-        super().__init__(redis_url, email, smtp_url, render_email_auth_message,
-                         video_service_keys=video_service_keys)
+                 render_email_auth_message=None, *, files_path='data', video_service_keys={}):
+        super().__init__(
+            redis_url=redis_url, email=email, smtp_url=smtp_url,
+            render_email_auth_message=render_email_auth_message, files_path=files_path,
+            video_service_keys=video_service_keys)
         self.types.update({'Greeting': Greeting})
         self.greetings = Hello.Greetings(RedisList('greetings', self.r.r), app=self)
 
@@ -70,6 +72,7 @@ class Greeting(Object, Editable, WithContent):
 
        Text content.
     """
+    # pylint: disable=invalid-overridden-method; do_edit may be async
 
     def __init__(self, *, id, app, authors, text, resource):
         super().__init__(id, app)
@@ -82,17 +85,18 @@ class Greeting(Object, Editable, WithContent):
             raise error.ValueError('No text and resource')
         WithContent.do_edit(attrs)
 
-    def json(self, restricted=False, include=False):
+    def json(self, restricted=False, include=False, *, rewrite=None):
         return {
-            **super().json(restricted, include),
-            **Editable.json(self, restricted, include),
-            **WithContent.json(self, restricted=restricted, include=include)
+            **super().json(restricted=restricted, include=include, rewrite=rewrite),
+            **Editable.json(self, restricted=restricted, include=include, rewrite=rewrite),
+            **WithContent.json(self, restricted=restricted, include=include, rewrite=rewrite)
         }
 
-def make_server(port=8080, url=None, debug=False, redis_url='', smtp_url='', video_service_keys={},
-                client_map_service_key=None):
+def make_server(*, port=8080, url=None, debug=False, redis_url='', smtp_url='',
+                files_path='data', video_service_keys={}, client_map_service_key=None):
     """Create a Hello server."""
-    app = Hello(redis_url, smtp_url=smtp_url, video_service_keys=video_service_keys)
+    app = Hello(redis_url=redis_url, smtp_url=smtp_url, files_path=files_path,
+                video_service_keys=video_service_keys)
     handlers = [
         (r'/api/greetings$', _GreetingsEndpoint, {'get_collection': lambda *args: app.greetings})
     ]
@@ -109,9 +113,12 @@ class _GreetingsEndpoint(CollectionEndpoint):
     # pylint: disable=missing-docstring; Tornado handlers are documented globally
 
     async def post(self):
-        args = self.check_args({'text': (str, None), 'resource': (str, None)})
-        greeting = await self.app.greetings.create(**args)
-        self.write(greeting.json(restricted=True, include=True))
+        text = self.get_arg('text', Expect.opt(Expect.str))
+        resource = self.get_arg('resource', Expect.opt(Expect.str))
+        if resource is not None:
+            resource = self.server.rewrite(resource, reverse=True)
+        greeting = await self.app.greetings.create(text, resource)
+        self.write(greeting.json(restricted=True, include=True, rewrite=self.server.rewrite))
 
 def main(args):
     """Run Hello.

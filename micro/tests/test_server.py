@@ -12,10 +12,14 @@
 # You should have received a copy of the GNU Lesser General Public License along with this program.
 # If not, see <http://www.gnu.org/licenses/>.
 
+# type: ignore
 # pylint: disable=missing-docstring; test module
 
+from datetime import timedelta
 import http.client
 import json
+from tempfile import mkdtemp
+from urllib.parse import quote
 
 from tornado.httpclient import HTTPClientError
 from tornado.testing import gen_test
@@ -27,7 +31,7 @@ from micro.test import ServerTestCase, CatApp
 class ServerTest(ServerTestCase):
     def setUp(self):
         super().setUp()
-        self.app = CatApp(redis_url='15')
+        self.app = CatApp(redis_url='15', files_path=mkdtemp())
         self.app.r.flushdb()
         handlers = [
             (r'/api/cats$', CollectionEndpoint, {'get_collection': lambda: self.app.cats}),
@@ -43,6 +47,8 @@ class ServerTest(ServerTestCase):
 
     @gen_test
     async def test_availability(self):
+        file_url = await self.app.files.write(b'Meow!', 'text/plain')
+
         # UI
         await self.request('/')
         await self.request('/manifest.webmanifest')
@@ -59,6 +65,11 @@ class ServerTest(ServerTestCase):
         await self.request('/api/settings')
         await self.request('/api/analytics/referrals', method='POST',
                            body='{"url": "https://example.org/"}')
+        url = quote(f'{self.server.url}/static/hello.js', safe='')
+        await self.request(f'/api/previews/{url}')
+        await self.request(self.server.rewrite(file_url))
+        await self.request('/files', method='POST', body=b'<svg />',
+                           headers={'Content-Type': 'image/svg+xml'})
 
         # API (generic)
         cat = self.app.cats.create()
@@ -77,6 +88,9 @@ class ServerTest(ServerTestCase):
         await self.request('/api/activity/v2', method='PATCH', body='{"op": "unsubscribe"}')
         await self.request('/api/analytics/stats/users')
         await self.request('/api/analytics/referrals')
+        start = quote((self.app.now() - timedelta(days=10)).isoformat())
+        end = quote((self.app.now() - timedelta(days=2)).isoformat())
+        await self.request(f'/api/analytics/referrals/summary?period={start}/{end}')
 
     @gen_test
     def test_endpoint_request(self):

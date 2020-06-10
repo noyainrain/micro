@@ -21,12 +21,15 @@
 
 from asyncio import Task, ensure_future, sleep # pylint: disable=unused-import; typing
 import json
+from collections import defaultdict
 from datetime import datetime, timedelta
+from logging import getLogger
 import typing
-from typing import Callable, Dict, Iterator, List, Mapping, Optional, cast
+from typing import Callable, DefaultDict, Dict, Iterator, List, Mapping, Optional, Tuple, cast
 from urllib.parse import urlsplit
 
 from . import error
+from .core import RewriteFunc
 from .jsonredis import RedisSortedSet
 from .micro import Collection, Object, User
 from .util import expect_type, parse_isotime, randstr
@@ -83,6 +86,7 @@ class Analytics:
                 t += timedelta(days=1)
                 await sleep((t - self.app.now()).total_seconds())
                 self.collect_statistics(_t=t)
+                getLogger(__name__).info('Collected statistics for %s', format(t, '%d %b %Y'))
         return cast('Task[None]', ensure_future(_run()))
 
     def _count_users(self, t: datetime) -> float:
@@ -162,9 +166,10 @@ class Referral(Object):
         self.url = url
         self.time = parse_isotime(time, aware=True)
 
-    def json(self, restricted: bool = False, include: bool = False) -> Dict[str, object]:
+    def json(self, restricted: bool = False, include: bool = False, *,
+             rewrite: RewriteFunc = None) -> Dict[str, object]:
         return {
-            **super().json(restricted=restricted, include=include),
+            **super().json(restricted=restricted, include=include, rewrite=rewrite),
             'url': self.url,
             'time': self.time.isoformat()
         }
@@ -179,9 +184,28 @@ class Referrals(Collection[Referral]):
     def add(self, url: str, *, user: Optional[User]) -> Referral:
         """See :http:post:`/api/analytics/referrals`."""
         # pylint: disable=unused-argument; part of API
-        if urlsplit(url).scheme not in {'http', 'https'}:
-            raise error.ValueError('Bad url scheme {}'.format(url))
+        if not urlsplit(url).scheme:
+            raise error.ValueError('Relative url {}'.format(url))
         referral = Referral(id=randstr(), app=self.app, url=url, time=self.app.now().isoformat())
         self.app.r.oset(referral.id, referral)
         self.app.r.r.zadd(self.ids.key, {referral.id.encode(): -referral.time.timestamp()})
         return referral
+
+    def summarize(self, period: Tuple[datetime, datetime] = None) -> List[Tuple[str, int]]:
+        """See :http:get:`/api/analytics/referrals/summary?period`."""
+        self.app.check_user_is_staff()
+
+        if period is None:
+            end = self.app.now()
+            period = (end - timedelta(days=7), end)
+        # Since the scores of the entries are timestamps * -1, we must also multiply the given
+        # timestamps by -1 and invert the order so it is still a valid interval
+        period = (-period[1].timestamp(), -period[0].timestamp())
+        keys = [key.decode() for key in self.app.r.r.zrangebyscore(self.ids.key, *period)]
+
+        result: DefaultDict[str, int] = defaultdict(lambda: 0)
+        referrals = self.app.r.omget(keys, default=AssertionError, expect=expect_type(Referral))
+        for referral in referrals:
+            result[referral.url] += 1
+
+        return sorted(result.items(), key=lambda x: (-x[1], x[0]))
