@@ -46,6 +46,7 @@ While micro is covered by the [LGPL](https://www.gnu.org/licenses/lgpl.html), th
 are released into the public domain:
 
 * [jsonredis](https://github.com/noyainrain/micro/blob/master/micro/jsonredis.py)
+* [ratelimit](https://github.com/noyainrain/micro/blob/master/micro/ratelimit.py)
 * [webapi](https://github.com/noyainrain/micro/blob/master/micro/webapi.py)
 * [bind.js](https://github.com/noyainrain/micro/blob/master/client/bind.js)
 * [keyboard.js](https://github.com/noyainrain/micro/blob/master/client/keyboard.js)

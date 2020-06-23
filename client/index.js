@@ -402,14 +402,10 @@ micro.UI = class extends HTMLBodyElement {
     }
 
     /**
-     * Handle a common call error *e* with a default reaction:
+     * Handle a common call error *e* with a default reaction.
      *
-     * - `NetworkError`: Notify the user that they seem to be offline
-     * - `NotFoundError`: Notify the user that the current page has been deleted
-     * - `PermissionError`: Notify the user that their permissions for the current page have been
-     *   revoked
-     *
-     * Other errors are not handled and re-thrown.
+     * :class:`NetworkError`, ``NotFoundError``, ``PermissionError`` and `RateLimitError` are
+     * handled. Other errors are re-thrown.
      */
     handleCallError(e) {
         if (e instanceof micro.NetworkError) {
@@ -419,6 +415,8 @@ micro.UI = class extends HTMLBodyElement {
             this.notify("Oops, someone has just deleted this page!");
         } else if (e instanceof micro.APIError && e.error.__type__ === "PermissionError") {
             this.notify("Oops, someone has just revoked your permissions for this page!");
+        } else if (e instanceof micro.APIError && e.error.__type__ === "RateLimitError") {
+            this.notify("Oops, you are a bit too fast! Please try again later.");
         } else {
             throw e;
         }

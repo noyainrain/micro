@@ -7,7 +7,8 @@ Arguments are passed to an endpoint simply as JSON object and the result is retu
 *Objects* contain a ``__type__`` attribute that holds the name of the object type.
 
 If a requested endpoint doesn't exist, a :ref:`NotFoundError` is returned. For any endpoint, an
-:ref:`InputError` is returned if the input contains invalid arguments.
+:ref:`InputError` is returned if the input contains invalid arguments. A :ref:`RateLimitError` is
+returned if the current client exceeds the allowed rate limit for an operation.
 
 The URL that uniquely identifies an object is referred to as *object-url*, e.g. ``users/abc`` for a
 :ref:`User` with the *id* ``abc``.
@@ -373,6 +374,13 @@ PermissionError
 ^^^^^^^^^^^^^^^
 
 Returned if the current user is not allowed to perform an action.
+
+.. _RateLimitError:
+
+RateLimitError
+^^^^^^^^^^^^^^
+
+Returned if the current client exceeds the allowed rate limit for an operation.
 
 .. _CommunicationError:
 
