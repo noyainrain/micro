@@ -7,10 +7,10 @@
             <img data-src="or resource.image.url ''" data-alt="or resource.image.description ''" />
             <div class="micro-image-contrast"></div>
         </div>
-        <div class="micro-link-label">
-            <p data-content="or resource.description ''"></p>
-            <p class="micro-small" data-content="host"></p>
-        </div>
+        <p>
+            <span data-content="or resource.description ''"></span>
+            <small data-content="host"></small>
+        </p>
     </a>
 </template>
 
@@ -25,11 +25,13 @@ micro-link {
     vertical-align: bottom;
 }
 
-micro-link .link,
-micro-link .link:hover,
-micro-link .link:focus {
-    color: var(--micro-color-text);
-    text-decoration: none;
+micro-link .link {
+    padding: 0;
+}
+
+micro-link .link:focus,
+micro-link .link:not(:disabled):hover {
+    background: transparent;
 }
 
 .micro-link-image {
@@ -43,15 +45,9 @@ micro-link .link:focus {
     margin: 0 auto;
 }
 
-.micro-link-label {
-    padding: 0 var(--micro-size-xs);
+micro-link p {
     overflow: hidden;
     background: var(--micro-color-delimiter);
-}
-
-.micro-link-label p {
-    margin: var(--micro-size-rxs) 0;
-    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }

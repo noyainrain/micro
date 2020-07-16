@@ -16,32 +16,31 @@
 
         <template class="hello-start-page-template">
             <div class="hello-start-intro">
-                <h1 class="micro-logo"><a class="link" data-content="settings.title"></a></h1>
+                <h1 class="micro-logo" data-content="settings.title"></h1>
                 <p>A micro toolkit example</p>
             </div>
             <div>
                 <p>Leave a greeting for everyone to read:</p>
                 <form data-shortcut-context="new ShortcutContext">
-                    <label>
-                        <micro-content-input required="required"></micro-content-input>
-                    </label>
-                    <p>
-                        <button
-                            is="micro-button" class="action"
-                            data-shortcut="new Shortcut 'Control+Enter'" data-run="createGreeting"
-                        >
-                            <i class="fa fa-comment"></i> Publish
-                        </button>
-                    </p>
+                    <micro-content-input required="required"></micro-content-input>
+                    <button
+                        is="micro-button" class="action micro-highlight"
+                        data-shortcut="new Shortcut 'Control+Enter'" data-run="createGreeting"
+                    >
+                        <i class="fa fa-comment"></i> Publish
+                    </button>
                 </form>
             </div>
             <ul class="hello-start-greetings" data-content="list greetings.items 'greeting'">
                 <template>
                     <li data-id="makeGreetingHash greeting" class="micro-quick-nav" tabindex="0">
                         <header class="micro-panel">
-                            <p><micro-user data-user="greeting.authors.0"></micro-user>:</p>
+                            <p class="micro-panel-main">
+                                <micro-user data-user="greeting.authors.0"></micro-user>:
+                            </p>
                         </header>
-                        <div data-content="renderResource greeting.resource"></div>
+                        <div class="micro-block" data-content="renderResource greeting.resource">
+                        </div>
                         <p class="micro-multiline" data-content="markup greeting.text"></p>
                     </li>
                 </template>
@@ -70,8 +69,12 @@
                 font-size: 3em;
             }
 
-            hello-start-page textarea {
-                height: calc(2 * 1.5em + 2 * 1.5em / 4);
+            hello-start-page micro-content-input {
+                border: 1px solid var(--micro-color-delimiter);
+            }
+
+            hello-start-page .micro-content-input-text {
+                height: calc(2 * var(--micro-size-m) + 2 * var(--micro-size-s));
             }
 
             .hello-start-greetings {
@@ -80,26 +83,11 @@
             }
 
             .hello-start-greetings > li {
-                padding: 1px 0;
                 border-top: 1px solid var(--micro-color-delimiter);
             }
 
-            .hello-start-greetings > li > div,
-            .hello-start-greetings > li > p {
-                margin: 0 0 var(--micro-size-rxs) 0;
-            }
-
-            .hello-start-greetings > li > header {
-                margin: 0;
-            }
-
             .hello-start-greetings > li > header > p {
-                padding-left: 0;
                 font-weight: bold;
-            }
-
-            .hello-start-greetings > li > div:empty {
-                display: none;
             }
         </style>
 

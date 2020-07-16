@@ -127,6 +127,7 @@ describe("UI", function() {
         await form.findElement({name: "provider_name"}).sendKeys("Happy");
         await form.findElement({name: "provider_url"}).sendKeys("https://happy.example.org/");
         await form.findElement({name: "feedback_url"}).sendKeys("https://feedback.example.org/");
+        await browser.executeScript(() => scroll(0, 0));
         await form.findElement({css: "button"}).click();
         await browser.wait(
             until.elementTextContains(await browser.findElement({css: ".micro-ui-logo"}),

@@ -30,13 +30,15 @@
             <ul data-content="switch referralsComplete false">
                 <template>
                     <li>
-                        <button
-                            is="micro-button" class="micro-analytics-more-referrals link"
-                            data-run="bind fetchCollection referrals 10"
-                            data-shortcut="new Shortcut 'M'"
-                        >
-                            <i class="fa fa-ellipsis-v"></i> More
-                        </button>
+                        <p>
+                            <button
+                                is="micro-button" class="micro-analytics-more-referrals link"
+                                data-run="bind fetchCollection referrals 10"
+                                data-shortcut="new Shortcut 'M'"
+                            >
+                                <i class="fa fa-ellipsis-v"></i> More
+                            </button>
+                        </p>
                     </li>
                 </template>
             </ul>
@@ -47,6 +49,10 @@
     .micro-analytics-user-statistics {
         --micro-chart-palette: var(--micro-color-primary-tint), var(--micro-color-primary),
                                var(--micro-color-primary-shade);
+    }
+
+    micro-analytics-page .micro-lgroup p {
+        padding: 0;
     }
 </style>
 
@@ -62,6 +68,6 @@
         display: block;
         position: relative;
         height: calc(70ch * 9 / 16);
-        margin: var(--micro-size-rm) 0;
+        padding: var(--micro-size-s);
     }
 </style>

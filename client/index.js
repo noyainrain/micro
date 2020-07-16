@@ -416,7 +416,7 @@ micro.UI = class extends HTMLBodyElement {
         } else if (e instanceof micro.APIError && e.error.__type__ === "PermissionError") {
             this.notify("Oops, someone has just revoked your permissions for this page!");
         } else if (e instanceof micro.APIError && e.error.__type__ === "RateLimitError") {
-            this.notify("Oops, you are a bit too fast! Please try again later.");
+            this.notify("Oops, you were a bit too fast! Please try again later.");
         } else {
             throw e;
         }
@@ -517,7 +517,7 @@ micro.UI = class extends HTMLBodyElement {
     /** Scroll :class:`Element` *elem* into view, minding the header. */
     scrollToElement(elem) {
         const em = parseFloat(getComputedStyle(this).fontSize);
-        scroll(0, elem.offsetTop - (2 * 1.5 * em + 2 * 1.5 * em / 4));
+        scroll(0, elem.offsetTop - (1.5 * em + 3 * 0.5 * em));
     }
 
     async _navigate() {
@@ -1301,7 +1301,7 @@ micro.MapElement = class extends HTMLElement {
             let url = `https://api.mapbox.com/v4/mapbox.light/{z}/{x}/{y}.png?access_token=${ui.mapServiceKey}`;
             let attribution = document.importNode(
                 ui.querySelector("#micro-map-attribution-template").content, true
-            ).firstElementChild.innerHTML;
+            ).firstElementChild.outerHTML;
             this._leaflet.tileLayer(url, {attribution, noWrap: true}).addTo(this._map);
 
             this._updateView();
@@ -1746,7 +1746,7 @@ micro.EditUserPage = class extends micro.Page {
         this._setEmail2 = this.querySelector(".micro-edit-user-set-email-2");
         this._emailP = this.querySelector(".micro-edit-user-email-value");
         this._setEmailAction = this.querySelector(".micro-edit-user-set-email-1 form button");
-        this._cancelSetEmailAction = this.querySelector(".micro-edit-user-cancel-set-email button");
+        this._cancelSetEmailAction = this.querySelector(".micro-edit-user-cancel-set-email");
         this._removeEmailAction = this.querySelector(".micro-edit-user-remove-email");
         this._removeEmailAction.addEventListener("click", this);
         this._setEmailAction.addEventListener("click", this);
@@ -1797,6 +1797,8 @@ micro.EditUserPage = class extends micro.Page {
                     }
                 }
             }
+
+            this._form.elements.name.focus();
         })().catch(micro.util.catch));
     }
 
@@ -1940,7 +1942,6 @@ micro.EditSettingsPage = class extends micro.Page {
                         provider_description: description,
                         feedback_url: form.elements.feedback_url.value
                     });
-                    ui.navigate("/").catch(micro.util.catch);
                     micro.util.dispatchEvent(ui,
                                              new CustomEvent("settings-edit", {detail: {settings}}));
                 } catch (e) {
@@ -1949,6 +1950,10 @@ micro.EditSettingsPage = class extends micro.Page {
             }
         };
         micro.bind.bind(this.children, this._data);
+    }
+
+    attachedCallback() {
+        this.querySelector("[name=title]").focus();
     }
 };
 
@@ -1967,6 +1972,7 @@ micro.ActivityPage = class extends micro.Page {
             ui.querySelector(".micro-activity-page-template").content, true));
         this._showMoreButton = this.querySelector("button");
         this._showMoreButton.run = this._showMore.bind(this);
+        this._showMoreButton.shortcut = new micro.keyboard.Shortcut(this._showMoreButton, "M");
         this._start = 0;
     }
 
@@ -1986,14 +1992,16 @@ micro.ActivityPage = class extends micro.Page {
 
         let ul = this.querySelector(".micro-timeline");
         for (let event of events.items) {
-            let li = document.createElement("li");
-            let time = document.createElement("time");
+            const li = document.createElement("li");
+            const p = document.createElement("p");
+            const time = document.createElement("time");
             time.dateTime = event.time;
             time.textContent = micro.bind.transforms.formatDate(
                 null, event.time, micro.bind.transforms.SHORT_DATE_TIME_FORMAT
             );
-            li.appendChild(time);
-            li.appendChild(ui.renderEvent[event.type](event));
+            p.appendChild(time);
+            p.appendChild(ui.renderEvent[event.type](event));
+            li.appendChild(p);
             ul.appendChild(li);
         }
         this.classList.toggle("micro-activity-all", events.items.length < micro.LIST_LIMIT);

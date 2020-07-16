@@ -1,11 +1,11 @@
 <template id="micro-content-input-template">
     <div
-        class="micro-input-wrapper" data-class-micro-content-input-has-resource="resource"
+        data-class-micro-content-input-has-resource="resource"
         data-class-micro-content-input-attaching="attaching"
     >
         <button type="button" class="micro-content-input-labeled"></button>
 
-        <div class="micro-content-input-resource-space">
+        <div class="micro-content-input-resource-space micro-block">
             <div class="micro-content-input-resource-wrapper">
                 <div class="micro-content-input-resource" data-content="renderResource resource">
                 </div>
@@ -18,10 +18,8 @@
                     </button>
                 </div>
             </div>
-            <p class="micro-progress">
-                <i class="fa fa-spinner fa-spin"></i>
-            </p>
         </div>
+        <p class="micro-progress"><i class="fa fa-spinner fa-spin"></i></p>
 
         <textarea
             class="micro-content-input-text" data-placeholder="getPlaceholder placeholder resource"
@@ -41,7 +39,7 @@
                 <button type="button" class="link">
                     <i class="fa fa-fw fa-info-circle"></i>
                 </button>
-                <micro-contextual class="micro-block">
+                <micro-contextual>
                     <table>
                         <thead>
                             <tr>
@@ -74,24 +72,31 @@
 </template>
 
 <style>
+    micro-content-input {
+        display: block;
+    }
+
+    micro-content-input:focus-within {
+        box-shadow: var(--micro-focus-shadow);
+    }
+
     .micro-content-input-labeled {
         display: none;
     }
 
-    micro-content-input > div:not(.micro-content-input-has-resource):not(.micro-content-input-attaching) .micro-content-input-resource-space,
-    micro-content-input > div:not(.micro-content-input-has-resource) .micro-content-input-resource-wrapper,
-    micro-content-input > div:not(.micro-content-input-attaching) .micro-content-input-resource-space > .micro-progress {
+    micro-content-input > div:not(.micro-content-input-has-resource) .micro-content-input-resource-space,
+    micro-content-input > div:not(.micro-content-input-attaching) .micro-progress {
         display: none;
     }
 
     .micro-content-input-resource-space {
-        padding: var(--micro-size-xs) var(--micro-size-xs) 0 var(--micro-size-xs);
         cursor: text;
     }
 
     .micro-content-input-resource-wrapper {
         display: inline-block;
         position: relative;
+        max-width: 100%;
         cursor: auto;
     }
 
@@ -102,12 +107,8 @@
         background: rgba(255, 255, 255, 0.66);
     }
 
-    .micro-content-input-resource-space > .micro-progress {
-        margin: 0;
-    }
-
-    micro-content-input textarea {
-        background: transparent;
+    .micro-content-input-text:focus {
+        box-shadow: none;
     }
 
     micro-content-input > div > footer {
