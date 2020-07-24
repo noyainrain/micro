@@ -83,7 +83,7 @@ describe("UI", function() {
         );
 
         // Edit user
-        await browser.findElement({css: ".micro-ui-header-user"}).click();
+        await browser.findElement({css: ".micro-ui-menu"}).click();
         await browser.findElement({css: ".micro-ui-edit-user"}).click();
         await browser.wait(
             untilElementTextLocated({css: "micro-edit-user-page h1"}, "Edit user settings"),
@@ -100,7 +100,7 @@ describe("UI", function() {
             timeout);
 
         // View about page
-        await browser.findElement({css: ".micro-ui-header-menu"}).click();
+        await browser.findElement({css: ".micro-ui-menu"}).click();
         await browser.findElement({css: ".micro-ui-about"}).click();
         await browser.wait(
             untilElementTextLocated({css: "micro-about-page h1"}, "About Hello"), timeout);
@@ -109,8 +109,7 @@ describe("UI", function() {
     it("should work for staff", async function() {
         // Edit site settings
         await getWithServiceWorker(browser, `${URL}/`);
-        let menu = await browser.wait(until.elementLocated({css: ".micro-ui-header-menu"}),
-                                      timeout);
+        let menu = await browser.wait(until.elementLocated({css: ".micro-ui-menu"}), timeout);
         await browser.wait(until.elementIsVisible(menu), timeout);
         await menu.click();
         await browser.findElement({css: ".micro-ui-edit-settings"}).click();
@@ -142,8 +141,12 @@ describe("UI", function() {
         );
 
         // View activity page
-        await menu.click();
-        await browser.findElement({css: ".micro-ui-activity"}).click();
+        // Work around Safari 13 missing elements on click (see
+        // https://bugs.webkit.org/show_bug.cgi?id=202589)
+        await browser.executeScript(() => document.querySelector(".micro-ui-menu .link").focus());
+        await browser.executeScript(
+            () => document.querySelector(".micro-ui-activity .link").click()
+        );
         await browser.wait(
             untilElementTextLocated({css: "micro-activity-page .micro-timeline li"},
                                     "site settings"),

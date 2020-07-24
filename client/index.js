@@ -145,9 +145,7 @@ micro.UI = class extends HTMLBodyElement {
         this.insertBefore(
             document.importNode(this.querySelector(".micro-ui-template").content, true),
             this.querySelector("main"));
-        this.querySelector(".micro-ui-header-menu > ul").prepend(
-            ...this.querySelectorAll("[slot=menu]")
-        );
+        this.querySelector(".micro-ui-edit-user").after(...this.querySelectorAll("[slot=menu]"));
 
         this._data = new micro.bind.Watchable({
             user: null,
@@ -1010,49 +1008,6 @@ micro.Button = class extends HTMLButtonElement {
             this.classList.remove("micro-button-suspended");
             if (i) {
                 progressI.remove();
-            }
-        }
-    }
-};
-
-/**
- * Menu containing actions and / or links.
- *
- * Menus can be nested, in which case submenus are hidden by default and expanded on focus or hover.
- *
- * The following example illustrates the markup for a typical menu::
- *
- *    <ul is="micro-menu">
- *        <li><button class="action">Do this</button></li>
- *        <li><a class="link" href="/">Something</a></li>
- *        <li>
- *            <button class="link">More</button>
- *            <ul is="micro-menu">
- *                <li><button class="action">Do that</button></li>
- *            </ul>
- *        </li>
- *    </ul>
- */
-micro.Menu = class extends HTMLUListElement {
-    attachedCallback() {
-        let expand = event => {
-            let li = Array.from(this.children).find(elem => elem.contains(event.target));
-            if (["focus", "blur"].includes(event.type) && li.contains(event.relatedTarget)) {
-                return;
-            }
-            li.classList.toggle("micro-menu-expanded",
-                                ["mouseenter", "focus"].includes(event.type));
-        };
-
-        for (let li of Array.from(this.children)) {
-            if (li.lastElementChild instanceof micro.Menu) {
-                li.addEventListener("mouseenter", expand);
-                li.addEventListener("mouseleave", expand);
-                let items = Array.from(li.querySelectorAll("a, button, [tabindex]"));
-                for (let item of items) {
-                    item.addEventListener("focus", expand);
-                    item.addEventListener("blur", expand);
-                }
             }
         }
     }
@@ -2070,7 +2025,6 @@ document.registerElement("micro-simple-notification", micro.SimpleNotification);
 document.registerElement("micro-error-notification", micro.ErrorNotification);
 document.registerElement("micro-ol", {prototype: micro.OL.prototype, extends: "ol"});
 document.registerElement("micro-button", {prototype: micro.Button.prototype, extends: "button"});
-document.registerElement("micro-menu", {prototype: micro.Menu.prototype, extends: "ul"});
 document.registerElement("micro-user", micro.UserElement);
 document.registerElement("micro-page", micro.Page);
 document.registerElement("micro-not-found-page", micro.NotFoundPage);

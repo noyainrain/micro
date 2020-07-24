@@ -17,20 +17,17 @@
 
             <div class="micro-ui-header-fill"></div>
 
-            <ul is="micro-menu" class="micro-ui-menu micro-secondary micro-interactive">
-                <li class="micro-ui-header-user">
-                    <button class="link"><micro-user data-user="user"></micro-user></button>
-                    <ul is="micro-menu">
+            <div class="micro-ui-menu micro-interactive">
+                <button type="button" class="link">
+                    <micro-user data-user="user"></micro-user>
+                </button>
+                <micro-contextual class="micro-entity-list">
+                    <ul>
                         <li class="micro-ui-edit-user">
                             <a class="action" href="/user/edit" data-shortcut="new Shortcut 'N,U'">
                                 <i class="fa fa-fw fa-wrench"></i> Edit user settings
                             </a>
                         </li>
-                    </ul>
-                </li>
-                <li class="micro-ui-header-menu">
-                    <button class="link"><i class="fa fa-bars"></i></button>
-                    <ul is="micro-menu">
                         <li class="micro-ui-about">
                             <a class="link" href="/about" data-shortcut="new Shortcut 'N,A'">
                                 <i class="fa fa-fw fa-info-circle"></i> About
@@ -56,12 +53,14 @@
                             </a>
                         </li>
                         <li class="micro-ui-edit-settings">
-                            <a class="action" href="/settings/edit"
-                               data-shortcut="new Shortcut 'N,C'">
+                            <a
+                                class="action" href="/settings/edit"
+                                data-shortcut="new Shortcut 'N,C'"
+                            >
                                 <i class="fa fa-fw fa-wrench"></i> Edit site settings
                             </a>
                         </li>
-                        <li class="micro-ui-keyboard compact" tabindex="0">
+                        <li class="micro-ui-keyboard" tabindex="0">
                             <p><i class="fa fa-fw fa-keyboard"></i> Keyboard navigation</p>
                             <ul>
                                 <li><strong>Tab / Shift + Tab</strong>: Cycle through buttons</li>
@@ -73,8 +72,8 @@
                             </ul>
                         </li>
                     </ul>
-                </li>
-            </ul>
+                </micro-contextual>
+            </div>
         </nav>
 
         <div class="micro-ui-notification-space"></div>
@@ -94,11 +93,19 @@
         color: var(--micro-color-text-subtle);
     }
 
+    .micro-ui-keyboard:focus,
+    .micro-ui-keyboard:hover {
+        background: var(--micro-color-delimiter);
+    }
+
+    .micro-ui-keyboard p {
+        white-space: nowrap;
+    }
+
     .micro-ui-keyboard ul {
         display: none;
         list-style: disc;
         font-size: 0.875em;
-        white-space: normal;
     }
 
     .micro-ui-keyboard:hover ul,
@@ -144,10 +151,6 @@
             Reload the page
         </button>
     </div>
-</template>
-
-<template class="micro-menu-template">
-    <button class="micro-menu-toggle-secondary action action-subtle"><i class="fa"></i></button>
 </template>
 
 <template id="micro-options-template">

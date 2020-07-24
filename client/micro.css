@@ -79,6 +79,11 @@ h1 {
     color: var(--micro-color-text-title);
 }
 
+p[tabindex]:focus,
+p[tabindex]:hover {
+    background: var(--micro-color-delimiter);
+}
+
 section h1 { font-size: 1.66rem; }
 section section h1 { font-size: 1.33rem; }
 
@@ -208,6 +213,7 @@ small {
     padding: var(--micro-size-s);
     border: none;
     border-radius: 0;
+    margin: 0;
     background: transparent;
     font: inherit;
     text-align: inherit;
@@ -333,11 +339,11 @@ textarea {
 label,
 fieldset {
     display: block;
-    margin-block: var(--micro-size-s);
+    margin: var(--micro-size-s) 0;
 }
 
 label > small {
-    padding-inline: var(--micro-size-s);
+    padding: 0 var(--micro-size-s);
 }
 
 label > small:first-of-type {
@@ -388,13 +394,6 @@ fieldset label {
 .micro-panel > div > .link,
 .micro-panel > div > .action {
     width: auto;
-}
-
-.micro-panel > [tabindex]:focus,
-.micro-panel > [tabindex]:not(:disabled):hover,
-.micro-panel > div > [tabindex]:focus,
-.micro-panel > div > [tabindex]:not(:disabled):hover {
-    background: var(--micro-color-delimiter);
 }
 
 .micro-panel > h1,
@@ -509,42 +508,6 @@ section section .micro-heading > input {
     margin-right: 1ch;
     font-size: 0.875em;
     color: #888;
-}
-
-/* ---- Menu ---- */
-
-[is=micro-menu] {
-    display: flex;
-    padding: 0;
-    list-style: none;
-}
-
-[is=micro-menu] > li {
-    position: relative;
-}
-
-[is=micro-menu] [is=micro-menu] {
-    flex-flow: column;
-    position: absolute;
-    z-index: 1;
-    right: 0;
-    box-shadow: var(--micro-shadow);
-    background: white;
-    white-space: nowrap;
-}
-
-[is=micro-menu] li:not(.micro-menu-expanded) [is=micro-menu] {
-    height: 0;
-    overflow: hidden;
-}
-
-[is=micro-menu] [is=micro-menu] > li:not(:first-child) {
-    border-top: 1px solid #ddd;
-}
-
-[is=micro-menu] [is=micro-menu] [tabindex]:focus,
-[is=micro-menu] [is=micro-menu] [tabindex]:not(:disabled):hover {
-    background: var(--micro-color-delimiter);
 }
 
 /* ---- UserElement ---- */
