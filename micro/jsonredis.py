@@ -114,7 +114,10 @@ class JSONRedis(Generic[T]):
                 try:
                     # loads() actually returns Union[T, Dict[str, object]], but as T may be dict
                     # there is no way to eliminate it here
-                    object = cast(T, json.loads(value.decode(), object_hook=self.decode))
+                    # object = cast(T, json.loads(value.decode(), object_hook=self.decode))
+                    import builtins
+                    data: Dict[str, builtins.object] = json.loads(value.decode())
+                    object = cast(T, self.decode(data) if self.decode else data)
                 except ValueError:
                     raise ResponseError()
                 if self.caching:

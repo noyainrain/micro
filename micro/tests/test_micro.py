@@ -28,6 +28,7 @@ from tornado.testing import AsyncTestCase, gen_test
 
 import micro
 from micro import Activity, Collection, Event, Gone, Location, Trashable, WithContent
+from micro.error import TrashedError
 from micro.jsonredis import RedisList
 from micro.resource import Analyzer, Resource
 from micro.test import CatApp, Cat
@@ -208,9 +209,9 @@ class EditableTest(MicroTestCase):
         self.cat.edit(name='Hover')
         self.assertEqual(self.cat.authors, [self.user, user2])
 
-    def test_edit_cat_trashed(self):
+    def test_edit_trashed_cat(self):
         self.cat.trash()
-        with self.assertRaisesRegex(micro.ValueError, 'object_trashed'):
+        with self.assertRaises(TrashedError):
             self.cat.edit(name='Happy')
 
     def test_edit_user_anonymous(self):

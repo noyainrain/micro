@@ -402,17 +402,20 @@ micro.UI = class extends HTMLBodyElement {
     /**
      * Handle a common call error *e* with a default reaction.
      *
-     * :class:`NetworkError`, ``NotFoundError``, ``PermissionError`` and `RateLimitError` are
-     * handled. Other errors are re-thrown.
+     * :class:`NetworkError`, ``NotFoundError``, ``TrashedError``, ``PermissionError`` and
+     * `RateLimitError` are handled. Other errors are re-thrown.
      */
     handleCallError(e) {
         if (e instanceof micro.NetworkError) {
             this.notify(
                 "Oops, you seem to be offline! Please check your connection and try again.");
-        } else if (e instanceof micro.APIError && e.error.__type__ === "NotFoundError") {
-            this.notify("Oops, someone has just deleted this page!");
+        } else if (
+            e instanceof micro.APIError &&
+            ["NotFoundError", "TrashedError"].includes(e.error.__type__)
+        ) {
+            this.notify("Oops, someone has just deleted this!");
         } else if (e instanceof micro.APIError && e.error.__type__ === "PermissionError") {
-            this.notify("Oops, someone has just revoked your permissions for this page!");
+            this.notify("Oops, someone has just revoked your permissions!");
         } else if (e instanceof micro.APIError && e.error.__type__ === "RateLimitError") {
             this.notify("Oops, you were a bit too fast! Please try again later.");
         } else {

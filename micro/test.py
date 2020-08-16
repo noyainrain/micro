@@ -14,7 +14,7 @@
 
 """Test utilites."""
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 from urllib.parse import urljoin
 
 from tornado.httpclient import AsyncHTTPClient
@@ -122,20 +122,24 @@ class Cat(Object, Editable, Trashable, WithContent):
     def make(*, name: str = None, app: Application) -> 'Cat':
         """Create a :class:`Cat` object."""
         id = 'Cat:{}'.format(randstr())
-        return Cat(id=id, app=app, authors=[], trashed=False, text=None, resource=None, name=name,
-                   activity=Activity(id='{}.activity'.format(id), app=app, subscriber_ids=[]))
+        return Cat(
+            id=id, app=app, authors=[], trashed=False, text=None, resource=None, name=name,
+            activity=Activity(id='{}.activity'.format(id), app=app, subscriber_ids=[]).json())
 
-    def __init__(
-            self, *, id: str, app: Application, authors: List[str], trashed: bool,
-            text: Optional[str], resource: Optional[Resource], name: Optional[str],
-            activity: Activity) -> None:
-        super().__init__(id, app)
-        Editable.__init__(self, authors, activity)
-        Trashable.__init__(self, trashed, activity)
-        WithContent.__init__(self, text=text, resource=resource)
-        self.name = name
+    def __init__(self, *, app: Application, **data: object) -> None:
+    #def __init__(
+    #        self, *, id: str, app: Application, authors: List[str], trashed: bool,
+    #        text: Optional[str], resource: Optional[Dict[str, object]], name: Optional[str],
+    #        activity: Dict[str, object]) -> None:
+        activity = Activity(cast(Dict[str, str], data['activity'])['id'], app,
+                            cast(Dict[str, List[str]], data['activity'])['subscriber_ids'])
+        activity.host = self
+        super().__init__(id=cast(str, data['id']), app=app)
+        Editable.__init__(self, authors=cast(List[str], data['authors']), activity=activity)
+        Trashable.__init__(self, trashed=cast(bool, data['trashed']), activity=activity)
+        WithContent.__init__(self, **data)
+        self.name = data['name']
         self.activity = activity
-        self.activity.host = self
 
     def delete(self) -> None:
         self.app.r.r.lrem(self.app.cats.ids.key, 1, self.id.encode())

@@ -41,7 +41,7 @@ from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
 from .core import RewriteFunc, context
-from .error import CommunicationError, ValueError
+from .error import CommunicationError, TrashedError, ValueError
 from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
                         RedisSequence, bzpoptimed)
 from .ratelimit import RateLimit, RateLimiter
@@ -582,8 +582,8 @@ class Editable:
         """See :http:post:`/api/(object-url)`."""
         if not self.app.user:
             raise PermissionError()
-        if isinstance(self, Trashable) and self.trashed:
-            raise ValueError('object_trashed')
+        if isinstance(self, Trashable):
+            self.check_trashed()
 
         coro = self.do_edit(**attrs)
         if isawaitable(coro):
@@ -672,6 +672,10 @@ class Trashable:
         # pylint: disable=unused-argument; part of subclass API
         return {'trashed': self.trashed}
 
+    def check_trashed(self) -> None:
+        if self.trashed:
+            raise TrashedError(f'Trashed object {self.id}')
+
 class WithContent:
     """:class:`Editable` :class:`Object` with content."""
 
@@ -690,9 +694,13 @@ class WithContent:
                 attrs['resource'] = await app.analyzer.analyze(expect_type(str)(url))
         return attrs
 
-    def __init__(self, *, text: str = None, resource: Resource = None) -> None:
-        self.text = text
-        self.resource = resource
+    def __init__(self, **data: object) -> None:
+        self.text = cast(Optional[str], data['text'])
+        self.resource = None
+        if data['resource']:
+            resource = cast(Dict[str, object], data['resource'])
+            types: Dict[str, Type[Resource]] = {'Resource': Resource, 'Image': Image, 'Video': Video}
+            self.resource = types[cast(str, resource['__type__'])].parse(resource)
 
     async def pre_edit(self, attrs: Dict[str, object]) -> Dict[str, object]:
         """Prepare the edit operation.
@@ -1265,12 +1273,16 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
         async def __anext__(self) -> 'Event':
             return await self.asend(None)
 
+    #def __init__(self, *, pre: Callable[[], None] = None, app: Application,
+    #             **data: Dict[str, object]) -> None:
     def __init__(self, id: str, app: Application, subscriber_ids: List[str],
                  pre: Callable[[], None] = None) -> None:
+        # super().__init__(cast(str, data['id']), app)
         super().__init__(id, app)
         JSONRedisSequence.__init__(self, app.r, '{}.items'.format(id), pre)
         self.post = None # type: Optional[Callable[[Event], None]]
         self.host = None # type: Optional[object]
+        # self._subscriber_ids = cast(List[str], data['subscriber_ids'])
         self._subscriber_ids = subscriber_ids
         self._streams = set() # type: Set[Queue[Optional[Event]]]
 
