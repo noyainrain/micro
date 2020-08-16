@@ -44,7 +44,9 @@ micro.components.analytics.AnalyticsPage = class extends micro.Page {
         );
         this._data = new micro.bind.Watchable({
             referrals: new micro.Collection("/api/stats/referrals"),
-            referralsComplete: false
+            referralsComplete: false,
+
+            referralSummary: null
         });
         micro.bind.bind(this.children, this._data);
 
@@ -58,6 +60,10 @@ micro.components.analytics.AnalyticsPage = class extends micro.Page {
         super.attachedCallback();
         const button = this.querySelector(".micro-analytics-more-referrals");
         this.ready.when(button.trigger().catch(micro.util.catch));
+
+        (async() => {
+            this._data.referralSummary = await micro.call("GET", "/api/stats/referrals/summary");
+        })().catch(micro.util.catch);
     }
 };
 document.registerElement("micro-analytics-page", micro.components.analytics.AnalyticsPage);

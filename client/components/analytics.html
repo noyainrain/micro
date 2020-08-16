@@ -15,6 +15,24 @@
 
     <section>
         <h1>Referrals</h1>
+
+        <table>
+            <thead>
+                <tr>
+                    <td>URL</td>
+                    <td>Count</td>
+                </tr>
+            </thead>
+            <tbody data-content="list referralSummary.items 'item'">
+                <template>
+                    <tr>
+                        <td><a data-href="item.url" data-content="item.url"></a></td>
+                        <td data-content="item.count"></td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+
         <div class="micro-lgroup">
             <ul class="micro-timeline" data-content="list referrals.items 'referral'">
                 <template>
