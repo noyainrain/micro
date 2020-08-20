@@ -484,10 +484,11 @@ micro.UI = class extends HTMLBodyElement {
     }
 
     /** TODO. */
-    onboard() {
+    async onboard() {
         if (!sessionStorage.onboard && ui.user.name === "Guest") {
             // sessionStorage.onboard = true;
-            this.notify(document.createElement("micro-onboard-dialog"));
+            this.dialog = document.createElement("micro-onboard-dialog");
+            await this.dialog.result;
         }
     }
 
@@ -859,11 +860,11 @@ micro.ErrorNotification = class extends HTMLElement {
     }
 };
 
-micro.OnboardDialog = class extends HTMLElement {
+micro.OnboardDialog = class extends micro.core.DialogElement {
     createdCallback() {
+        super.createdCallback();
         this.appendChild(
             document.importNode(ui.querySelector("#micro-onboard-dialog-template").content, true));
-        this.classList.add("micro-notification", "compact");
         this._data = {
             user: ui.user,
             settings: ui.settings,
@@ -874,7 +875,7 @@ micro.OnboardDialog = class extends HTMLElement {
                 this._data.close();
             },
 
-            close: () => this.remove()
+            close: () => this.result.when()
         };
         micro.bind.bind(this.children, this._data);
     }

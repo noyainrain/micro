@@ -57,7 +57,7 @@ hello.StartPage = class extends micro.Page {
                 const input = this.querySelector("micro-content-input");
                 try {
                     const {text, resource} = input.valueAsObject;
-                    ui.onboard();
+                    await ui.onboard();
                     await ui.call(
                         "POST", "/api/greetings", {text, resource: resource && resource.url}
                     );
@@ -87,6 +87,7 @@ hello.StartPage = class extends micro.Page {
 
     attachedCallback() {
         super.attachedCallback();
+        ui.onboard();
         this.ready.when((async() => {
             try {
                 await this._data.greetings.fetch();
