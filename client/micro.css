@@ -510,40 +510,6 @@ section section .micro-heading > input {
     color: #888;
 }
 
-/**
- * Dialog: TODO.
- */
-
-.micro-dialog {
-    display: block;
-    border-radius: var(--micro-size-xxs);
-    background: white;
-    box-shadow: var(--micro-shadow);
-    max-width: 70ch;
-    margin: 0 auto;
-}
-
-.micro-dialog > header {
-    border-bottom: 1px solid var(--micro-color-delimiter);
-}
-
-.micro-dialog > header > h1 {
-    font-weight: bold;
-}
-
-.micro-dialog > div > div > input:not([type=checkbox]) {
-    border-radius: 0 0 var(--micro-size-xxs) var(--micro-size-xxs);
-}
-
-/*micro-dialog > div > p {
-    padding: var(--micro-size-rxs);
-    margin: 0;
-}
-
-micro-dialog > div > label > input:not([type=checkbox]) {
-    border-width: 1px 0 0 0;
-}*/
-
 /* ---- UserElement ---- */
 
 .micro-user {

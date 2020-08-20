@@ -1,3 +1,32 @@
+<style>
+    .micro-dialog {
+        display: block;
+        border-radius: var(--micro-size-xs);
+        box-shadow: var(--micro-shadow);
+        background: white;
+        max-width: 70ch;
+        margin: 0 auto;
+    }
+
+    .micro-dialog .micro-heading > h1 {
+        font-size: 1rem;
+        font-weight: bold;
+    }
+
+    .micro-dialog > div > div > input:not([type=checkbox]) {
+        border-radius: 0 0 var(--micro-size-xxs) var(--micro-size-xxs);
+    }
+
+    /*micro-dialog > div > p {
+        padding: var(--micro-size-rxs);
+        margin: 0;
+    }
+
+    micro-dialog > div > label > input:not([type=checkbox]) {
+        border-width: 1px 0 0 0;
+    }*/
+</style>
+
 <template class="micro-ui-template">
     <header class="micro-ui-header" style="display: none;">
         <nav class="micro-ui-inside micro-panel">
@@ -83,21 +112,6 @@
         class="micro-ui-dialog-space" data-content="dialog" tabindex="-1"
         data-shortcut-context="new ShortcutContext"
     >
-        <!--<div class="micro-dialog">
-            <header class="micro-panel">
-                <h1 class="micro-panel-main">Share list</h1>
-                <button is="micro-button" type="button" class="link">
-                    <i class="fa fa-times-circle"></i>
-                </button>
-            </header>
-            <div>
-				<div class="micro-panel"><p>Simply pass along this link to share the list with others.</p></div>
-				<div class="micro-panel"><p>Like this:</p></div>
-				<div class="micro-panel"  style="border-top: 1px solid var(--micro-color-delimiter);">
-					<input type="url" readonly="readonly" value="https://listling.org/list/foo" />
-				</div>
-            </div>
-        </div>-->
     </div>
 </template>
 <style>
@@ -160,17 +174,24 @@
         right: 0;
         top: 0;
         bottom: 0;
-        padding: var(--micro-size-rm);
-        padding: calc(2 * var(--micro-size-rm) + 2 * var(--micro-size-rxs)) var(--micro-size-rm);
-        background: rgba(0, 0, 0, 0.5);
+        padding: calc(var(--micro-size-m) + 3 * var(--micro-size-s)) var(--micro-size-s);
+        background: rgba(0, 0, 0, 0.66);
         overflow: hidden auto;
+        cursor: default;
     }
 
     .micro-ui-dialog-space:focus {
         box-shadow: none;
     }
 
-    body:not(.micro-ui-dialog) .micro-ui-dialog-space {
+    /*body.micro-ui-dialog .micro-ui-header,
+    body.micro-ui-dialog main {
+        filter: blur(1px);
+    }*/
+
+    /*body:not(.micro-ui-dialog)*/
+
+    .micro-ui-dialog-space:empty {
         display: none;
     }
 

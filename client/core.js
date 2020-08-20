@@ -24,17 +24,33 @@ micro.core = {};
 // Work around missing look behind by capturing whitespace
 micro.core.URL_PATTERN = "(^|[\\s!-.:-@])(https?://.+?)(?=[!-.:-@]?(\\s|$))";
 
-micro.core.Dialog = class extends HTMLElement {
+/**
+ * TODO.
+ *
+ * .. attribute:: result
+ *
+ *    Promise
+ */
+micro.core.DialogElement = class extends HTMLElement {
     createdCallback() {
-        this.contentNode = document.createElement("div");
-        this.contentNode.classList.add("micro-dialog");
-        this.appendChild(this.contentNode);
+        this.result = new micro.util.PromiseWhen();
+        this.classList.add("micro-dialog");
     }
 
-    close() {
-        ui.dialog = null;
+    detachedCallback() {
+        try {
+            this.result.when();
+        } catch (e) {
+            // Ignore
+        }
     }
+
 };
+    /*close() {
+        ui.dialog = null;
+    }*/
+        /*this.contentNode = document.createElement("div");
+        this.appendChild(this.contentNode);*/
 
 Object.assign(micro.bind.transforms, {
     /**
