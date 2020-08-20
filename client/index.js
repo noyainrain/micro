@@ -150,7 +150,8 @@ micro.UI = class extends HTMLBodyElement {
         this._data = new micro.bind.Watchable({
             user: null,
             settings: null,
-            offline: false
+            offline: false,
+            dialog: null
         });
         micro.bind.bind(this.children, this._data);
 
@@ -168,6 +169,7 @@ micro.UI = class extends HTMLBodyElement {
             this.classList.toggle("micro-ui-settings-have-feedback-url",
                                   this._data.settings && this._data.settings.feedback_url);
             this.classList.toggle("micro-ui-offline", this._data.offline);
+            /*this.classList.toggle("micro-ui-dialog", this._data.dialog);*/
         };
         ["user", "settings", "offline"].forEach(prop => this._data.watch(prop, update));
 
@@ -315,6 +317,35 @@ micro.UI = class extends HTMLBodyElement {
             // 0.19.0)
             micro.Page.prototype.attachedCallback.call(this._page);
             this._updateTitle();
+        }
+    }
+
+    /**
+     * Active :class:`micro.core.Dialog`.
+     *
+     * Set to open the given the dialog. May be ``null``.
+     */
+    get dialog() {
+        return this._data.dialog;
+    }
+
+    set dialog(value) {
+        this._data.dialog = value;
+        // document.documentElement.style.overflowY = "auto";
+        /*document.documentElement.style.position = "fixed";
+        document.documentElement.style.overflowY = "scroll";*/
+        if (this._data.dialog) {
+            // document.documentElement.style.overflowY = "hidden";
+            /*document.documentElement.style.position = "fixed";
+            document.documentElement.style.width = "100%";*/
+            this.querySelector(".micro-ui-dialog-space").focus();
+            (async() => {
+                await this._data.dialog.result;
+                this.dialog = null;
+                /*document.documentElement.style.overflowY = "auto";*/
+            })().catch(micro.util.catch);
+        } else{
+            document.documentElement.style.overflowY = "";
         }
     }
 
@@ -530,6 +561,8 @@ micro.UI = class extends HTMLBodyElement {
         let oldURL = this._url;
         let oldLocation = oldURL ? new URL(oldURL, location.origin) : null;
         this._url = location.pathname + location.hash;
+
+        this.dialog = null;
 
         if (oldLocation === null || location.pathname !== oldLocation.pathname) {
             this._progressElem.style.display = "block";

@@ -1,3 +1,32 @@
+<style>
+    .micro-dialog {
+        display: block;
+        border-radius: var(--micro-size-xs);
+        box-shadow: var(--micro-shadow);
+        background: white;
+        max-width: 70ch;
+        margin: 0 auto;
+    }
+
+    .micro-dialog .micro-heading > h1 {
+        font-size: 1rem;
+        font-weight: bold;
+    }
+
+    .micro-dialog > div > div > input:not([type=checkbox]) {
+        border-radius: 0 0 var(--micro-size-xxs) var(--micro-size-xxs);
+    }
+
+    /*micro-dialog > div > p {
+        padding: var(--micro-size-rxs);
+        margin: 0;
+    }
+
+    micro-dialog > div > label > input:not([type=checkbox]) {
+        border-width: 1px 0 0 0;
+    }*/
+</style>
+
 <template class="micro-ui-template">
     <header class="micro-ui-header" style="display: none;">
         <nav class="micro-ui-inside micro-panel">
@@ -78,6 +107,12 @@
 
         <div class="micro-ui-notification-space"></div>
     </header>
+
+    <div
+        class="micro-ui-dialog-space" data-content="dialog" tabindex="-1"
+        data-shortcut-context="new ShortcutContext"
+    >
+    </div>
 </template>
 <style>
     body[noninteractive] .micro-interactive {
@@ -130,6 +165,41 @@
     body:not(.micro-ui-user-is-staff) .micro-ui-edit-settings {
         display: none;
     }
+
+    .micro-ui-dialog-space {
+        position: fixed;
+        z-index: 1;
+        z-index: 2;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        padding: calc(var(--micro-size-m) + 3 * var(--micro-size-s)) var(--micro-size-s);
+        background: rgba(0, 0, 0, 0.66);
+        overflow: hidden auto;
+        cursor: default;
+    }
+
+    .micro-ui-dialog-space:focus {
+        box-shadow: none;
+    }
+
+    /*body.micro-ui-dialog .micro-ui-header,
+    body.micro-ui-dialog main {
+        filter: blur(1px);
+    }*/
+
+    /*body:not(.micro-ui-dialog)*/
+
+    .micro-ui-dialog-space:empty {
+        display: none;
+    }
+
+    /*body.micro-ui-dialog main,
+    body.micro-ui-dialog .micro-ui-header {
+        filter: blur(1px);
+        pointer-events: none;
+    }*/
 </style>
 
 <template class="micro-simple-notification-template">
