@@ -57,6 +57,7 @@ hello.StartPage = class extends micro.Page {
                 const input = this.querySelector("micro-content-input");
                 try {
                     const {text, resource} = input.valueAsObject;
+                    ui.onboard();
                     await ui.call(
                         "POST", "/api/greetings", {text, resource: resource && resource.url}
                     );

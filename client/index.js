@@ -452,6 +452,14 @@ micro.UI = class extends HTMLBodyElement {
         space.appendChild(notification);
     }
 
+    /** TODO. */
+    onboard() {
+        if (!sessionStorage.onboard && ui.user.name === "Guest") {
+            // sessionStorage.onboard = true;
+            this.notify(document.createElement("micro-onboard-dialog"));
+        }
+    }
+
     /**
      * Show a dialog about enabling device notifications to the user.
      *
@@ -769,6 +777,16 @@ micro.Activity = class {
     }
 };
 
+/** TODO. */
+micro.editUser = async function(attrs) {
+    try {
+        let user = await ui.call("POST", `/api/users/${ui.user.id}`, attrs);
+        ui.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
+    } catch (e) {
+        ui.handleCallError(e);
+    }
+};
+
 /**
  * Simple notification.
  */
@@ -807,6 +825,28 @@ micro.ErrorNotification = class extends HTMLElement {
         }
     }
 };
+
+micro.OnboardDialog = class extends HTMLElement {
+    createdCallback() {
+        this.appendChild(
+            document.importNode(ui.querySelector("#micro-onboard-dialog-template").content, true));
+        this.classList.add("micro-notification", "compact");
+        this._data = {
+            user: ui.user,
+            settings: ui.settings,
+
+            save: async() => {
+                let form = this.querySelector("form");
+                await micro.editUser({name: form.elements.name.value});
+                this._data.close();
+            },
+
+            close: () => this.remove()
+        };
+        micro.bind.bind(this.children, this._data);
+    }
+};
+document.registerElement("micro-onboard-dialog", micro.OnboardDialog);
 
 /**
  * Enhanced ordered list.
@@ -1832,21 +1872,7 @@ micro.EditUserPage = class extends micro.Page {
     handleEvent(event) {
         if (event.currentTarget === this._form) {
             event.preventDefault();
-            (async() => {
-                try {
-                    let user = await ui.call("POST", `/api/users/${this._user.id}`, {
-                        name: this._form.elements.name.value
-                    });
-                    ui.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
-                } catch (e) {
-                    if (e instanceof micro.APIError && e.error.__type__ === "InputError") {
-                        ui.notify("The name is missing.");
-                    } else {
-                        ui.handleCallError(e);
-                    }
-                }
-            })().catch(micro.util.catch);
-
+            micro.editUser({name: this._form.elements.name.value}).catch(micro.util.catch);
         } else if (event.currentTarget === this._setEmailAction && event.type === "click") {
             this._setEmail().catch(micro.util.catch);
         } else if (event.currentTarget === this._cancelSetEmailAction && event.type === "click") {

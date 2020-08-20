@@ -153,6 +153,28 @@
     </div>
 </template>
 
+<template id="micro-onboard-dialog-template">
+    <div class="micro-ui-inside">
+        <!--<h1 data-content="format 'Welcome to {title}' 'title' settings.title"></h1>-->
+        <h1>Hi there!</h1>
+        <p>Nice to see you contributing!</p>
+        <p>
+            How about you tell us your name, so other users will have an idea who you are. Currently
+            you appear as <micro-user data-user="user"></micro-user>.
+        </p>
+        <form>
+            <label>
+                <input name="name" required="required"></input>
+                <small>Name or nick name</small>
+            </label>
+            <ul is="micro-menu">
+                <li><button is="micro-button" class="action" data-run="save"><i class="fa fa-check-circle"></i> Done</button></li>
+                <li><button is="micro-button" type="button" class="link" data-run="close">Not now</button></li>
+            </ul>
+        </form>
+    </div>
+</template>
+
 <template id="micro-options-template">
     <div class="micro-entity-list">
         <ul data-content="list options 'option'">
