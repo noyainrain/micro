@@ -160,6 +160,7 @@ micro.keyboard.Shortcut = class {
                 this.context.add(this.key, () => {
                     // Activate only if element is available / visible
                     if (this.elem.offsetParent) {
+                        this.elem.focus();
                         this.elem.click();
                     }
                 });

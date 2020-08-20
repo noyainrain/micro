@@ -43,9 +43,11 @@ from tornado.template import DictLoader, Loader, filter_whitespace
 from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandler
 
 from . import micro, templates, error
+from .core import context
 from .micro import ( # pylint: disable=unused-import; typing
     Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError, AuthenticationError,
     CommunicationError, PermissionError, Trashable)
+from .ratelimit import RateLimitError
 from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
 from .util import (Expect, ExpectFunc, cancel, look_up_files, str_or_none, parse_slice,
                    check_polyglot)
@@ -282,7 +284,7 @@ class Server:
             template_path=self.client_path, debug=self.debug, server=self)
         # Install static file handler manually to allow pre-processing
         cast(_ApplicationSettings, application.settings).update({'static_path': self.client_path})
-        self._server = HTTPServer(application)
+        self._server = HTTPServer(application, xheaders=True)
 
         self._garbage_collect_files_task = None # type: Optional[Task[None]]
         self._empty_trash_task = None # type: Optional[Task[None]]
@@ -368,11 +370,14 @@ class Endpoint(RequestHandler):
         self.app = self.server.app
         self.args = {} # type: Dict[str, object]
 
-    def prepare(self):
+    def prepare(self) -> None:
+        context.client.set(self.request.remote_ip) # type: ignore
+
         self.app.user = None
         auth_secret = self.get_cookie('auth_secret')
         if auth_secret:
             self.current_user = self.app.authenticate(auth_secret)
+            context.user.set(self.current_user)
 
         if self.request.body:
             try:
@@ -406,6 +411,10 @@ class Endpoint(RequestHandler):
         elif isinstance(e, PermissionError):
             self.set_status(http.client.FORBIDDEN)
             self.write({'__type__': type(e).__name__}) # type: ignore
+        elif isinstance(e, RateLimitError):
+            self.set_status(http.client.TOO_MANY_REQUESTS)
+            data = {'__type__': type(e).__name__, 'message': str(e)}
+            self.write(data)
         elif isinstance(e, InputError):
             self.set_status(http.client.BAD_REQUEST)
             self.write({ # type: ignore
@@ -432,7 +441,8 @@ class Endpoint(RequestHandler):
         # These errors are handled specially and there is no need to log them as exceptions
         if issubclass(
                 typ,
-                (KeyError, AuthenticationError, PermissionError, CommunicationError, error.Error)):
+                (KeyError, AuthenticationError, PermissionError, RateLimitError, CommunicationError,
+                 error.Error)):
             return
         super().log_exception(typ, value, tb)
 

@@ -82,7 +82,7 @@ class EmailTest(MicroTestCase):
 
     def test_user_set_email_auth_invalid(self):
         auth_request = self.user.set_email('happy@example.org')
-        with self.assertRaisesRegex(ValueError, 'auth_invalid'):
+        with self.assertRaisesRegex(ValueError, 'code'):
             self.user.finish_set_email(auth_request, 'foo')
 
     def test_user_remove_email(self):

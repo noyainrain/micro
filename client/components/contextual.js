@@ -25,7 +25,7 @@ micro.components.contextual = {};
 /**
  * Contextual content, i.e. additional information for an element.
  *
- * It is hidden by default and expanded on user interaction (hover or focus).
+ * It is collapsed by default and expanded with user focus (or hover).
  *
  * Contextual content and context element are coupled by a common wrapper, e.g.::
  *
@@ -33,6 +33,9 @@ micro.components.contextual = {};
  *        <p tabindex="0">Cat</p>
  *        <micro-contextual>Small carnivorous mammal</micro-contextual>
  *    </div>
+ *
+ * The element is automatically deactivated on interaction with children marked with
+ * ``.micro-contextual-deactivate`` and also any ``a`` child.
  *
  * .. attribute:: active
  *
@@ -48,7 +51,11 @@ micro.components.contextual = {};
  *
  * .. describe:: .micro-contextual-active
  *
- *    Indicates if the element is :attr:`active`.
+ *    Indicates that the element is :attr:`active`.
+ *
+ * .. describe:: .micro-contextual-deactivate
+ *
+ *    Indicates that the element is deactivated on interaction with the child.
  */
 micro.components.contextual.ContextualElement = class extends HTMLElement {
     createdCallback() {
@@ -58,6 +65,23 @@ micro.components.contextual.ContextualElement = class extends HTMLElement {
         this._focused = false;
         Object.defineProperty(this, "onactivate", micro.util.makeOnEvent("activate"));
         Object.defineProperty(this, "ondeactivate", micro.util.makeOnEvent("deactivate"));
+
+        this.addEventListener("click", event => {
+            const elem = event.composedPath().slice(0, -2).find(
+                e => e.classList.contains("micro-contextual-deactivate") || e.tagName === "A"
+            );
+            if (elem) {
+                if (this._focused) {
+                    document.activeElement.blur();
+                }
+                if (this._hovered) {
+                    // As soon as the element is deactivated, the pointer will not hover over it
+                    // anymore
+                    this._hovered = false;
+                    this._update();
+                }
+            }
+        });
     }
 
     attachedCallback() {

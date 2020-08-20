@@ -40,10 +40,11 @@ from requests.exceptions import RequestException
 from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
-from .core import RewriteFunc
+from .core import RewriteFunc, context
 from .error import CommunicationError, ValueError
 from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
                         RedisSequence, bzpoptimed)
+from .ratelimit import RateLimit, RateLimiter
 from .resource import ( # pylint: disable=unused-import; typing
     Analyzer, Files, HandleResourceFunc, Image, Resource, Video, handle_image, handle_webpage,
     handle_youtube)
@@ -133,6 +134,10 @@ class Application:
     .. attribute:: analyzer
 
        Web resource analyzer.
+
+    .. attribute:: rate_limiter
+
+       Subclass API: Mechanism to limit the rate of operations per client.
     """
 
     def __init__(
@@ -184,6 +189,7 @@ class Application:
         if 'youtube' in self.video_service_keys:
             handlers.insert(0, handle_youtube(self.video_service_keys['youtube']))
         self.analyzer = Analyzer(handlers=handlers, files=self.files)
+        self.rate_limiter = RateLimiter()
 
     @property
     def settings(self) -> 'Settings':
@@ -906,14 +912,14 @@ class User(Object, Editable):
         self.device_notification_status = cast(str, data['device_notification_status'])
         self.push_subscription = cast(Optional[str], data['push_subscription'])
 
-    def store_email(self, email):
+    def store_email(self, email: str) -> None:
         """Update the user's *email* address.
 
         If *email* is already associated with another user, a :exc:`ValueError`
         (``email_duplicate``) is raised.
         """
         check_email(email)
-        id = self.app.r.hget('user_email_map', email)
+        id = self.app.r.r.hget('user_email_map', email.encode())
         if id and id.decode() != self.id:
             raise ValueError('email_duplicate')
 
@@ -938,14 +944,12 @@ class User(Object, Editable):
             self._send_email(email, self.app.render_email_auth_message(email, auth_request, code))
         return auth_request
 
-    def finish_set_email(self, auth_request, auth):
+    def finish_set_email(self, auth_request: 'AuthRequest', auth: str) -> None:
         """See :http:post:`/api/users/(id)/finish-set-email`."""
         # pylint: disable=protected-access; auth_request is a friend
         if self.app.user != self:
             raise PermissionError()
-        if auth != auth_request._code:
-            raise ValueError('auth_invalid')
-
+        auth_request.verify(auth)
         self.app.r.delete(auth_request.id)
         self.store_email(auth_request._email)
 
@@ -1429,6 +1433,13 @@ class AuthRequest(Object):
         super().__init__(id, app)
         self._email = email
         self._code = code
+
+    def verify(self, code: str) -> None:
+        """Verify the secret *code*."""
+        self.app.rate_limiter.count(RateLimit(f'{self.id}.verify', 10, timedelta(minutes=10)),
+                                    context.client.get())
+        if code != self._code:
+            raise ValueError('Invalid code')
 
     def json(self, restricted: bool = False, include: bool = False, *,
              rewrite: RewriteFunc = None) -> Dict[str, object]:

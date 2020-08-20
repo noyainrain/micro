@@ -23,26 +23,29 @@
 self.expect = self.expect || chai.expect;
 
 describe("ContextualElement", function() {
-    async function setupDOM() {
+    let elem;
+    let wrapper;
+    let calls;
+
+    beforeEach(async function() {
         const main = document.querySelector("main");
         main.innerHTML = `
             <div>
                 <p></p>
-                <micro-contextual></micro-contextual>
+                <micro-contextual><a href="#"></a></micro-contextual>
             </div>
         `;
         // Custom elements are upgraded in the next iteration
         await new Promise(resolve => setTimeout(resolve, 0));
-        const elem = main.querySelector("micro-contextual");
-        const calls = [];
+        elem = main.querySelector("micro-contextual");
+        wrapper = main.querySelector("div");
+        calls = [];
         elem.addEventListener("activate", () => calls.push("activate"));
         elem.addEventListener("deactivate", () => calls.push("deactivate"));
-        return [elem, main.querySelector("div"), calls];
-    }
+    });
 
     describe("on hover", function() {
-        it("should activate", async function() {
-            const [elem, wrapper, calls] = await setupDOM();
+        it("should activate", function() {
             wrapper.dispatchEvent(new MouseEvent("mouseenter"));
             expect(elem.active).to.be.true;
             expect(elem.classList.contains("micro-contextual-active")).to.be.true;
@@ -51,13 +54,20 @@ describe("ContextualElement", function() {
     });
 
     describe("on hover off", function() {
-        it("should deactivate", async function() {
-            const [elem, wrapper, calls] = await setupDOM();
+        it("should deactivate", function() {
             wrapper.dispatchEvent(new MouseEvent("mouseenter"));
             wrapper.dispatchEvent(new MouseEvent("mouseleave"));
             expect(elem.active).to.be.false;
             expect(elem.classList.contains("micro-contextual-active")).to.be.false;
             expect(calls).to.deep.equal(["activate", "deactivate"]);
+        });
+    });
+
+    describe("on a click", function() {
+        it("should deactivate", function() {
+            wrapper.dispatchEvent(new MouseEvent("mouseenter"));
+            elem.querySelector("a").click();
+            expect(elem.active).to.be.false;
         });
     });
 });

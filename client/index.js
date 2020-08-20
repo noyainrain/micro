@@ -145,9 +145,7 @@ micro.UI = class extends HTMLBodyElement {
         this.insertBefore(
             document.importNode(this.querySelector(".micro-ui-template").content, true),
             this.querySelector("main"));
-        this.querySelector(".micro-ui-header-menu > ul").prepend(
-            ...this.querySelectorAll("[slot=menu]")
-        );
+        this.querySelector(".micro-ui-edit-user").after(...this.querySelectorAll("[slot=menu]"));
 
         this._data = new micro.bind.Watchable({
             user: null,
@@ -418,14 +416,10 @@ micro.UI = class extends HTMLBodyElement {
     }
 
     /**
-     * Handle a common call error *e* with a default reaction:
+     * Handle a common call error *e* with a default reaction.
      *
-     * - `NetworkError`: Notify the user that they seem to be offline
-     * - `NotFoundError`: Notify the user that the current page has been deleted
-     * - `PermissionError`: Notify the user that their permissions for the current page have been
-     *   revoked
-     *
-     * Other errors are not handled and re-thrown.
+     * :class:`NetworkError`, ``NotFoundError``, ``PermissionError`` and `RateLimitError` are
+     * handled. Other errors are re-thrown.
      */
     handleCallError(e) {
         if (e instanceof micro.NetworkError) {
@@ -435,6 +429,8 @@ micro.UI = class extends HTMLBodyElement {
             this.notify("Oops, someone has just deleted this page!");
         } else if (e instanceof micro.APIError && e.error.__type__ === "PermissionError") {
             this.notify("Oops, someone has just revoked your permissions for this page!");
+        } else if (e instanceof micro.APIError && e.error.__type__ === "RateLimitError") {
+            this.notify("Oops, you were a bit too fast! Please try again later.");
         } else {
             throw e;
         }
@@ -535,7 +531,7 @@ micro.UI = class extends HTMLBodyElement {
     /** Scroll :class:`Element` *elem* into view, minding the header. */
     scrollToElement(elem) {
         const em = parseFloat(getComputedStyle(this).fontSize);
-        scroll(0, elem.offsetTop - (2 * 1.5 * em + 2 * 1.5 * em / 4));
+        scroll(0, elem.offsetTop - (1.5 * em + 3 * 0.5 * em));
     }
 
     async _navigate() {
@@ -1035,49 +1031,6 @@ micro.Button = class extends HTMLButtonElement {
 };
 
 /**
- * Menu containing actions and / or links.
- *
- * Menus can be nested, in which case submenus are hidden by default and expanded on focus or hover.
- *
- * The following example illustrates the markup for a typical menu::
- *
- *    <ul is="micro-menu">
- *        <li><button class="action">Do this</button></li>
- *        <li><a class="link" href="/">Something</a></li>
- *        <li>
- *            <button class="link">More</button>
- *            <ul is="micro-menu">
- *                <li><button class="action">Do that</button></li>
- *            </ul>
- *        </li>
- *    </ul>
- */
-micro.Menu = class extends HTMLUListElement {
-    attachedCallback() {
-        let expand = event => {
-            let li = Array.from(this.children).find(elem => elem.contains(event.target));
-            if (["focus", "blur"].includes(event.type) && li.contains(event.relatedTarget)) {
-                return;
-            }
-            li.classList.toggle("micro-menu-expanded",
-                                ["mouseenter", "focus"].includes(event.type));
-        };
-
-        for (let li of Array.from(this.children)) {
-            if (li.lastElementChild instanceof micro.Menu) {
-                li.addEventListener("mouseenter", expand);
-                li.addEventListener("mouseleave", expand);
-                let items = Array.from(li.querySelectorAll("a, button, [tabindex]"));
-                for (let item of items) {
-                    item.addEventListener("focus", expand);
-                    item.addEventListener("blur", expand);
-                }
-            }
-        }
-    }
-};
-
-/**
  * Options for an `input` field.
  *
  * Attaches itself to the preceding sibling `input` and presents a list of options to the user,
@@ -1320,7 +1273,7 @@ micro.MapElement = class extends HTMLElement {
             let url = `https://api.mapbox.com/v4/mapbox.light/{z}/{x}/{y}.png?access_token=${ui.mapServiceKey}`;
             let attribution = document.importNode(
                 ui.querySelector("#micro-map-attribution-template").content, true
-            ).firstElementChild.innerHTML;
+            ).firstElementChild.outerHTML;
             this._leaflet.tileLayer(url, {attribution, noWrap: true}).addTo(this._map);
 
             this._updateView();
@@ -1765,7 +1718,7 @@ micro.EditUserPage = class extends micro.Page {
         this._setEmail2 = this.querySelector(".micro-edit-user-set-email-2");
         this._emailP = this.querySelector(".micro-edit-user-email-value");
         this._setEmailAction = this.querySelector(".micro-edit-user-set-email-1 form button");
-        this._cancelSetEmailAction = this.querySelector(".micro-edit-user-cancel-set-email button");
+        this._cancelSetEmailAction = this.querySelector(".micro-edit-user-cancel-set-email");
         this._removeEmailAction = this.querySelector(".micro-edit-user-remove-email");
         this._removeEmailAction.addEventListener("click", this);
         this._setEmailAction.addEventListener("click", this);
@@ -1816,6 +1769,8 @@ micro.EditUserPage = class extends micro.Page {
                     }
                 }
             }
+
+            this._form.elements.name.focus();
         })().catch(micro.util.catch));
     }
 
@@ -1959,7 +1914,6 @@ micro.EditSettingsPage = class extends micro.Page {
                         provider_description: description,
                         feedback_url: form.elements.feedback_url.value
                     });
-                    ui.navigate("/").catch(micro.util.catch);
                     micro.util.dispatchEvent(ui,
                                              new CustomEvent("settings-edit", {detail: {settings}}));
                 } catch (e) {
@@ -1968,6 +1922,10 @@ micro.EditSettingsPage = class extends micro.Page {
             }
         };
         micro.bind.bind(this.children, this._data);
+    }
+
+    attachedCallback() {
+        this.querySelector("[name=title]").focus();
     }
 };
 
@@ -1986,6 +1944,7 @@ micro.ActivityPage = class extends micro.Page {
             ui.querySelector(".micro-activity-page-template").content, true));
         this._showMoreButton = this.querySelector("button");
         this._showMoreButton.run = this._showMore.bind(this);
+        this._showMoreButton.shortcut = new micro.keyboard.Shortcut(this._showMoreButton, "M");
         this._start = 0;
     }
 
@@ -2005,14 +1964,16 @@ micro.ActivityPage = class extends micro.Page {
 
         let ul = this.querySelector(".micro-timeline");
         for (let event of events.items) {
-            let li = document.createElement("li");
-            let time = document.createElement("time");
+            const li = document.createElement("li");
+            const p = document.createElement("p");
+            const time = document.createElement("time");
             time.dateTime = event.time;
             time.textContent = micro.bind.transforms.formatDate(
                 null, event.time, micro.bind.transforms.SHORT_DATE_TIME_FORMAT
             );
-            li.appendChild(time);
-            li.appendChild(ui.renderEvent[event.type](event));
+            p.appendChild(time);
+            p.appendChild(ui.renderEvent[event.type](event));
+            li.appendChild(p);
             ul.appendChild(li);
         }
         this.classList.toggle("micro-activity-all", events.items.length < micro.LIST_LIMIT);
@@ -2081,7 +2042,6 @@ document.registerElement("micro-simple-notification", micro.SimpleNotification);
 document.registerElement("micro-error-notification", micro.ErrorNotification);
 document.registerElement("micro-ol", {prototype: micro.OL.prototype, extends: "ol"});
 document.registerElement("micro-button", {prototype: micro.Button.prototype, extends: "button"});
-document.registerElement("micro-menu", {prototype: micro.Menu.prototype, extends: "ul"});
 document.registerElement("micro-user", micro.UserElement);
 document.registerElement("micro-page", micro.Page);
 document.registerElement("micro-not-found-page", micro.NotFoundPage);
