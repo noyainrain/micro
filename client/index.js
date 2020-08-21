@@ -169,7 +169,6 @@ micro.UI = class extends HTMLBodyElement {
             this.classList.toggle("micro-ui-settings-have-feedback-url",
                                   this._data.settings && this._data.settings.feedback_url);
             this.classList.toggle("micro-ui-offline", this._data.offline);
-            /*this.classList.toggle("micro-ui-dialog", this._data.dialog);*/
         };
         ["user", "settings", "offline"].forEach(prop => this._data.watch(prop, update));
 
@@ -331,21 +330,12 @@ micro.UI = class extends HTMLBodyElement {
 
     set dialog(value) {
         this._data.dialog = value;
-        // document.documentElement.style.overflowY = "auto";
-        /*document.documentElement.style.position = "fixed";
-        document.documentElement.style.overflowY = "scroll";*/
         if (this._data.dialog) {
-            // document.documentElement.style.overflowY = "hidden";
-            /*document.documentElement.style.position = "fixed";
-            document.documentElement.style.width = "100%";*/
-            this.querySelector(".micro-ui-dialog-space").focus();
+            this.querySelector(".micro-ui-dialog-layer").focus();
             (async() => {
                 await this._data.dialog.result;
                 this.dialog = null;
-                /*document.documentElement.style.overflowY = "auto";*/
             })().catch(micro.util.catch);
-        } else{
-            document.documentElement.style.overflowY = "";
         }
     }
 
