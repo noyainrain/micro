@@ -79,8 +79,8 @@ def parse_isotime(isotime: str, *, aware: bool = False) -> datetime:
         hour, minute, second = (values[3:] + [0, 0, 0])[:3]
         return datetime(year, month, day, hour, minute, second,
                         tzinfo=timezone.utc if aware else None)
-    except (TypeError, ValueError):
-        raise ValueError('isotime_bad_format')
+    except (TypeError, ValueError) as e:
+        raise ValueError('isotime_bad_format') from e
 
 def parse_slice(str: str, limit: int = None) -> slice:
     """Parse a slice string into a :class:`slice`.
@@ -234,8 +234,8 @@ def version(v):
     def _wrapper(*args, v=v, **kwargs):
         try:
             func = versions[v]
-        except KeyError:
-            raise NotImplementedError()
+        except KeyError as e:
+            raise NotImplementedError() from e
         return func(*args, **kwargs)
 
     def _version(v):

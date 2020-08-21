@@ -200,8 +200,8 @@ class Server:
         url = url or 'http://localhost:{}'.format(port)
         try:
             urlparts = urlparse(url)
-        except ValueError:
-            raise ValueError('url_invalid')
+        except ValueError as e:
+            raise ValueError('url_invalid') from e
         not_allowed = {'username', 'password', 'path', 'params', 'query', 'fragment'}
         if not (urlparts.scheme in {'http', 'https'} and urlparts.hostname and
                 not any(cast(object, getattr(urlparts, k)) for k in not_allowed)):
@@ -382,8 +382,8 @@ class Endpoint(RequestHandler):
         if self.request.body:
             try:
                 self.args = json.loads(self.request.body.decode())
-            except ValueError:
-                raise HTTPError(http.client.BAD_REQUEST)
+            except ValueError as e:
+                raise HTTPError(http.client.BAD_REQUEST) from e
             if not isinstance(self.args, Mapping):
                 raise HTTPError(http.client.BAD_REQUEST)
 
@@ -393,10 +393,10 @@ class Endpoint(RequestHandler):
     def patch(self, *args, **kwargs):
         try:
             op = getattr(self, 'patch_{}'.format(self.args.pop('op')))
-        except KeyError:
-            raise HTTPError(http.client.BAD_REQUEST)
-        except AttributeError:
-            raise HTTPError(http.client.UNPROCESSABLE_ENTITY)
+        except KeyError as e:
+            raise HTTPError(http.client.BAD_REQUEST) from e
+        except AttributeError as e:
+            raise HTTPError(http.client.UNPROCESSABLE_ENTITY) from e
         # Pass through future to support async methods
         return op(*args, **kwargs)
 
@@ -458,8 +458,8 @@ class Endpoint(RequestHandler):
             raise error.ValueError('Missing {}'.format(name))
         try:
             return expect(arg)
-        except TypeError:
-            raise error.ValueError('Bad {} type'.format(name))
+        except TypeError as e:
+            raise error.ValueError('Bad {} type'.format(name)) from e
 
     def check_args(self, type_info):
         """Check *args* for their expected type.
@@ -519,8 +519,8 @@ class CollectionEndpoint(Endpoint):
         collection = self.get_collection(*args)
         try:
             slc = parse_slice(cast(str, self.get_query_argument('slice', ':')), limit=LIST_LIMIT)
-        except ValueError:
-            raise micro.ValueError('bad_slice_format')
+        except ValueError as e:
+            raise micro.ValueError('bad_slice_format') from e
         self.write(
             collection.json(restricted=True, include=True, rewrite=self.server.rewrite, slc=slc))
 
@@ -894,14 +894,14 @@ class _OrderableMoveEndpoint(Endpoint):
         args = self.check_args({'item_id': str, 'to_id': (str, None)})
         try:
             args['item'] = collection[args.pop('item_id')]
-        except KeyError:
-            raise micro.ValueError('item_not_found')
+        except KeyError as e:
+            raise micro.ValueError('item_not_found') from e
         args['to'] = args.pop('to_id')
         if args['to'] is not None:
             try:
                 args['to'] = collection[args['to']]
-            except KeyError:
-                raise micro.ValueError('to_not_found')
+            except KeyError as e:
+                raise micro.ValueError('to_not_found') from e
 
         collection.move(**args)
         self.write(json.dumps(None))
@@ -979,8 +979,8 @@ class _SettingsEndpoint(Endpoint):
         if 'provider_description' in args:
             try:
                 check_polyglot(args['provider_description'])
-            except ValueError:
-                raise micro.ValueError('provider_description_bad_type')
+            except ValueError as e:
+                raise micro.ValueError('provider_description_bad_type') from e
 
         settings = self.app.settings
         settings.edit(**args)
@@ -1033,8 +1033,8 @@ class _ReferralSummaryEndpoint(Endpoint):
                 start, end = period_arg.split('/')
                 period = (datetime.fromisoformat(start).replace(tzinfo=timezone.utc),
                           datetime.fromisoformat(end).replace(tzinfo=timezone.utc))
-            except (TypeError, ValueError):
-                raise error.ValueError('Bad period format')
+            except (TypeError, ValueError) as e:
+                raise error.ValueError('Bad period format') from e
 
         data = self.app.analytics.referrals.summarize(period)
         data = {'referrers': [{'url': referrer[0], 'count': referrer[1]} for referrer in data]}
@@ -1066,8 +1066,8 @@ class _FileEndpoint(RequestHandler):
     async def get(self, name: str) -> None:
         try:
             data, content_type = await self.server.app.files.read(f'file:/{name}')
-        except LookupError:
-            raise HTTPError(HTTPStatus.NOT_FOUND)
+        except LookupError as e:
+            raise HTTPError(HTTPStatus.NOT_FOUND) from e
         self.set_header('Content-Type', content_type)
         self.set_header('Cache-Control', f'max-age={60 * 60 * 24 * 360}')
         self.write(data)

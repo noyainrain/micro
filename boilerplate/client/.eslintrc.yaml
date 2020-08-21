@@ -26,7 +26,6 @@ rules:
     no-console: off
     no-control-regex: off
     no-plusplus: off
-    no-process-env: off
     no-undefined: off
     # Good design is best figured out by humans (yet)
     class-methods-use-this: off
@@ -47,6 +46,7 @@ rules:
     newline-per-chained-call: off
     no-confusing-arrow: off
     no-empty-function: off
+    no-promise-executor-return: off
     no-mixed-operators: off
     object-property-newline: off
     one-var: off

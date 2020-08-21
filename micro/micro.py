@@ -148,8 +148,8 @@ class Application:
         try:
             # pylint: disable=pointless-statement; port errors are only triggered on access
             urlparse(smtp_url).port
-        except builtins.ValueError:
-            raise ValueError('smtp_url_invalid')
+        except builtins.ValueError as e:
+            raise ValueError('smtp_url_invalid') from e
 
         self.redis_url = redis_url
         try:
@@ -159,8 +159,8 @@ class Application:
                 urlparts.query, urlparts.fragment
             ).geturl()
             self.r = JSONRedis(StrictRedis.from_url(url), self._encode, self._decode)
-        except builtins.ValueError:
-            raise ValueError('redis_url_invalid')
+        except builtins.ValueError as e:
+            raise ValueError('redis_url_invalid') from e
         self.files = Files(files_path)
 
         # pylint: disable=import-outside-toplevel; circular dependency
@@ -1077,8 +1077,8 @@ class User(Object, Editable):
         try:
             with SMTP(host=host, port=port) as smtp:
                 smtp.send_message(msg)
-        except OSError:
-            raise EmailError()
+        except OSError as e:
+            raise EmailError() from e
 
     async def _notify(self, event):
         try:
@@ -1097,8 +1097,8 @@ class User(Object, Editable):
                 raise builtins.ValueError()
             urlparts = urlparse(push_subscription['endpoint'])
             pusher = WebPusher(push_subscription)
-        except (builtins.ValueError, KeyError, WebPushException):
-            raise ValueError('push_subscription_invalid')
+        except (builtins.ValueError, KeyError, WebPushException) as e:
+            raise ValueError('push_subscription_invalid') from e
 
         # Unfortunately sign() tries to validate the email address
         email = 'bot@email.localhost' if self.app.email == 'bot@localhost' else self.app.email
@@ -1114,8 +1114,7 @@ class User(Object, Editable):
                            headers=headers, ttl=_PUSH_TTL, content_encoding='aesgcm')
             response = await get_event_loop().run_in_executor(None, send)
         except RequestException as e:
-            raise CommunicationError(
-                '{} for POST {}'.format(str(e.args[0]), push_subscription['endpoint']))
+            raise CommunicationError(f"{e} for POST {push_subscription['endpoint']}") from e
         if response.status_code in (404, 410):
             raise ValueError('push_subscription_invalid')
         if response.status_code != 201:

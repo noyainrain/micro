@@ -53,12 +53,12 @@ async def fetch(request: Union[HTTPRequest, str], raise_error: bool = True,
                 assert response.error is not None
                 raise response.error
             return response
-    except HTTPStreamClosedError:
-        raise CommunicationError('{} for {} {}'.format(strerror(errno.ESHUTDOWN), method, url))
-    except HTTPTimeoutError:
-        raise CommunicationError('{} for {} {}'.format(strerror(errno.ETIMEDOUT), method, url))
+    except HTTPStreamClosedError as e:
+        raise CommunicationError(f'{strerror(errno.ESHUTDOWN)} for {method} {url}') from e
+    except HTTPTimeoutError as e:
+        raise CommunicationError(f'{strerror(errno.ETIMEDOUT)} for {method} {url}') from e
     except OSError as e:
-        raise CommunicationError('{} for {} {}'.format(e, method, url))
+        raise CommunicationError('{} for {} {}'.format(e, method, url)) from e
 
 class WebAPI:
     """Simple JSON REST API client.
@@ -117,8 +117,8 @@ class WebAPI:
             result = cast(object, json.loads(response.body.decode()))
             if not isinstance(result, dict):
                 raise TypeError()
-        except (UnicodeDecodeError, JSONDecodeError, TypeError):
-            raise CommunicationError('Bad response format for {} {}'.format(method, url))
+        except (UnicodeDecodeError, JSONDecodeError, TypeError) as e:
+            raise CommunicationError('Bad response format for {} {}'.format(method, url)) from e
 
         if not 200 <= response.code < 300:
             raise WebAPIError('Error {} for {} {}'.format(response.code, method, url), result,
