@@ -850,7 +850,7 @@ micro.ErrorNotification = class extends HTMLElement {
     }
 };
 
-micro.OnboardDialog = class extends micro.core.DialogElement {
+micro.OnboardDialog = class extends micro.core.Dialog {
     createdCallback() {
         super.createdCallback();
         this.appendChild(
