@@ -25,13 +25,14 @@ micro.core = {};
 micro.core.URL_PATTERN = "(^|[\\s!-.:-@])(https?://.+?)(?=[!-.:-@]?(\\s|$))";
 
 /**
- * TODO.
+ * Modal dialog to query additional information for an action.
  *
  * .. attribute:: result
  *
- *    Promise
+ *    Promise that resolves with the result of the concluded dialog. ``null`` if the dialog is
+ *    closed.
  */
-micro.core.DialogElement = class extends HTMLElement {
+micro.core.Dialog = class extends HTMLElement {
     createdCallback() {
         this.result = new micro.util.PromiseWhen();
         this.classList.add("micro-dialog");
@@ -39,18 +40,16 @@ micro.core.DialogElement = class extends HTMLElement {
 
     detachedCallback() {
         try {
-            this.result.when();
+            this.result.when(null);
         } catch (e) {
-            // Ignore
+            if (e.message.includes("when")) {
+                // Ignore if result is already resolved on close
+            } else {
+                throw e;
+            }
         }
     }
-
 };
-    /*close() {
-        ui.dialog = null;
-    }*/
-        /*this.contentNode = document.createElement("div");
-        this.appendChild(this.contentNode);*/
 
 Object.assign(micro.bind.transforms, {
     /**

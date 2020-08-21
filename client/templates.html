@@ -1,30 +1,17 @@
 <style>
     .micro-dialog {
         display: block;
-        border-radius: var(--micro-size-xs);
-        box-shadow: var(--micro-shadow);
-        background: white;
         max-width: 70ch;
+        border-radius: var(--micro-size-xs);
         margin: 0 auto;
+        background: white;
+        box-shadow: var(--micro-shadow);
     }
 
-    .micro-dialog .micro-heading > h1 {
+    .micro-dialog h1 {
         font-size: 1rem;
         font-weight: bold;
     }
-
-    .micro-dialog > div > div > input:not([type=checkbox]) {
-        border-radius: 0 0 var(--micro-size-xxs) var(--micro-size-xxs);
-    }
-
-    /*micro-dialog > div > p {
-        padding: var(--micro-size-rxs);
-        margin: 0;
-    }
-
-    micro-dialog > div > label > input:not([type=checkbox]) {
-        border-width: 1px 0 0 0;
-    }*/
 </style>
 
 <template class="micro-ui-template">
@@ -109,10 +96,9 @@
     </header>
 
     <div
-        class="micro-ui-dialog-space" data-content="dialog" tabindex="-1"
-        data-shortcut-context="new ShortcutContext"
-    >
-    </div>
+        class="micro-ui-dialog-layer" tabindex="-1"
+        data-shortcut-context="new ShortcutContext" data-content="dialog"
+    ></div>
 </template>
 <style>
     body[noninteractive] .micro-interactive {
@@ -158,17 +144,8 @@
         font-weight: bold;
     }
 
-    body > [slot],
-    body:not(.micro-ui-settings-have-icon-small) .micro-ui-logo img,
-    body:not(.micro-ui-offline) .micro-ui-header-offline,
-    body:not(.micro-ui-user-is-staff) .micro-ui-analytics,
-    body:not(.micro-ui-user-is-staff) .micro-ui-edit-settings {
-        display: none;
-    }
-
-    .micro-ui-dialog-space {
+    .micro-ui-dialog-layer {
         position: fixed;
-        z-index: 1;
         z-index: 2;
         left: 0;
         right: 0;
@@ -180,26 +157,21 @@
         cursor: default;
     }
 
-    .micro-ui-dialog-space:focus {
+    .micro-ui-dialog-layer:focus {
         box-shadow: none;
     }
 
-    /*body.micro-ui-dialog .micro-ui-header,
-    body.micro-ui-dialog main {
-        filter: blur(1px);
-    }*/
-
-    /*body:not(.micro-ui-dialog)*/
-
-    .micro-ui-dialog-space:empty {
+    .micro-ui-dialog-layer:empty {
         display: none;
     }
 
-    /*body.micro-ui-dialog main,
-    body.micro-ui-dialog .micro-ui-header {
-        filter: blur(1px);
-        pointer-events: none;
-    }*/
+    body > [slot],
+    body:not(.micro-ui-settings-have-icon-small) .micro-ui-logo img,
+    body:not(.micro-ui-offline) .micro-ui-header-offline,
+    body:not(.micro-ui-user-is-staff) .micro-ui-analytics,
+    body:not(.micro-ui-user-is-staff) .micro-ui-edit-settings {
+        display: none;
+    }
 </style>
 
 <template class="micro-simple-notification-template">
