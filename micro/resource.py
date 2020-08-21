@@ -183,21 +183,21 @@ class Analyzer:
             try:
                 data, content_type = await self.files.read(url)
                 return data, content_type, url
-            except LookupError:
-                raise NoResourceError(f'No resource at {url}')
+            except LookupError as e:
+                raise NoResourceError(f'No resource at {url}') from e
 
         try:
             response = await fetch(url)
             return (response.body, response.headers['Content-Type'].split(';', 1)[0],
                     response.effective_url)
-        except ValueError:
-            raise error.ValueError(f'Bad url scheme {url}')
+        except ValueError as e:
+            raise error.ValueError(f'Bad url scheme {url}') from e
         except HTTPClientError as e:
             if e.code in (404, 410):
-                raise NoResourceError(f'No resource at {url}')
+                raise NoResourceError(f'No resource at {url}') from e
             if e.code in (401, 402, 403, 405, 451):
-                raise ForbiddenResourceError(f'Forbidden resource at {url}')
-            raise CommunicationError(f'Unexpected response status {e.code} for GET {url}')
+                raise ForbiddenResourceError(f'Forbidden resource at {url}') from e
+            raise CommunicationError(f'Unexpected response status {e.code} for GET {url}') from e
 
     def _get_cache(self, url: str) -> Resource:
         resource, expires = self._cache[url]
@@ -242,8 +242,8 @@ class Files:
             raise LookupError(url)
         try:
             data = await self._load(str(Path(self.path, name)))
-        except FileNotFoundError:
-            raise LookupError(url)
+        except FileNotFoundError as e:
+            raise LookupError(url) from e
         return data, content_type
 
     async def write(self, data: bytes, content_type: str) -> str:
@@ -310,8 +310,8 @@ async def handle_webpage(url: str, content_type: str, data: bytes,
 
     try:
         html = data.decode()
-    except UnicodeDecodeError:
-        raise BrokenResourceError('Bad data encoding analyzing {}'.format(url))
+    except UnicodeDecodeError as e:
+        raise BrokenResourceError('Bad data encoding analyzing {}'.format(url)) from e
     parser = _MetaParser()
     parser.feed(html)
     parser.close()
@@ -324,9 +324,10 @@ async def handle_webpage(url: str, content_type: str, data: bytes,
         image_url = urljoin(url, image_url)
         try:
             resource = await analyzer.analyze(image_url)
-        except error.ValueError:
-            raise BrokenResourceError(
-                'Bad data image URL scheme {!r} analyzing {}'.format(image_url, url))
+        except error.ValueError as e:
+            broken_resource_e = BrokenResourceError(
+                f'Bad data image URL scheme {image_url!r} analyzing {url}')
+            raise broken_resource_e from e
         if not isinstance(resource, Image):
             raise BrokenResourceError(
                 'Bad image type {!r} analyzing {}'.format(type(resource).__name__, url))
@@ -358,9 +359,8 @@ def handle_youtube(key: str) -> HandleResourceFunc:
             image_url = expect_type(str)(
                 items[0]['snippet']['thumbnails']['high']['url']) # type: ignore
             image = expect_type(Image)(await analyzer.analyze(image_url))
-        except (TypeError, LookupError, AnalysisError):
-            raise CommunicationError(
-                'Bad result for GET {}videos?id={}'.format(youtube.url, video_id))
+        except (TypeError, LookupError, AnalysisError) as e:
+            raise CommunicationError(f'Bad result for GET {youtube.url}videos?id={video_id}') from e
         return Video(url, content_type, description=description, image=image)
     return _f
 

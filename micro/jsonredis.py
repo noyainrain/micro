@@ -115,8 +115,8 @@ class JSONRedis(Generic[T]):
                     # loads() actually returns Union[T, Dict[str, object]], but as T may be dict
                     # there is no way to eliminate it here
                     object = cast(T, json.loads(value.decode(), object_hook=self.decode))
-                except ValueError:
-                    raise ResponseError()
+                except ValueError as e:
+                    raise ResponseError() from e
                 if self.caching:
                     self._cache[key] = object
         if object is None:
