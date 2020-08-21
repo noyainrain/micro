@@ -1,3 +1,19 @@
+<style>
+    .micro-dialog {
+        display: block;
+        max-width: 70ch;
+        border-radius: var(--micro-size-xs);
+        margin: 0 auto;
+        background: white;
+        box-shadow: var(--micro-shadow);
+    }
+
+    .micro-dialog h1 {
+        font-size: 1rem;
+        font-weight: bold;
+    }
+</style>
+
 <template class="micro-ui-template">
     <header class="micro-ui-header" style="display: none;">
         <nav class="micro-ui-inside micro-panel">
@@ -78,6 +94,11 @@
 
         <div class="micro-ui-notification-space"></div>
     </header>
+
+    <div
+        class="micro-ui-dialog-layer" tabindex="-1"
+        data-shortcut-context="new ShortcutContext" data-content="dialog"
+    ></div>
 </template>
 <style>
     body[noninteractive] .micro-interactive {
@@ -121,6 +142,27 @@
         border: none;
         font-size: 1em;
         font-weight: bold;
+    }
+
+    .micro-ui-dialog-layer {
+        position: fixed;
+        z-index: 2;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        padding: calc(var(--micro-size-m) + 3 * var(--micro-size-s)) var(--micro-size-s);
+        background: rgba(0, 0, 0, 0.66);
+        overflow: hidden auto;
+        cursor: default;
+    }
+
+    .micro-ui-dialog-layer:focus {
+        box-shadow: none;
+    }
+
+    .micro-ui-dialog-layer:empty {
+        display: none;
     }
 
     body > [slot],

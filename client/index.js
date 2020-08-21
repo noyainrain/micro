@@ -150,7 +150,8 @@ micro.UI = class extends HTMLBodyElement {
         this._data = new micro.bind.Watchable({
             user: null,
             settings: null,
-            offline: false
+            offline: false,
+            dialog: null
         });
         micro.bind.bind(this.children, this._data);
 
@@ -315,6 +316,26 @@ micro.UI = class extends HTMLBodyElement {
             // 0.19.0)
             micro.Page.prototype.attachedCallback.call(this._page);
             this._updateTitle();
+        }
+    }
+
+    /**
+     * Active :class:`micro.core.Dialog`.
+     *
+     * Set to open the given the dialog. May be ``null``.
+     */
+    get dialog() {
+        return this._data.dialog;
+    }
+
+    set dialog(value) {
+        this._data.dialog = value;
+        if (this._data.dialog) {
+            this.querySelector(".micro-ui-dialog-layer").focus();
+            (async() => {
+                await this._data.dialog.result;
+                this.dialog = null;
+            })().catch(micro.util.catch);
         }
     }
 
@@ -522,6 +543,8 @@ micro.UI = class extends HTMLBodyElement {
         let oldURL = this._url;
         let oldLocation = oldURL ? new URL(oldURL, location.origin) : null;
         this._url = location.pathname + location.hash;
+
+        this.dialog = null;
 
         if (oldLocation === null || location.pathname !== oldLocation.pathname) {
             this._progressElem.style.display = "block";

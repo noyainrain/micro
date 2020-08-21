@@ -24,6 +24,33 @@ micro.core = {};
 // Work around missing look behind by capturing whitespace
 micro.core.URL_PATTERN = "(^|[\\s!-.:-@])(https?://.+?)(?=[!-.:-@]?(\\s|$))";
 
+/**
+ * Modal dialog to query additional information for an action.
+ *
+ * .. attribute:: result
+ *
+ *    Promise that resolves with the result of the concluded dialog. ``null`` if the dialog is
+ *    closed.
+ */
+micro.core.Dialog = class extends HTMLElement {
+    createdCallback() {
+        this.result = new micro.util.PromiseWhen();
+        this.classList.add("micro-dialog");
+    }
+
+    detachedCallback() {
+        try {
+            this.result.when(null);
+        } catch (e) {
+            if (e.message.includes("when")) {
+                // Ignore if result is already resolved on close
+            } else {
+                throw e;
+            }
+        }
+    }
+};
+
 Object.assign(micro.bind.transforms, {
     /**
      * Render *markup text* into a :class:`DocumentFragment`.
