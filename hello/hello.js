@@ -87,7 +87,6 @@ hello.StartPage = class extends micro.Page {
 
     attachedCallback() {
         super.attachedCallback();
-        ui.onboard();
         this.ready.when((async() => {
             try {
                 await this._data.greetings.fetch();
