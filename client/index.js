@@ -869,6 +869,10 @@ micro.OnboardDialog = class extends micro.core.Dialog {
         };
         micro.bind.bind(this.children, this._data);
     }
+
+    attachedCallback() {
+        this.querySelector("input").focus();
+    }
 };
 document.registerElement("micro-onboard-dialog", micro.OnboardDialog);
 
