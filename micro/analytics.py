@@ -125,7 +125,7 @@ class Statistic:
     def get(self, *, user: Optional[User]) -> List['Point']:
         """See :http:get:`/api/analytics/statistics/(topic)`."""
         if not user in self.app.settings.staff: # type: ignore
-            raise PermissionError()
+            raise error.PermissionError()
         return [Point.parse(json.loads(p.decode())) for p # type: ignore
                 in self.app.r.r.zrange(self._key, 0, -1)] # type: ignore
 

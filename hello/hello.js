@@ -57,10 +57,13 @@ hello.StartPage = class extends micro.Page {
                 const input = this.querySelector("micro-content-input");
                 try {
                     const {text, resource} = input.valueAsObject;
-                    await ui.call(
+                    const greeting = await ui.call(
                         "POST", "/api/greetings", {text, resource: resource && resource.url}
                     );
                     input.valueAsObject = {text: null, resource: null};
+                    this._activity.events.dispatchEvent(
+                        {type: "greetings-create", object: null, detail: {greeting}}
+                    );
                 } catch (e) {
                     if (
                         e instanceof micro.APIError &&
@@ -90,10 +93,15 @@ hello.StartPage = class extends micro.Page {
             try {
                 await this._data.greetings.fetch();
                 this._activity = await micro.Activity.open("/api/activity/stream");
-                this._activity.events.addEventListener(
-                    "greetings-create",
-                    event => this._data.greetings.items.unshift(event.detail.event.detail.greeting)
-                );
+                this._activity.events.addEventListener("greetings-create", event => {
+                    if (
+                        !this._data.greetings.items.find(
+                            greeting => greeting.id === event.detail.event.detail.greeting.id
+                        )
+                    ) {
+                        this._data.greetings.items.unshift(event.detail.event.detail.greeting);
+                    }
+                });
             } catch (e) {
                 ui.handleCallError(e);
             }

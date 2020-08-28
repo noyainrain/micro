@@ -17,6 +17,7 @@
 import sys
 
 from micro import Application, Collection, Editable, Event, Object, Settings, WithContent, error
+from micro.core import context
 from micro.jsonredis import RedisList
 from micro.server import CollectionEndpoint, Server
 from micro.util import Expect, make_command_line_parser, randstr, setup_logging
@@ -34,6 +35,8 @@ class Hello(Application):
 
         async def create(self, text, resource):
             """Create a :class:`Greeting` and return it."""
+            if not context.user.get():
+                raise error.PermissionError()
             attrs = await WithContent.process_attrs({'text': text, 'resource': resource},
                                                     app=self.app)
             if not (attrs['text'] or attrs['resource']):

@@ -46,7 +46,7 @@ from . import micro, templates, error
 from .core import context
 from .micro import ( # pylint: disable=unused-import; typing
     Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError, AuthenticationError,
-    CommunicationError, PermissionError, Trashable)
+    CommunicationError, Trashable)
 from .ratelimit import RateLimitError
 from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
 from .util import (Expect, ExpectFunc, cancel, look_up_files, str_or_none, parse_slice,
@@ -408,9 +408,6 @@ class Endpoint(RequestHandler):
         elif isinstance(e, AuthenticationError):
             self.set_status(http.client.BAD_REQUEST)
             self.write({'__type__': type(e).__name__}) # type: ignore
-        elif isinstance(e, PermissionError):
-            self.set_status(http.client.FORBIDDEN)
-            self.write({'__type__': type(e).__name__}) # type: ignore
         elif isinstance(e, RateLimitError):
             self.set_status(http.client.TOO_MANY_REQUESTS)
             data = {'__type__': type(e).__name__, 'message': str(e)}
@@ -428,6 +425,7 @@ class Endpoint(RequestHandler):
         elif isinstance(e, error.Error):
             status = {
                 error.ValueError: http.client.BAD_REQUEST,
+                error.PermissionError: http.client.FORBIDDEN,
                 NoResourceError: http.client.NOT_FOUND,
                 ForbiddenResourceError: http.client.FORBIDDEN,
                 BrokenResourceError: http.client.BAD_REQUEST
@@ -441,8 +439,7 @@ class Endpoint(RequestHandler):
         # These errors are handled specially and there is no need to log them as exceptions
         if issubclass(
                 typ,
-                (KeyError, AuthenticationError, PermissionError, RateLimitError, CommunicationError,
-                 error.Error)):
+                (KeyError, AuthenticationError, RateLimitError, CommunicationError, error.Error)):
             return
         super().log_exception(typ, value, tb)
 

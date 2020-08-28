@@ -27,7 +27,7 @@ from redis.exceptions import RedisError
 from tornado.testing import AsyncTestCase, gen_test
 
 import micro
-from micro import Activity, Collection, Event, Gone, Location, Trashable, WithContent
+from micro import Activity, Collection, Event, Gone, Location, Trashable, WithContent, error
 from micro.jsonredis import RedisList
 from micro.resource import Analyzer, Resource
 from micro.test import CatApp, Cat
@@ -215,7 +215,7 @@ class EditableTest(MicroTestCase):
 
     def test_edit_user_anonymous(self):
         self.app.user = None
-        with self.assertRaises(micro.PermissionError):
+        with self.assertRaises(error.PermissionError):
             self.cat.edit(name='Happy')
 
 @patch('micro.test.Cat.delete', autospec=True)

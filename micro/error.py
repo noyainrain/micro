@@ -42,6 +42,9 @@ class ValueError(builtins.ValueError, Error):
         # Compatibility for code (deprecated since 0.27.0)
         return {**super().json(), 'code': self.code}
 
+class PermissionError(Error):
+    """See :ref:`PermissionError`."""
+
 class CommunicationError(Error):
     """See :ref:`CommunicationError`.
 

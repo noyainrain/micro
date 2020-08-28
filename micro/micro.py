@@ -40,6 +40,7 @@ from requests.exceptions import RequestException
 from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
+from . import error
 from .core import RewriteFunc, context
 from .error import CommunicationError, ValueError
 from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
@@ -416,7 +417,7 @@ class Application:
         """Check if the current :attr:`user` is a staff member."""
         # pylint: disable=protected-access; Settings is a friend
         if not (self.user and self.user.id in self.settings._staff): # type: ignore
-            raise PermissionError()
+            raise error.PermissionError()
 
     def start_garbage_collect_files(self) -> 'Task[None]':
         """Start the :attr:`files` garbage collect job."""
@@ -581,7 +582,7 @@ class Editable:
     async def _edit(self, **attrs: object) -> None:
         """See :http:post:`/api/(object-url)`."""
         if not self.app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         if isinstance(self, Trashable) and self.trashed:
             raise ValueError('object_trashed')
 
@@ -639,7 +640,7 @@ class Trashable:
     def trash(self) -> None:
         """See :http:post:`/api/(object-url)/trash`."""
         if not self.app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         if self.trashed:
             return
 
@@ -655,7 +656,7 @@ class Trashable:
     def restore(self) -> None:
         """See :http:post:`/api/(object-url)/restore`."""
         if not self.app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         if not self.trashed:
             return
 
@@ -932,7 +933,7 @@ class User(Object, Editable):
     def set_email(self, email):
         """See :http:post:`/api/users/(id)/set-email`."""
         if self.app.user != self:
-            raise PermissionError()
+            raise error.PermissionError()
         check_email(email)
 
         code = randstr()
@@ -948,7 +949,7 @@ class User(Object, Editable):
         """See :http:post:`/api/users/(id)/finish-set-email`."""
         # pylint: disable=protected-access; auth_request is a friend
         if self.app.user != self:
-            raise PermissionError()
+            raise error.PermissionError()
         auth_request.verify(auth)
         self.app.r.delete(auth_request.id)
         self.store_email(auth_request._email)
@@ -956,7 +957,7 @@ class User(Object, Editable):
     def remove_email(self):
         """See :http:post:`/api/users/(id)/remove-email`."""
         if self.app.user != self:
-            raise PermissionError()
+            raise error.PermissionError()
         if not self.email:
             raise ValueError('user_no_email')
 
@@ -989,7 +990,7 @@ class User(Object, Editable):
     async def enable_device_notifications(self, push_subscription):
         """See :http:patch:`/api/users/(id)` (``enable_device_notifications``)."""
         if self.app.user != self:
-            raise PermissionError()
+            raise error.PermissionError()
         await self._send_device_notification(
             push_subscription, Event.create('user-enable-device-notifications', self, app=self.app))
         self.device_notification_status = 'on'
@@ -1027,12 +1028,12 @@ class User(Object, Editable):
         assert isinstance(user, User)
 
         if user != self:
-            raise PermissionError()
+            raise error.PermissionError()
         self._disable_device_notifications()
 
     def do_edit(self, **attrs):
         if self.app.user != self:
-            raise PermissionError()
+            raise error.PermissionError()
 
         e = InputError()
         if 'name' in attrs and not str_or_none(attrs['name']):
@@ -1166,7 +1167,7 @@ class Settings(Object, Editable):
 
     def do_edit(self, **attrs):
         if not self.app.user.id in self._staff:
-            raise PermissionError()
+            raise error.PermissionError()
 
         # Compatibility for favicon (deprecated since 0.13.0)
         if 'favicon' in attrs:
@@ -1299,7 +1300,7 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
     def subscribe(self):
         """See :http:patch:`/api/(activity-url)` (``subscribe``)."""
         if not self.app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         if not self.app.user.id in self._subscriber_ids:
             self._subscriber_ids.append(self.app.user.id)
         self.app.r.oset(self.host.id if self.host else self.id, self.host or self)
@@ -1307,7 +1308,7 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
     def unsubscribe(self):
         """See :http:patch:`/api/(activity-url)` (``unsubscribe``)."""
         if not self.app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         try:
             self._subscriber_ids.remove(self.app.user.id)
         except ValueError:
@@ -1350,7 +1351,7 @@ class Event(Object):
         """Create an event."""
         assert app
         if not app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         if not str_or_none(type):
             raise ValueError('type_empty')
         if any(k.endswith('_id') for k in detail):
@@ -1501,9 +1502,6 @@ class InputError(ValueError):
 
 class AuthenticationError(Exception):
     """See :ref:`AuthenticationError`."""
-
-class PermissionError(Exception):
-    """See :ref:`PermissionError`."""
 
 class EmailError(Exception):
     """Raised if communication with the SMTP server fails."""

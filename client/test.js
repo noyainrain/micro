@@ -22,6 +22,8 @@
 
 "use strict";
 
+const http = require("http");
+
 let {Builder, WebElementCondition} = require("selenium-webdriver");
 const {FileDetector} = require("selenium-webdriver/remote");
 
@@ -83,5 +85,28 @@ exports.untilElementAttributeMatches = function(element, attributeName, regex) {
     return new WebElementCondition("until element attribute matches", async () => {
         const value = await element.getAttribute(attributeName);
         return regex.test(value) ? element : null;
+    });
+};
+
+/**
+ * Make an HTTP request.
+ *
+ * Async wrapper around :meth:`http.request`. *options* takes an additional attribute *body*, the
+ * request body as :cls:`Buffer` or string. The returned response has an additional attribute
+ * *body*, the response body as :cls:`Buffer`.
+ */
+exports.request = function(url, options) {
+    return new Promise((resolve, reject) => {
+        const request = http.request(url, options, response => {
+            const data = [];
+            response.on("data", chunk => data.push(chunk));
+            response.on("end", () => {
+                response.body = Buffer.concat(data);
+                resolve(response);
+            });
+            response.on("error", reject);
+        });
+        request.on("error", reject);
+        request.end(options.body);
     });
 };

@@ -27,7 +27,7 @@ let {promisify} = require("util");
 
 let {until} = require("selenium-webdriver");
 
-const {getWithServiceWorker, startBrowser, untilElementTextLocated} =
+const {getWithServiceWorker, startBrowser, untilElementTextLocated, request} =
     require("@noyainrain/micro/test");
 
 const URL = "http://localhost:8081";
@@ -79,7 +79,18 @@ describe("UI", function() {
         await browser.wait(until.elementLocated({css: "micro-image"}), timeout);
         await form.findElement({css: "button:not([type])"}).click();
         await browser.wait(
-            untilElementTextLocated({css: ".hello-start-greetings > li > p"}, "Meow!"), timeout
+            untilElementTextLocated({css: ".hello-start-greetings li > p"}, "Meow!"), timeout
+        );
+
+        // Observe greeting created by someone else
+        const response = await request(`${URL}/api/login`, {method: "POST"});
+        const headers = {Cookie: `auth_secret=${JSON.parse(response.body.toString()).auth_secret}`};
+        await request(
+            `${URL}/api/greetings`,
+            {method: "POST", headers, body: JSON.stringify({text: "Purr!", resource: null})}
+        );
+        await browser.wait(
+            untilElementTextLocated({css: ".hello-start-greetings li > p"}, "Purr!"), timeout
         );
 
         // Edit user

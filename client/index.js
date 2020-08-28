@@ -709,6 +709,12 @@ micro.Collection = class {
  *    Indicates if the stream is connected and ready to emit events. If disconnected, it'll be
  *    reconnected automatically.
  *
+ * .. function:: dispatchEvent(event)
+ *
+ *    Dispatch an :cls:`Event` *event*.
+ *
+ *    Alternatively, *event* may be a set of attributes for a synthetic :ref:`Event`.
+ *
  * .. describe:: connect
  *
  *    Dispatched if the stream has been reconnected.
@@ -745,7 +751,21 @@ micro.Activity = class {
 
         this.url = eventSource.url;
         this.connected = eventSource.readyState === 1;
+
         this.events = document.createElement("span");
+        this.events.dispatchEvent = function(event) {
+            if (!(event instanceof Event)) {
+                event = Object.assign({}, event, {
+                    __type__: "Event",
+                    id: "Event",
+                    user: ui.user,
+                    time: new Date().toISOString()
+                });
+                event = new CustomEvent(event.type, {detail: {event}});
+            }
+            return Object.getPrototypeOf(this).dispatchEvent.call(this, event);
+        };
+
         this._eventSource = eventSource;
         this._timeout = null;
 
