@@ -141,30 +141,43 @@ micro.components.VideoElement = class extends HTMLElement {
             return p;
         }
 
-        function createPlayer(elem, videoId) {
-            return new Promise(resolve => {
-                new YT.Player(
-                    elem,
-                    {
-                        videoId,
-                        playerVars: {controls: 0, disablekb: 1},
-                        events: {onReady: event => resolve(event.target)}
-                    }
-                );
+        const createPlayer = (elem, options) => {
+            const TIMEOUT = 20 * 1000;
+            return new Promise((resolve, reject) => {
+                const player = new YT.Player(elem, options);
+                player.addEventListener("onReady", () => {
+                    clearTimeout(timeout);
+                    resolve(player);
+                });
+                // iframe doesn't dispatch error events, so handle error via timeout
+                const timeout = setTimeout(() => {
+                    player.destroy();
+                    reject(Object.assign(new Error(), {data: 0}));
+                }, TIMEOUT);
             });
-        }
+        };
 
         await importYT();
         const videoId = new URL(this._data.video.url).searchParams.get("v");
         const div = document.createElement("div");
-        this.querySelector("div").appendChild(div);
-        const player = await createPlayer(div, videoId);
-        player.cleanUp = () => {
-            player.destroy();
-            div.remove();
+        this.firstElementChild.appendChild(div);
+        try {
+            const player = await createPlayer(
+                div, {videoId, playerVars: {controls: 0, disablekb: 1}}
+            );
+            player.getIframe().tabIndex = -1;
+            player.cleanUp = () => {
+                player.destroy();
+                div.remove();
+            }
+            return player;
+        } catch (e) {
+            if (e.data === 0) {
+                div.remove();
+                throw new micro.NetworkError(`Error loading YouTube iframe player ${videoId}`);
+            }
+            throw e;
         }
-        player.getIframe().tabIndex = -1;
-        return player;
     }
 }
 

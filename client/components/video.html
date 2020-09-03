@@ -57,6 +57,10 @@ micro-video iframe[title] {
     pointer-events: none;
 }
 
+micro-video iframe:not([tabindex]) {
+    visibility: hidden;
+}
+
 .micro-video-controls {
     position: absolute;
     bottom: 0;
