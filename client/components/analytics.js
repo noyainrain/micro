@@ -171,6 +171,17 @@ micro.components.analytics.Chart = class extends HTMLElement {
                             }
                         }]
                     },
+                    tooltips: {
+                        callbacks: {
+                            label(tooltipItem, data) {
+                                const dataset = data.datasets[tooltipItem.datasetIndex];
+                                const value = dataset.data[tooltipItem.index].y;
+                                const change =
+                                    value - dataset.data[Math.max(tooltipItem.index - 1, 0)].y;
+                                return `${dataset.label}: ${value} (${change >= 0 ? "+" : ""}${change})`;
+                            }
+                        }
+                    },
                     elements: {
                         point: {
                             radius: 0,
