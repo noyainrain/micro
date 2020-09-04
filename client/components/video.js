@@ -46,6 +46,7 @@ micro.components.VideoElement = class extends HTMLElement {
             video: null,
             state: new micro.components.VideoElement._PausedUninitialized(this),
             controlsVisible: true,
+            error: null,
 
             playPause: () => {
                 // Wait until button does not touch icon anymore
@@ -211,6 +212,7 @@ Object.assign(micro.components.VideoElement, {
                     }
                 }
             })());
+            this.owner._data.error = null;
             this.owner._data.state =
                 new micro.components.VideoElement._PlayingInitializing(this.owner);
             this.owner._switchPlaying();
@@ -259,7 +261,7 @@ Object.assign(micro.components.VideoElement, {
         }
 
         onSetUpError() {
-            ui.notify("Oops, there was a problem communicating with YouTube. Please try again in a few moments.");
+            this.owner._data.error = "Oops, there was a problem communicating with YouTube. Please try again in a few moments.";
             this.owner._data.state =
                 new micro.components.VideoElement._PausedUninitialized(this.owner);
             this.owner._switchPaused({ended: true});
@@ -300,12 +302,12 @@ Object.assign(micro.components.VideoElement, {
         onError(code) {
             switch (code) {
                 case 5:
-                    ui.notify("Oops, there was a problem communicating with YouTube! Please try again in a few moments.");
+                    this.owner._data.error = "Oops, there was a problem communicating with YouTube! Please try again in a few moments.";
                     break;
                 case 100:
                 case 101:
                 case 150:
-                    ui.notify("Oops, the video is no longer available!");
+                    this.owner._data.error = "Oops, the video is no longer available!";
                     break;
                 default:
                     throw new Error(code);

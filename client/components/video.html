@@ -5,6 +5,13 @@
         data-shortcut="new Shortcut 'C' 'Show / Hide controls'" data-onclick="onClick"
     >
         <img data-src="video.image.url" />
+        <div data-content="switch error">
+            <template>
+                <p>
+                    <span data-content="error"></span>
+                </p>
+            </template>
+        </div>
         <div class="micro-video-controls micro-panel">
             <button
                 is="micro-button" class="action" data-run="playPause"
@@ -46,19 +53,37 @@ micro-video > div:focus {
 }
 
 micro-video img,
-micro-video iframe[title] {
+micro-video iframe[title],
+micro-video p {
     display: block;
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
+}
+
+micro-video img {
     object-fit: contain;
+}
+
+micro-video iframe {
     pointer-events: none;
 }
 
 micro-video iframe:not([tabindex]) {
     visibility: hidden;
+}
+
+micro-video p {
+    color: white;
+    background: black;
+}
+
+micro-video p > span {
+    display: block;
+    height: 100%;
+    overflow: hidden;
 }
 
 .micro-video-controls {
