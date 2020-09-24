@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -29,7 +29,7 @@ from micro.server import (CollectionEndpoint, Server, make_orderable_endpoints,
 from micro.test import ServerTestCase, CatApp
 
 class ServerTest(ServerTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.app = CatApp(redis_url='15', files_path=mkdtemp())
         self.app.r.flushdb()
@@ -38,8 +38,9 @@ class ServerTest(ServerTestCase):
             *make_orderable_endpoints(r'/api/cats', lambda: self.app.cats),
             *make_trashable_endpoints(r'/api/cats/([^/]+)', lambda i: self.app.cats[i])
         ]
-        self.server = Server(self.app, handlers, client_path='hello',
-                             client_modules_path='node_modules', port=16160)
+        self.server = Server(
+            self.app, handlers, client_config={'path': 'hello', 'modules_path': 'node_modules'},
+            port=16160)
         self.server.start()
         self.staff_member = self.app.login()
         self.user = self.app.login()
@@ -86,7 +87,7 @@ class ServerTest(ServerTestCase):
         await self.request('/api/activity/v2')
         await self.request('/api/activity/v2', method='PATCH', body='{"op": "subscribe"}')
         await self.request('/api/activity/v2', method='PATCH', body='{"op": "unsubscribe"}')
-        await self.request('/api/analytics/stats/users')
+        await self.request('/api/analytics/statistics/users')
         await self.request('/api/analytics/referrals')
         start = quote((self.app.now() - timedelta(days=10)).isoformat())
         end = quote((self.app.now() - timedelta(days=2)).isoformat())

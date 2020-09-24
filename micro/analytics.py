@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -149,7 +149,7 @@ class Point:
         v = data.get('v')
         if not isinstance(v, (float, int)):
             raise TypeError()
-        return Point(parse_isotime(expect_type(str)(data.get('t')), aware=True), float(v))
+        return Point(parse_isotime(expect_type(str)(data.get('t'))), float(v))
 
     def json(self) -> Dict[str, object]:
         """See :meth:`micro.JSONifiable.json`."""
@@ -164,7 +164,7 @@ class Referral(Object):
     def __init__(self, *, id: str, app: 'Application', url: str, time: str) -> None:
         super().__init__(id=id, app=app)
         self.url = url
-        self.time = parse_isotime(time, aware=True)
+        self.time = parse_isotime(time)
 
     def json(self, restricted: bool = False, include: bool = False, *,
              rewrite: RewriteFunc = None) -> Dict[str, object]:

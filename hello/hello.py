@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -14,11 +14,15 @@
 
 """micro application example."""
 
+from __future__ import annotations
+
 import sys
+from typing import List, Optional, cast
 
 from micro import Application, Collection, Editable, Event, Object, Settings, WithContent, error
 from micro.core import context
 from micro.jsonredis import RedisList
+from micro.resource import Resource
 from micro.server import CollectionEndpoint, Server
 from micro.util import Expect, make_command_line_parser, randstr, setup_logging
 
@@ -33,9 +37,12 @@ class Hello(Application):
     class Greetings(Collection):
         """Collection of all class:`Greeting`s."""
 
-        async def create(self, text, resource):
+        app: Hello
+
+        async def create(self, text: Optional[str], resource: Optional[str]) -> Greeting:
             """Create a :class:`Greeting` and return it."""
-            if not context.user.get():
+            user = context.user.get()
+            if not user:
                 raise error.PermissionError()
             attrs = await WithContent.process_attrs({'text': text, 'resource': resource},
                                                     app=self.app)
@@ -43,10 +50,10 @@ class Hello(Application):
                 raise error.ValueError('No text and resource')
 
             greeting = Greeting(
-                id='Greeting:{}'.format(randstr()), app=self.app, authors=[self.app.user.id],
+                id='Greeting:{}'.format(randstr()), app=self.app, authors=[user.id],
                 text=attrs['text'], resource=attrs['resource'])
-            self.r.oset(greeting.id, greeting)
-            self.r.lpush(self.ids.key, greeting.id)
+            self.app.r.oset(greeting.id, greeting)
+            self.app.r.lpush(self.ids.key, greeting.id)
             self.app.activity.publish(
                 Event.create('greetings-create', None, detail={'greeting': greeting}, app=self.app))
             return greeting
@@ -60,13 +67,12 @@ class Hello(Application):
         self.types.update({'Greeting': Greeting})
         self.greetings = Hello.Greetings(RedisList('greetings', self.r.r), app=self)
 
-    def create_settings(self):
+    def create_settings(self) -> Settings:
         # pylint: disable=unexpected-keyword-arg; decorated
         return Settings(
             id='Settings', app=self, authors=[], title='Hello', icon=None, icon_small=None,
             icon_large=None, provider_name=None, provider_url=None, provider_description={},
-            feedback_url=None, staff=[], push_vapid_private_key=None, push_vapid_public_key=None,
-            v=2)
+            feedback_url=None, staff=[], push_vapid_private_key='', push_vapid_public_key='')
 
 class Greeting(Object, Editable, WithContent):
     """Public greeting.
@@ -77,10 +83,11 @@ class Greeting(Object, Editable, WithContent):
     """
     # pylint: disable=invalid-overridden-method; do_edit may be async
 
-    def __init__(self, *, id, app, authors, text, resource):
-        super().__init__(id, app)
-        Editable.__init__(self, authors)
-        WithContent.__init__(self, text=text, resource=resource)
+    def __init__(self, *, app: Hello, **data: object) -> None:
+        super().__init__(id=cast(str, data['id']), app=app)
+        Editable.__init__(self, authors=cast(List[str], data['authors']))
+        WithContent.__init__(self, text=cast(Optional[str], data['text']),
+                             resource=cast(Optional[Resource], data['resource']))
 
     async def do_edit(self, **attrs):
         attrs = await WithContent.pre_edit(self, attrs)

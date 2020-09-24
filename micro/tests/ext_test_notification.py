@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -22,8 +22,9 @@ import sys
 
 from tornado.testing import gen_test
 
-from micro import Application, CommunicationError, Event
+from micro import Application, Event
 from micro.tests.test_micro import MicroTestCase
+from micro.webapi import CommunicationError
 
 class NotificationTest(MicroTestCase):
     def setUp(self):
@@ -78,9 +79,9 @@ class NotificationTest(MicroTestCase):
         self.assertEqual(self.user.device_notification_status, 'off')
 
     @gen_test(timeout=20)
-    async def test_disable_device_notifications(self):
+    async def test_disable_device_notifications(self) -> None:
         await self.user.enable_device_notifications(self.push_subscription)
-        self.user.disable_device_notifications()
+        self.user.disable_device_notifications(self.user)
         self.assertEqual(self.user.device_notification_status, 'off')
 
 CONFIG_TEMPLATE = """\

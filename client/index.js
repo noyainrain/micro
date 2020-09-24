@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -23,15 +23,6 @@
 micro.util.watchErrors();
 
 micro.LIST_LIMIT = 100;
-
-/**
- * Find the first ancestor of *elem* that satisfies *predicate*.
- *
- * .. deprecated: 0.11.0
- *
- *    Use :func:`micro.keyboard.findAncestor` .
- */
-micro.findAncestor = micro.keyboard.findAncestor;
 
 /**
  * User interface of a micro app.
@@ -115,7 +106,9 @@ micro.UI = class extends HTMLBodyElement {
         });
         window.addEventListener("popstate", () => this._navigate().catch(micro.util.catch));
         this.addEventListener("click", event => {
-            let a = micro.findAncestor(event.target, e => e instanceof HTMLAnchorElement, this);
+            let a = micro.keyboard.findAncestor(
+                event.target, e => e instanceof HTMLAnchorElement, this
+            );
             if (a && a.origin === location.origin && !a.pathname.startsWith("/files/")) {
                 event.preventDefault();
                 this.navigate(a.pathname + a.hash).catch(micro.util.catch);
@@ -207,11 +200,6 @@ micro.UI = class extends HTMLBodyElement {
         const version = parseInt(localStorage.microVersion) || null;
         if (!version) {
             this._storeUser(null);
-            localStorage.microSettings = JSON.stringify(null);
-            localStorage.microVersion = 2;
-        }
-        // Deprecated since 0.36.0
-        if (version < 2) {
             localStorage.microSettings = JSON.stringify(null);
             localStorage.microVersion = 2;
         }
@@ -312,9 +300,6 @@ micro.UI = class extends HTMLBodyElement {
         this._page = value;
         if (this._page) {
             this._pageSpace.appendChild(this._page);
-            // Compatibility for overriding attachedCallback without chaining (deprecated since
-            // 0.19.0)
-            micro.Page.prototype.attachedCallback.call(this._page);
             this._updateTitle();
         }
     }
@@ -898,12 +883,13 @@ micro.OL = class extends HTMLOListElement {
             case "touchstart":
             case "mousedown":
                 // Locate li intended for moving
-                handle = micro.findAncestor(event.target,
-                                            e => e.classList.contains("micro-ol-handle"), this);
+                handle = micro.keyboard.findAncestor(
+                    event.target, e => e.classList.contains("micro-ol-handle"), this
+                );
                 if (!handle) {
                     break;
                 }
-                this._li = micro.findAncestor(handle, e => e.parentElement === this, this);
+                this._li = micro.keyboard.findAncestor(handle, e => e.parentElement === this, this);
                 if (!this._li) {
                     break;
                 }
@@ -931,8 +917,9 @@ micro.OL = class extends HTMLOListElement {
                     x = event.clientX;
                     y = event.clientY;
                 }
-                over = micro.findAncestor(document.elementFromPoint(x, y),
-                                          e => e.parentElement === this, this);
+                over = micro.keyboard.findAncestor(
+                    document.elementFromPoint(x, y), e => e.parentElement === this, this
+                );
                 if (!over) {
                     break;
                 }
@@ -1504,21 +1491,7 @@ micro.LocationInputElement = class extends HTMLElement {
         });
     }
 
-    /**
-     * Current value as :ref:`Location`. May be ``null``.
-     *
-     * .. deprecated:: 0.35.0
-     *
-     *    Use :attr:`valueAsObject` instead.
-     */
-    get value() {
-        return this.valueAsObject;
-    }
-
-    set value(value) {
-        this.valueAsObject = value;
-    }
-
+    /** Current value as :ref:`Location`. May be ``null``. */
     get valueAsObject() {
         return this.nativeInput.valueAsObject;
     }
@@ -1592,11 +1565,6 @@ micro.Page = class extends HTMLElement {
         this._caption = null;
     }
 
-    /**
-     * .. deprecated:: 0.19.0
-     *
-     *    Overriding without chaining.
-     */
     attachedCallback() {
         setTimeout(
             () => {
@@ -1776,8 +1744,8 @@ micro.EditUserPage = class extends micro.Page {
                     delete localStorage.authRequest;
                     this._hideSetEmailPanel2();
                 } catch (e) {
-                    if (e instanceof micro.APIError && e.__type__ === "ValueError") {
-                        if (e.error.code === "auth_invalid") {
+                    if (e instanceof micro.APIError && e.error.__type__ === "ValueError") {
+                        if (e.error.message.includes("code")) {
                             this._showSetEmailPanel2();
                             ui.notify("The email link was modified. Please try again.");
                         } else {
@@ -1788,7 +1756,7 @@ micro.EditUserPage = class extends micro.Page {
                                     "The email link is expired. Please try again.",
                                 email_duplicate:
                                     "The given email address is already in use by another user."
-                            }[e.error.code]);
+                            }[e.error.message]);
                         }
                     } else {
                         ui.handleCallError(e);
@@ -1951,6 +1919,7 @@ micro.EditSettingsPage = class extends micro.Page {
     }
 
     attachedCallback() {
+        super.attachedCallback();
         this.querySelector("[name=title]").focus();
     }
 };

@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -43,9 +43,9 @@ from tornado.httpclient import HTTPClientError
 
 from . import error
 from .core import RewriteFunc
-from .error import CommunicationError, Error
+from .error import Error
 from .util import Expect, expect_type, str_or_none
-from .webapi import WebAPI, fetch
+from .webapi import CommunicationError, WebAPI, fetch
 
 HandleResourceFunc = Callable[[str, str, bytes, 'Analyzer'],
                               Union[Optional['Resource'], Awaitable[Optional['Resource']]]]

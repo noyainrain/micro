@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -28,7 +28,7 @@ import re
 from smtplib import SMTP
 import sys
 from typing import (AsyncIterator, Awaitable, Callable, Coroutine, Dict, Generic, Iterator, List,
-                    Optional, Set, Tuple, Type, TypeVar, Union, cast, overload)
+                    Optional, Set, Sequence, Tuple, Type, TypeVar, Union, cast, overload)
 from urllib.parse import SplitResult, urlparse, urlsplit
 
 from pywebpush import WebPusher, WebPushException
@@ -42,15 +42,16 @@ from typing_extensions import Protocol
 
 from . import error
 from .core import RewriteFunc, context
-from .error import CommunicationError, ValueError
-from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
-                        RedisSequence, bzpoptimed)
+from .error import ValueError
+from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, RedisList, RedisSequence,
+                        bzpoptimed)
 from .ratelimit import RateLimit, RateLimiter
 from .resource import ( # pylint: disable=unused-import; typing
     Analyzer, Files, HandleResourceFunc, Image, Resource, Video, handle_image, handle_webpage,
     handle_youtube)
-from .util import (Expect, OnType, check_email, expect_opt_type, expect_type, parse_isotime,
-                   randstr, run_instant, str_or_none)
+from .util import (Expect, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
+                   str_or_none)
+from .webapi import CommunicationError
 
 _PUSH_TTL = 24 * 60 * 60
 
@@ -209,7 +210,7 @@ class Application:
         """Return the current UTC date and time, as aware object with second accuracy."""
         return datetime.now(timezone.utc).replace(microsecond=0)
 
-    def update(self):
+    def update(self) -> None:
         """Update the database.
 
         If the database is fresh, it will be initialized. If the database is already up-to-date,
@@ -223,7 +224,7 @@ class Application:
         if not v:
             settings = self.create_settings()
             settings.push_vapid_private_key, settings.push_vapid_public_key = (
-                self._generate_push_vapid_keys())
+                self._generate_push_vapid_keys()) # type: ignore
             self.r.oset(settings.id, settings)
             activity = Activity(id='Activity', app=self, subscriber_ids=[])
             self.r.oset(activity.id, activity)
@@ -234,83 +235,24 @@ class Application:
         v = int(v)
         r = JSONRedis[Dict[str, object]](self.r.r)
         r.caching = False
-        expect_str = expect_type(str)
-
-        # Deprecated since 0.15.0
-        if v < 3:
-            data = r.oget('Settings', default=AssertionError)
-            data['provider_name'] = None
-            data['provider_url'] = None
-            data['provider_description'] = {}
-            r.oset('Settings', data)
-            r.set('micro_version', 3)
-
-        # Deprecated since 0.6.0
-        if v < 4:
-            for obj in self._scan_objects(r):
-                if not issubclass(self.types[expect_str(obj['__type__'])], Trashable):
-                    del obj['trashed']
-                    r.oset(expect_str(obj['id']), obj)
-            r.set('micro_version', 4)
-
-        # Deprecated since 0.13.0
-        if v < 5:
-            data = r.oget('Settings', default=AssertionError)
-            data['icon_small'] = data['favicon']
-            del data['favicon']
-            data['icon_large'] = None
-            r.oset('Settings', data)
-            r.set('micro_version', 5)
-
-        # Deprecated since 0.14.0
-        if v < 6:
-            data = r.oget('Settings', default=AssertionError)
-            data['push_vapid_private_key'], data['push_vapid_public_key'] = (
-                cast(Tuple[str, str], self._generate_push_vapid_keys())) # type: ignore
-            r.oset('Settings', data)
-            activity = Activity(id='Activity', app=self, subscriber_ids=[])
-            r.oset(activity.id, activity.json())
-
-            users = r.omget([id.decode() for id in cast(List[bytes], r.lrange('users', 0, -1))],
-                            default=AssertionError)
-            for user in users:
-                user['device_notification_status'] = 'off'
-                user['push_subscription'] = None
-            r.omset({expect_str(user['id']): user for user in users})
-            r.set('micro_version', 6)
-
-        # Deprecated since 0.24.1
-        if v < 7:
-            ids = cast(List[bytes], r.lrange('activity', 0, -1))
-            if ids:
-                r.rpush('Activity.items', *ids)
-                r.delete('activity')
-            r.set('micro_version', 7)
-
-        # Deprecated since 0.33.0
-        if v < 8:
-            for obj in self._scan_objects(r, Trashable):
-                if obj['trashed']:
-                    t = (datetime.now(timezone.utc) + Trashable.RETENTION).timestamp()
-                    r.zadd('micro_trash', {obj['id'].encode(): t})
-            r.set('micro_version', 8)
 
         # Deprecated since 0.39.0
         if v < 9:
-            activity = {}
+            user_activity: Dict[str, Tuple[datetime, datetime]] = {}
             for event in self._scan_objects(r, Event):
-                user_id = event['user']
-                t = parse_isotime(event['time'], aware=True)
-                first, last = activity.get(user_id) or (t, t)
-                activity[user_id] = (min(first, t), max(last, t))
+                user_id = cast(str, event['user'])
+                t = parse_isotime(cast(str, event['time']))
+                first, last = user_activity.get(user_id) or (t, t)
+                user_activity[user_id] = (min(first, t), max(last, t))
 
             now = self.now()
-            users = r.omget(r.lrange('users', 0, -1))
+            users = r.omget([id.decode() for id in r.r.lrange('users', 0, -1)],
+                            default=AssertionError)
             for user in users:
-                first, last = activity.get(user['id']) or (now, now)
+                first, last = user_activity.get(cast(str, user['id'])) or (now, now)
                 user['create_time'] = first.isoformat()
                 user['authenticate_time'] = last.isoformat()
-            r.omset({user['id']: user for user in users})
+            r.omset({cast(str, user['id']): user for user in users})
             r.set('micro_version', 9)
 
         self.do_update()
@@ -484,9 +426,6 @@ class Application:
             return json
         if hasattr(type, 'parse'):
             return cast(JSONifiableWithParse, type).parse(json, app=self)
-        # Compatibility for Settings without icon_large (deprecated since 0.13.0)
-        if issubclass(type, Settings):
-            json['v'] = 2
         del json['__type__']
         return type(app=self, **json)
 
@@ -529,9 +468,7 @@ class Object:
         attributes of :class:`Object`. *restricted* and *include* are ignored.
         """
         # pylint: disable=unused-argument; part of subclass API
-        # Compatibility for trashed (deprecated since 0.6.0)
-        return {'__type__': type(self).__name__, 'id': self.id,
-                **({'trashed': False} if restricted else {})}
+        return {'__type__': type(self).__name__, 'id': self.id}
 
     def __repr__(self):
         return '<{}>'.format(self.id)
@@ -562,24 +499,7 @@ class Editable:
         # pylint: disable=missing-docstring; already documented
         return self.app.r.omget(self._authors, default=AssertionError, expect=expect_type(User))
 
-    @overload
-    def edit(self, *, asynchronous: None = None, **attrs: object) -> None:
-        # pylint: disable=function-redefined,missing-docstring; overload
-        pass
-    @overload
-    def edit(self, *, asynchronous: OnType, **attrs: object) -> Awaitable[None]:
-        # pylint: disable=function-redefined,missing-docstring; overload
-        pass
-    def edit(self, *, asynchronous: OnType = None, **attrs: object) -> Optional[Awaitable[None]]:
-        # pylint: disable=function-redefined,missing-docstring; overload
-        # Compatibility for synchronous edit (deprecated since 0.27.0)
-        coro = self._edit(**attrs)
-        if asynchronous is None:
-            run_instant(coro)
-            return None
-        return coro
-
-    async def _edit(self, **attrs: object) -> None:
+    async def edit(self, **attrs: object) -> None:
         """See :http:post:`/api/(object-url)`."""
         if not self.app.user:
             raise error.PermissionError()
@@ -720,10 +640,8 @@ class WithContent:
             'resource': self.resource.json(rewrite=rewrite) if self.resource else None
         }
 
-class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
+class Collection(Generic[O], Sequence[O]):
     """See :ref:`Collection`.
-
-    All sequence operations but iteration are supported for now.
 
     .. attribute:: ids
 
@@ -742,15 +660,6 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
 
        Context application.
 
-    .. attribute:: host
-
-       Tuple ``(object, attr)`` that specifies the attribute name *attr* on the host *object*
-       (:class:`Object` or :class:`Application`) the collection is attached to.
-
-       .. deprecated:: 0.24.0
-
-          Extend :class:`Collection` to implement hosting manually.
-
     .. describe:: c[key]
 
        *key* may also be a string, in which case the object with the given ID is retrieved.
@@ -762,49 +671,15 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
 
        *item* may also be a string, in which case the membership of the object with the given ID is
        tested.
-
-    .. deprecated: 0.24.0
-
-       :class:`JSONRedisMapping` interface. Use :attr:`ids`, ``c[key]`` and ``item in c`` instead.
     """
 
-    @overload
     def __init__(
-            self, ids: RedisSequence, *,
-            check: Callable[[Union[int, slice, str]], None] = None,
+            self, ids: RedisSequence, *, check: Callable[[Union[int, slice, str]], None] = None,
             expect: ExpectFunc[O] = cast(ExpectFunc[O], expect_type(Object)),
             app: Application) -> None:
-        # pylint: disable=function-redefined, super-init-not-called; overload
-        pass
-    @overload
-    def __init__(self, host: Tuple[Union[Object, Application], str]) -> None:
-        # pylint: disable=function-redefined, super-init-not-called; overload
-        pass
-    def __init__(
-            self, *args: object,
-            check: Callable[[Union[int, slice, str]], None] = None,
-            expect: ExpectFunc[O] = cast(ExpectFunc[O], expect_type(Object)),
-            **kwargs: object) -> None:
-        # pylint: disable=function-redefined, super-init-not-called; overload
-        # Compatibility for host (deprecated since 0.24.0)
-        ids = kwargs.get('ids') or kwargs.get('host') or args[0] if args else None
-        if isinstance(ids, tuple):
-            host = cast(Tuple[Union[Object, Application], str], ids)
-            app = host[0] if isinstance(host[0], Application) else host[0].app
-            ids = RedisList(
-                ('' if isinstance(host[0], Application) else host[0].id + '.') + host[1], app.r.r)
-        elif isinstance(ids, RedisSequence):
-            arg = kwargs.get('app')
-            assert isinstance(arg, Application)
-            app = arg
-            host = (app, '')
-        else:
-            raise TypeError()
-        JSONRedisMapping.__init__(self, app.r, ids.key, expect)
-        self.host = host
-
         self.ids = ids
         self.check = check
+        self.expect = expect
         self.app = app
 
     def index(self, x: Union[O, str], start: int = 0, stop: int = sys.maxsize) -> int:
@@ -830,9 +705,6 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
         pass
     def __getitem__(self, key: Union[int, slice, str]) -> Union[O, List[O]]:
         # pylint: disable=function-redefined; overload
-        # Compatibility with JSONRedisMapping (deprecated since 0.24.0)
-        assert self.expect
-
         if self.check:
             self.check(key)
         if isinstance(key, str):
@@ -845,9 +717,9 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
         return self.app.r.oget(self.ids[key].decode(), default=ReferenceError,
                                expect=self.expect)
 
-    def __iter__(self) -> Iterator[str]:
-        # Compatibility with JSONRedisMapping (deprecated since 0.24.0)
-        return (id.decode() for id in self.ids)
+    def __iter__(self) -> Iterator[O]:
+        # Optimized and used by count()
+        return iter(self[:])
 
     def __contains__(self, item: object) -> bool:
         if isinstance(item, Object):
@@ -908,8 +780,8 @@ class User(Object, Editable):
         self.name = cast(str, data['name'])
         self.email = cast(Optional[str], data['email'])
         self.auth_secret = cast(str, data['auth_secret'])
-        self.create_time = parse_isotime(cast(str, data['create_time']), aware=True)
-        self.authenticate_time = parse_isotime(cast(str, data['authenticate_time']), aware=True)
+        self.create_time = parse_isotime(cast(str, data['create_time']))
+        self.authenticate_time = parse_isotime(cast(str, data['authenticate_time']))
         self.device_notification_status = cast(str, data['device_notification_status'])
         self.push_subscription = cast(Optional[str], data['push_subscription'])
 
@@ -997,36 +869,8 @@ class User(Object, Editable):
         self.push_subscription = push_subscription
         self.app.r.oset(self.id, self)
 
-    @overload
     def disable_device_notifications(self, user: 'User' = None) -> None:
-        # pylint: disable=function-redefined,missing-docstring; overload
-        pass
-    @overload
-    def disable_device_notifications(self, reason: str = None) -> None:
-        # pylint: disable=function-redefined,missing-docstring; overload
-        pass
-    def disable_device_notifications(self, *args: object, **kwargs: object) -> None:
-        """See :http:patch:`/api/users/(id)` (``disable_device_notifications``).
-
-        .. deprecated:: 0.17.0
-
-           Argument *reason*.
-
-        .. deprecated:: 0.17.0
-
-           Default value for *user*. Provide it explicitly instead.
-        """
-        # pylint: disable=function-redefined,missing-docstring; overload
-        # Compatibility for reason (deprecated since 0.17.0)
-        user = kwargs.get('user', kwargs.get('reason', args[0] if args else None))
-        if user is None or isinstance(user, str):
-            reason = user
-            if reason not in [None, 'expired']:
-                raise ValueError('reason_unknown')
-            self._disable_device_notifications(reason)
-            return
-        assert isinstance(user, User)
-
+        """See :http:patch:`/api/users/(id)` (``disable_device_notifications``)."""
         if user != self:
             raise error.PermissionError()
         self._disable_device_notifications()
@@ -1086,7 +930,7 @@ class User(Object, Editable):
             await self._send_device_notification(self.push_subscription, event)
         except (ValueError, CommunicationError) as e:
             if isinstance(e, ValueError):
-                if e.code != 'push_subscription_invalid':
+                if str(e) != 'push_subscription_invalid':
                     raise e
                 self._disable_device_notifications(reason='expired')
             getLogger(__name__).error('Failed to deliver notification: %s', str(e))
@@ -1140,38 +984,30 @@ class Settings(Object, Editable):
             self, *, id: str, app: Application, authors: List[str], title: str, icon: Optional[str],
             icon_small: str = None, icon_large: str = None, provider_name: Optional[str],
             provider_url: Optional[str], provider_description: Optional[Dict[str, str]],
-            feedback_url: Optional[str], staff: List[str], push_vapid_private_key: str = None,
-            push_vapid_public_key: str = None, favicon: str = None, v: int = 1) -> None:
-        # pylint: disable=unused-argument; part of API
-        # Compatibility for versioned function (deprecated since 0.40.0)
+            feedback_url: Optional[str], staff: List[str], push_vapid_private_key: str,
+            push_vapid_public_key: str) -> None:
         super().__init__(id, app)
         Editable.__init__(self, authors=authors, activity=lambda: app.activity)
         self.title = title
         self.icon = icon
-        # Compatibility for favicon (deprecated since 0.13.0)
-        self.icon_small = icon_small or favicon
+        self.icon_small = icon_small
         self.icon_large = icon_large
         self.provider_name = provider_name
         self.provider_url = provider_url
         self.provider_description = provider_description
         self.feedback_url = feedback_url
         self._staff = staff
-        # Compatibility for Settings without VAPID keys (deprecated since 0.14.0)
-        self.push_vapid_private_key = push_vapid_private_key or ''
-        self.push_vapid_public_key = push_vapid_public_key or ''
+        self.push_vapid_private_key = push_vapid_private_key
+        self.push_vapid_public_key = push_vapid_public_key
 
     @property
-    def staff(self):
+    def staff(self) -> List[User]:
         # pylint: disable=missing-docstring; already documented
-        return self.app.r.omget(self._staff)
+        return self.app.r.omget(self._staff, default=AssertionError, expect=expect_type(User))
 
     def do_edit(self, **attrs):
         if not self.app.user.id in self._staff:
             raise error.PermissionError()
-
-        # Compatibility for favicon (deprecated since 0.13.0)
-        if 'favicon' in attrs:
-            attrs.setdefault('icon_small', attrs['favicon'])
 
         e = InputError()
         if 'title' in attrs and not str_or_none(attrs['title']):
@@ -1210,9 +1046,7 @@ class Settings(Object, Editable):
             'staff': [u.json(restricted=restricted, rewrite=rewrite) for u in self.staff] if include
                      else self._staff,
             'push_vapid_public_key': self.push_vapid_public_key,
-            # Compatibility for favicon (deprecated since 0.13.0)
-            **({'favicon': self.icon_small} if restricted else
-               {'push_vapid_private_key': self.push_vapid_private_key})
+            **({} if restricted else {'push_vapid_private_key': self.push_vapid_private_key})
         }
 
 class Activity(Object, JSONRedisSequence[JSONifiable]):
@@ -1335,15 +1169,7 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
         }
 
 class Event(Object):
-    """See :ref:`Event`.
-
-    .. attribute:: time
-
-       .. deprecated:: 0.39.0
-
-          Naive time. Work with aware object instead (with
-          :meth:`datetime.datetime.replace` (``tzinfo=timezone.utc``)).
-    """
+    """See :ref:`Event`."""
 
     @staticmethod
     def create(type: str, object: Optional[Object], detail: Dict[str, object] = {},
@@ -1417,7 +1243,7 @@ class Event(Object):
             'object': obj,
             'user': self.user.json(restricted=restricted, rewrite=rewrite) if include
                     else self._user_id,
-            'time': self.time.isoformat() + 'Z' if self.time else None,
+            'time': self.time.isoformat(),
             'detail': detail
         }
 
