@@ -319,12 +319,7 @@ class Endpoint(RequestHandler):
         context.client.set(self.request.remote_ip) # type: ignore
 
         self.app.user = None
-        # auth_secret = self.get_cookie('auth_secret')
-        auth = self.request.headers.get('Authorization')
-        # TODO compatibility with cookies
-        # TODO check header for errors BAD REQUEST
-        auth_secret = auth.split()[1] if auth else self.get_cookie('auth_secret')
-        print('GOT HEADER', auth, 'SECRET', auth_secret)
+        auth_secret = self.get_cookie('auth_secret')
         if auth_secret:
             self.current_user = self.app.authenticate(auth_secret)
             context.user.set(self.current_user)

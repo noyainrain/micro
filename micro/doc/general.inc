@@ -16,8 +16,6 @@ The URL that uniquely identifies an object is referred to as *object-url*, e.g. 
 Authentication and Permissions
 ------------------------------
 
-TODO update doc + examples, also deprecation note
-
 To make an API request authenticated as some user, include a cookie named ``auth_secret`` with the
 :ref:`User` 's *auth_secret*.
 

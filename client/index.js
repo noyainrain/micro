@@ -78,7 +78,7 @@ micro.UI = class extends HTMLBodyElement {
         this._activities = new Set();
 
         // TODO subclass API
-        this.api = null;
+        this.api = new micro.WebApi();
 
         this.pages = [
             {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.EditUserPage.make},
@@ -206,11 +206,6 @@ micro.UI = class extends HTMLBodyElement {
             localStorage.microSettings = JSON.stringify(null);
             localStorage.microVersion = 2;
         }
-        /*
-        if (version < 3) {
-            document.cookie = "auth_secret=; path=/; max-age=0";
-            localStorage.microVersion = 3;
-        }*/
 
         // Go!
         let go = async() => {
@@ -218,7 +213,6 @@ micro.UI = class extends HTMLBodyElement {
                 this._progressElem.style.display = "block";
                 await Promise.resolve(this.update());
                 this._data.user = JSON.parse(localStorage.microUser);
-                this.api = new micro.WebApi({headers: this._data.user ? {Authorization: `Bearer ${this._data.user.auth_secret}`} : {}});
                 this._data.settings = JSON.parse(localStorage.microSettings);
 
                 // If requested, log in with code
@@ -606,10 +600,14 @@ micro.UI = class extends HTMLBodyElement {
 
     _storeUser(user) {
         this._data.user = user;
-        localStorage.microUser = JSON.stringify(user);
-        // TODO where to set this; must be set whenever data.user is set, two places, here and on
-        // first load
-        this.api = new micro.WebApi({headers: this._data.user ? {Authorization: `Bearer ${this._data.user.auth_secret}`} : {}});
+        if (user) {
+            localStorage.microUser = JSON.stringify(user);
+            document.cookie =
+                `auth_secret=${user.auth_secret}; path=/; max-age=${360 * 24 * 60 * 60}`;
+        } else {
+            localStorage.microUser = null;
+            document.cookie = "auth_secret=; path=/; max-age=0";
+        }
     }
 
     _addActivity(activity) {

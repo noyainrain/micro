@@ -138,9 +138,7 @@ micro.components.contentinput.ContentInputElement = class extends HTMLElement {
                 const response = await fetch("/files", {method: "POST", body: url});
                 url = response.headers.get("Location");
             }
-            this._data.resource = await micro.call(
-                "GET", `/api/previews/${encodeURIComponent(url)}`
-            );
+            this._data.resource = await ui.call("GET", `/api/previews/${encodeURIComponent(url)}`);
             this._data.validate();
         } catch (e) {
             if (
