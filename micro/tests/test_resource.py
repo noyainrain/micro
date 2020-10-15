@@ -96,7 +96,7 @@ class AnalyzerTestCase(AsyncHTTPTestCase):
     async def test_analyze_no_host(self) -> None:
         analyzer = Analyzer()
         with self.assertRaises(CommunicationError):
-            await analyzer.analyze('https://example.invalid/')
+            await analyzer.analyze('https://[::]/')
 
 class FilesTest(AsyncTestCase):
     def setUp(self) -> None:

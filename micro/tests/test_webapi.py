@@ -53,6 +53,6 @@ class WebAPITest(AsyncHTTPTestCase):
 
     @gen_test
     async def test_call_no_host(self) -> None:
-        api = WebAPI('https://example.invalid/api/')
+        api = WebAPI('https://[::]/api/')
         with self.assertRaises(CommunicationError):
             await api.call('GET', 'echo')

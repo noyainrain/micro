@@ -79,13 +79,13 @@ h1 {
     color: var(--micro-color-text-title);
 }
 
+section h1 { font-size: 1.66rem; }
+section section h1 { font-size: 1.33rem; }
+
 p[tabindex]:focus,
 p[tabindex]:hover {
     background: var(--micro-color-delimiter);
 }
-
-section h1 { font-size: 1.66rem; }
-section section h1 { font-size: 1.33rem; }
 
 ul,
 ol {
@@ -101,6 +101,7 @@ dl {
 dt {
     align-self: center;
     color: var(--micro-color-text-subtle);
+    text-align: center;
 }
 
 dd {
@@ -347,7 +348,6 @@ label > small {
 }
 
 label > small:first-of-type {
-    padding-top: var(--micro-size-s);
     color: inherit;
 }
 
@@ -372,6 +372,10 @@ fieldset legend {
 
 fieldset label {
     margin: 0;
+}
+
+.micro-disabled {
+    color: var(--micro-color-text-subtle);
 }
 
 /**

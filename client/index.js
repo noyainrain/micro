@@ -1283,11 +1283,18 @@ micro.MapElement = class extends HTMLElement {
             this._leaflet.control.attribution({prefix: false, position: "bottomright"})
                 .addTo(this._map);
 
-            let url = `https://api.mapbox.com/v4/mapbox.light/{z}/{x}/{y}.png?access_token=${ui.mapServiceKey}`;
-            let attribution = document.importNode(
+            const url = `https://api.mapbox.com/styles/v1/mapbox/light-v10/tiles/{z}/{x}/{y}?access_token=${ui.mapServiceKey}`;
+            const attribution = document.importNode(
                 ui.querySelector("#micro-map-attribution-template").content, true
             ).firstElementChild.outerHTML;
-            this._leaflet.tileLayer(url, {attribution, noWrap: true}).addTo(this._map);
+            this._leaflet.tileLayer(url, {
+                minZoom: 1,
+                zoomOffset: -1,
+                tileSize: 512,
+                bounds: this._map.options.maxBounds,
+                noWrap: true,
+                attribution
+            }).addTo(this._map);
 
             this._updateView();
         })().catch(micro.util.catch));
@@ -1372,7 +1379,6 @@ micro.MapElement = class extends HTMLElement {
             );
         } else {
             this._map.fitWorld({animate: false});
-            this._map.zoomIn(1, {animate: false});
         }
     }
 };

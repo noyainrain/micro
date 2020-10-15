@@ -22,7 +22,7 @@ from tornado.testing import AsyncTestCase, gen_test
 from micro.resource import Analyzer, Video, handle_image, handle_youtube
 
 class AnalyzeServiceTest(AsyncTestCase):
-    @gen_test
+    @gen_test(timeout=20)
     async def test_analyze_youtube(self) -> None:
         config = ConfigParser()
         config.read('test.cfg')
