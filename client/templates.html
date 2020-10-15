@@ -1,3 +1,19 @@
+<style>
+    .micro-dialog {
+        display: block;
+        max-width: 70ch;
+        border-radius: var(--micro-size-xs);
+        margin: 0 auto;
+        background: white;
+        box-shadow: var(--micro-shadow);
+    }
+
+    .micro-dialog h1 {
+        font-size: 1rem;
+        font-weight: bold;
+    }
+</style>
+
 <template class="micro-ui-template">
     <header class="micro-ui-header" style="display: none;">
         <nav class="micro-ui-inside micro-panel">
@@ -17,20 +33,17 @@
 
             <div class="micro-ui-header-fill"></div>
 
-            <ul is="micro-menu" class="micro-ui-menu micro-secondary micro-interactive">
-                <li class="micro-ui-header-user">
-                    <button class="link"><micro-user data-user="user"></micro-user></button>
-                    <ul is="micro-menu">
+            <div class="micro-ui-menu micro-interactive">
+                <button type="button" class="link">
+                    <micro-user data-user="user"></micro-user>
+                </button>
+                <micro-contextual class="micro-entity-list">
+                    <ul>
                         <li class="micro-ui-edit-user">
                             <a class="action" href="/user/edit" data-shortcut="new Shortcut 'N,U'">
                                 <i class="fa fa-fw fa-wrench"></i> Edit user settings
                             </a>
                         </li>
-                    </ul>
-                </li>
-                <li class="micro-ui-header-menu">
-                    <button class="link"><i class="fa fa-fw fa-bars"></i></button>
-                    <ul is="micro-menu">
                         <li class="micro-ui-about">
                             <a class="link" href="/about" data-shortcut="new Shortcut 'N,A'">
                                 <i class="fa fa-fw fa-info-circle"></i> About
@@ -56,12 +69,14 @@
                             </a>
                         </li>
                         <li class="micro-ui-edit-settings">
-                            <a class="action" href="/settings/edit"
-                               data-shortcut="new Shortcut 'N,C'">
+                            <a
+                                class="action" href="/settings/edit"
+                                data-shortcut="new Shortcut 'N,C'"
+                            >
                                 <i class="fa fa-fw fa-wrench"></i> Edit site settings
                             </a>
                         </li>
-                        <li class="micro-ui-keyboard compact" tabindex="0">
+                        <li class="micro-ui-keyboard" tabindex="0">
                             <p><i class="fa fa-fw fa-keyboard"></i> Keyboard navigation</p>
                             <ul>
                                 <li><strong>Tab / Shift + Tab</strong>: Cycle through buttons</li>
@@ -73,12 +88,17 @@
                             </ul>
                         </li>
                     </ul>
-                </li>
-            </ul>
+                </micro-contextual>
+            </div>
         </nav>
 
         <div class="micro-ui-notification-space"></div>
     </header>
+
+    <div
+        class="micro-ui-dialog-layer" tabindex="-1"
+        data-shortcut-context="new ShortcutContext" data-content="dialog"
+    ></div>
 </template>
 <style>
     body[noninteractive] .micro-interactive {
@@ -94,19 +114,19 @@
         color: var(--micro-color-text-subtle);
     }
 
-    .micro-ui-keyboard {
-        padding: 0 calc(1.5rem / 4);
+    .micro-ui-keyboard:focus,
+    .micro-ui-keyboard:hover {
+        background: var(--micro-color-delimiter);
     }
 
-    .micro-ui-keyboard i {
-        color: var(--micro-color-text-subtle);
+    .micro-ui-keyboard p {
+        white-space: nowrap;
     }
 
     .micro-ui-keyboard ul {
         display: none;
         list-style: disc;
         font-size: 0.875em;
-        white-space: normal;
     }
 
     .micro-ui-keyboard:hover ul,
@@ -118,15 +138,31 @@
         border-top: 1px solid var(--micro-color-delimiter);
     }
 
-    .micro-ui-notification-space h1,
-    .micro-ui-notification-space p {
-        margin: var(--micro-size-rxs) 0;
-    }
-
     .micro-ui-notification-space h1 {
         border: none;
         font-size: 1em;
         font-weight: bold;
+    }
+
+    .micro-ui-dialog-layer {
+        position: fixed;
+        z-index: 2;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        padding: calc(var(--micro-size-m) + 3 * var(--micro-size-s)) var(--micro-size-s);
+        background: rgba(0, 0, 0, 0.66);
+        overflow: hidden auto;
+        cursor: default;
+    }
+
+    .micro-ui-dialog-layer:focus {
+        box-shadow: none;
+    }
+
+    .micro-ui-dialog-layer:empty {
+        display: none;
     }
 
     body > [slot],
@@ -141,11 +177,7 @@
 <template class="micro-simple-notification-template">
     <div class="micro-ui-inside compact">
         <div class="micro-simple-notification-content"></div>
-        <p class="group">
-            <button class="micro-simple-notification-dismiss action action-subtle">
-                Dismiss
-            </button>
-        </p>
+        <button type="button" class="micro-simple-notification-dismiss link">Dismiss</button>
     </div>
 </template>
 
@@ -157,14 +189,10 @@
             the inconvenience!
         </p>
         <p>In the meantime, you may reload the page and give it another try.</p>
-        <p class="group">
-            <button class="micro-error-notification-reload action">Reload the page</button>
-        </p>
+        <button type="button" class="micro-error-notification-reload action micro-highlight">
+            Reload the page
+        </button>
     </div>
-</template>
-
-<template class="micro-menu-template">
-    <button class="micro-menu-toggle-secondary action action-subtle"><i class="fa"></i></button>
 </template>
 
 <template id="micro-options-template">
@@ -191,7 +219,7 @@
     micro-options {
         position: absolute;
         z-index: 1;
-        max-width: calc(100% - 2 * var(--micro-size-rm));
+        max-width: calc(100% - 2 * var(--micro-size-s));
         background: white;
         box-shadow: var(--micro-shadow);
     }
@@ -231,21 +259,20 @@
 <style>
     micro-map {
         display: block;
-        margin: 1.5rem 0;
     }
 
     .leaflet-container {
         z-index: 0;
         height: calc(70ch * 9 / 16);
         font: inherit;
-        background: #d1d1d1; /* Map tile background */
+        background: #cbd2d3; /* Map tile background */
     }
 
     .leaflet-container:focus {
         box-shadow: 0 0 0 1px var(--micro-color-primary-tint);
     }
 
-    .leaflet-container .link {
+    .leaflet-container a.link {
         color: var(--micro-color-secondary);
     }
 </style>
@@ -264,16 +291,24 @@
     }
 
     .leaflet-div-icon .link {
-        display: block;
+        padding: 0;
         font-size: 2em;
         line-height: 1;
-        color: var(--micro-color-primary);
         text-shadow: 0 -1px white, 1px 0 white, 0 1px white, -1px 0 white;
+    }
+
+    .leaflet-div-icon .link:focus,
+    .leaflet-div-icon .link:not(:disabled):hover {
+        background: transparent;
+    }
+
+    .leaflet-div-icon .link i {
+        color: var(--micro-color-primary);
     }
 </style>
 
 <template id="micro-map-attribution-template">
-    <span>
+    <p class="micro-small">
         Map data by ©
         <a class="link" href="https://www.mapbox.com/about/maps/" target="_blank">
             <img
@@ -285,13 +320,11 @@
         <a class="link" href="https://www.openstreetmap.org/copyright" target="_blank">
             OpenStreetMap
         </a>
-    </span>
+    </p>
 </template>
 <style>
     .leaflet-container .leaflet-control-attribution {
-        padding: var(--micro-size-xs);
-        font-size: 0.875em;
-        color: var(--micro-color-text-subtle);
+        padding: 0;
         background: rgba(255, 255, 255, 0.66);
         text-align: right;
     }
@@ -321,9 +354,8 @@
     </micro-options>
 </template>
 <style>
-    micro-location-input input {
+    micro-location-input {
         display: block;
-        width: 100%;
     }
 
     .micro-location-input-footer img {
@@ -355,7 +387,7 @@
 
 <template class="micro-forbidden-page-template">
     <h1 class="micro-icon-title"><i class="fa fa-lock"></i></h1>
-    <p>Oops, you are not allowed to view this page!<p>
+    <p>Oops, you are not allowed to view this page!</p>
     <p><small>If you've been here before, someone has revoked your permissions.</small></p>
 </template>
 
@@ -377,16 +409,16 @@
 </template>
 
 <template class="micro-edit-user-page-template">
-    <h1>Edit user settings</h1>
     <form class="micro-edit-user-edit">
+        <header class="micro-heading micro-panel">
+            <h1>Edit user settings</h1>
+            <button class="action"><i class="fa fa-check-circle"></i> Save</button>
+        </header>
         <label>
-            <input name="name" />
             <small>Name</small>
             <small>Your name or nick name.</small>
+            <input name="name" />
         </label>
-        <p>
-            <button class="action"><i class="fa fa-check-circle"></i> Save</button>
-        </p>
     </form>
 
     <section>
@@ -400,14 +432,12 @@
         <div class="micro-edit-user-set-email-1">
             <form>
                 <label>
-                    <input name="email" type="email" required="required" />
                     <small>Email address</small>
+                    <input name="email" type="email" required="required" />
                 </label>
-                <p>
-                    <button class="action">
-                        <i class="fa fa-check-circle"></i> Add email address
-                    </button>
-                </p>
+                <button class="action">
+                    <i class="fa fa-check-circle"></i> Add email address
+                </button>
             </form>
         </div>
 
@@ -417,7 +447,7 @@
                 We've sent a message to your email address. Please open it and follow the
                 instructions.
             </p>
-            <p class="micro-edit-user-cancel-set-email"><button class="action">Cancel</button></p>
+            <button class="micro-edit-user-cancel-set-email link">Cancel</button>
             <p class="micro-progress"><i class="fa fa-spin fa-spinner"></i></p>
         </section>
 
@@ -428,79 +458,85 @@
 </template>
 
 <template class="micro-edit-settings-page-template">
-    <h1>Edit site settings</h1>
     <form class="micro-edit-settings-edit">
+        <header class="micro-heading micro-panel">
+            <h1>Edit site settings</h1>
+            <button is="micro-button" class="action" data-run="edit">
+                <i class="fa fa-check-circle"></i> Save
+            </button>
+        </header>
         <label>
-            <input name="title" required="required" data-value="settings.title" />
             <small>Title</small>
+            <input name="title" required="required" data-value="settings.title" />
         </label>
         <label>
-            <input name="icon" data-value="or settings.icon ''" />
             <small>Icon (optional)</small>
             <small>URL of the site icon.</small>
+            <input name="icon" data-value="or settings.icon ''" />
         </label>
         <label>
-            <input name="icon_small" data-value="or settings.icon_small ''" />
             <small>Icon small (optional)</small>
             <small>
                 URL of the site icon optimized for small scale. Should be 16 pixels square.
             </small>
+            <input name="icon_small" data-value="or settings.icon_small ''" />
         </label>
         <label>
-            <input name="icon_large" data-value="or settings.icon_large ''" />
             <small>Icon large (optional)</small>
             <small>
                 URL of the site icon optimized for large scale. Should be 192 pixels square.
             </small>
+            <input name="icon_large" data-value="or settings.icon_large ''" />
         </label>
         <label>
-            <input name="provider_name" data-value="or settings.provider_name ''" />
             <small>Service provider name (optional)</small>
+            <input name="provider_name" data-value="or settings.provider_name ''" />
         </label>
         <label>
-            <input name="provider_url" data-value="or settings.provider_url ''" />
             <small>Service provider website (optional)</small>
             <small>URL of the website of the service provider.</small>
+            <input name="provider_url" data-value="or settings.provider_url ''" />
         </label>
         <label>
-            <input name="provider_description"
-                   data-value="or settings.provider_description.en ''" />
             <small>Service provider description (optional)</small>
             <small>“The service is provided by Provider, …”</small>
+            <input name="provider_description"
+                   data-value="or settings.provider_description.en ''" />
         </label>
         <label>
-            <input name="feedback_url" data-value="or settings.feedback_url ''" />
             <small>Feedback &amp; help site (optional)</small>
             <small>URL of the feedback site / help desk.</small>
+            <input name="feedback_url" data-value="or settings.feedback_url ''" />
         </label>
-        <ul is="micro-menu">
-            <li>
-                <button is="micro-button" class="action" data-run="edit">
-                    <i class="fa fa-check-circle"></i> Done
-                </button>
-            </li>
-            <li><a class="link action-cancel" href="/">Cancel</a></li>
-        </ul>
     </form>
 </template>
 
 <template class="micro-activity-page-template">
     <h1>Site activity</h1>
     <p><small><i class='fa fa-eye'></i> Only visible to staff members</small></p>
-    <ul>
-        <li class="micro-lgroup">
-            <ul class="micro-timeline"></ul>
-        </li>
-        <li class="micro-activity-show-more">
-            <button is="micro-button" class="link">
-                <i class="fa fa-ellipsis-v"></i> Show more
-            </button>
-        </li>
+    <div class="micro-lgroup">
+        <ul class="micro-timeline"></ul>
+        <ul>
+            <li class="micro-activity-show-more">
+                <p>
+                    <button is="micro-button" type="button" class="link">
+                        <i class="fa fa-ellipsis-v"></i> More
+                    </button>
+                </p>
+            </li>
+        </ul>
     </ul>
 </template>
+
+<style>
+    micro-activity-page .micro-lgroup p {
+        padding: 0;
+    }
+</style>
 
 {% include 'components/analytics.html' %}
 {% include 'components/contextual.html' %}
 {% include 'components/image.html' %}
 {% include 'components/link.html' %}
 {% include 'components/video.html' %}
+{% include 'components/contentinput.html' %}

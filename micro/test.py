@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -14,13 +14,14 @@
 
 """Test utilites."""
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urljoin
 
 from tornado.httpclient import AsyncHTTPClient
 from tornado.testing import AsyncTestCase
 
-from .jsonredis import JSONRedis, RedisList
+from .core import RewriteFunc
+from .jsonredis import RedisList
 from .micro import (Activity, Application, Collection, Editable, Object, Orderable, Settings,
                     Trashable, WithContent)
 from .resource import Resource
@@ -76,43 +77,21 @@ class CatApp(Application):
             self.app.r.rpush('cats', cat.id)
             return cat
 
-    def __init__(self, redis_url: str = '') -> None:
-        super().__init__(redis_url=redis_url)
+    def __init__(self, redis_url: str = '', *, files_path: str = 'data') -> None:
+        super().__init__(redis_url=redis_url, files_path=files_path)
         self.types.update({'Cat': Cat})
         self.cats = self.Cats(app=self)
-
-    def do_update(self):
-        r = JSONRedis(self.r.r)
-        r.caching = False
-
-        cats = r.omget(r.lrange('cats', 0, -1))
-        for cat in cats:
-            # Deprecated since 0.14.0
-            if 'activity' not in cat:
-                cat['activity'] = Activity(
-                    '{}.activity'.format(cat['id']), app=self, subscriber_ids=[]).json()
-            # Deprecated since 0.27.0
-            if 'text' not in cat:
-                cat['text'] = None
-                cat['resource'] = None
-        r.omset({cat['id']: cat for cat in cats})
 
     def create_settings(self) -> Settings:
         # pylint: disable=unexpected-keyword-arg; decorated
         return Settings(
             id='Settings', app=self, authors=[], title='CatApp', icon=None, icon_small=None,
             icon_large=None, provider_name=None, provider_url=None, provider_description={},
-            feedback_url=None, staff=[], push_vapid_private_key=None, push_vapid_public_key=None,
-            v=2)
-
-    def sample(self):
-        """Set up some sample data."""
-        user = self.login()
-        auth_request = user.set_email('happy@example.org')
-        self.r.set('auth_request', auth_request.id)
+            feedback_url=None, staff=[], push_vapid_private_key='', push_vapid_public_key='')
 
 class Cat(Object, Editable, Trashable, WithContent):
     """Cute cat."""
+    # pylint: disable=invalid-overridden-method; do_edit may be async
 
     app = None # type: CatApp
 
@@ -145,12 +124,13 @@ class Cat(Object, Editable, Trashable, WithContent):
         if 'name' in attrs:
             self.name = expect_opt_type(str)(attrs['name'])
 
-    def json(self, restricted=False, include=False):
+    def json(self, restricted: bool = False, include: bool = False, *,
+             rewrite: RewriteFunc = None) -> Dict[str, object]:
         return {
-            **super().json(restricted, include),
-            **Editable.json(self, restricted, include),
-            **Trashable.json(self, restricted, include),
-            **WithContent.json(self, restricted, include),
+            **super().json(restricted=restricted, include=include, rewrite=rewrite),
+            **Editable.json(self, restricted=restricted, include=include, rewrite=rewrite),
+            **Trashable.json(self, restricted=restricted, include=include, rewrite=rewrite),
+            **WithContent.json(self, restricted=restricted, include=include, rewrite=rewrite),
             'name': self.name,
-            'activity': self.activity.json(restricted)
+            'activity': self.activity.json(restricted=restricted, rewrite=rewrite)
         }

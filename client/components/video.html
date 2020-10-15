@@ -1,310 +1,3 @@
-<script>
-micro.components = micro.components || {};
-
-/**
- * Video player.
- *
- * .. describe:: play
- *
- *    Dispatched when the video has started to play.
- *
- * .. describe:: pause
- *
- *    Dispatched when the video has paused playing.
- */
-micro.components.VideoElement = class extends HTMLElement {
-    createdCallback() {
-        this._player = null;
-
-        this.appendChild(
-            document.importNode(document.querySelector("#micro-video-template").content, true)
-        );
-        this._data = new micro.bind.Watchable({
-            video: null,
-            state: new micro.components.VideoElement._PausedUninitialized(this),
-            controlsVisible: true,
-
-            playPause: () => {
-                // Wait until button does not touch icon anymore
-                setTimeout(() => {
-                    if (this._data.state.playing) {
-                        this.pause();
-                    } else {
-                        this.play();
-                    }
-                }, 0);
-            },
-
-            onClick: event => {
-                if (!this.querySelector(".micro-video-controls").contains(event.target)) {
-                    this._data.controlsVisible = !this._data.controlsVisible;
-                }
-            },
-
-            onControlFocus: () => {
-                this._data.controlsVisible = true;
-            }
-        });
-        micro.bind.bind(this.children, this._data);
-    }
-
-    /** ref:`Video` to play. */
-    get video() {
-        return this._data.video;
-    }
-
-    set video(value) {
-        this._data.video = value;
-    }
-
-    /** Duration of the video in seconds. */
-    get duration() {
-        return this._data.state.duration;
-    }
-
-    /** Current position of the video in seconds. */
-    get time() {
-        return this._data.state.time;
-    }
-
-    /** Start playing the video. */
-    play() {
-        this._data.state.play();
-    }
-
-    /** Pause the video. */
-    pause() {
-        this._data.state.pause();
-    }
-
-    _switchPlaying() {
-        this._data.controlsVisible = false;
-        this.dispatchEvent(new CustomEvent("play"));
-    }
-
-    _switchPaused() {
-        this._data.controlsVisible = true;
-        this.dispatchEvent(new CustomEvent("pause"));
-    }
-
-    async _setUpPlayer() {
-        function importYT() {
-            if (micro.components.VideoElement._yt) {
-                return micro.components.VideoElement._yt;
-            }
-
-            const p = new Promise((resolve, reject) => {
-                window.onYouTubeIframeAPIReady = () => resolve(window.YT);
-                micro.util.import("https://www.youtube.com/iframe_api").catch(reject);
-            });
-
-            micro.components.VideoElement._yt = p;
-            p.catch(() => {
-                micro.components.VideoElement._yt = null;
-            });
-            return p;
-        }
-
-        function createPlayer(elem, videoId) {
-            return new Promise(resolve => {
-                new YT.Player(
-                    elem,
-                    {
-                        videoId,
-                        playerVars: {controls: 0, disablekb: 1},
-                        events: {onReady: event => resolve(event.target)}
-                    }
-                );
-            });
-        }
-
-        await importYT();
-        const videoId = new URL(this._data.video.url).searchParams.get("v");
-        const div = document.createElement("div");
-        this.querySelector("div").appendChild(div);
-        const player = await createPlayer(div, videoId);
-        player.cleanUp = () => {
-            player.destroy();
-            div.remove();
-        }
-        player.getIframe().tabIndex = -1;
-        return player;
-    }
-}
-
-micro.components.VideoElement._State = class {
-    constructor(owner) {
-        this.owner = owner;
-    }
-};
-
-Object.assign(micro.components.VideoElement, {
-    _yt: null,
-
-    _PausedUninitialized: class extends micro.components.VideoElement._State {
-        play() {
-            this.owner._playerSetup = (micro.util.abortable(async signal => {
-                try {
-                    const player = await this.owner._setUpPlayer();
-                    if (signal.aborted) {
-                        player.cleanUp();
-                        return;
-                    }
-                    this.owner._data.state.onSetUp(player);
-                } catch (e) {
-                    if (e instanceof micro.NetworkError) {
-                        if (signal.aborted) {
-                            return;
-                        }
-                        this.owner._data.state.onSetUpError();
-                    } else {
-                        throw e;
-                    }
-                }
-            })());
-            this.owner._data.state =
-                new micro.components.VideoElement._PlayingInitializing(this.owner);
-            this.owner._switchPlaying();
-        }
-
-        pause() {}
-
-        get playing() {
-            return false;
-        }
-
-        get duration() {
-            return 0;
-        }
-
-        get time() {
-            return 0;
-        }
-    },
-
-    _PlayingInitializing: class extends micro.components.VideoElement._State {
-        play() {}
-
-        pause() {
-            this.owner._playerSetup.abort();
-            this.owner._data.state =
-                new micro.components.VideoElement._PausedUninitialized(this.owner);
-            this.owner._switchPaused();
-        }
-
-        onSetUp(player) {
-            this.owner._player = player;
-            this.owner._player.addEventListener("onStateChange", event => {
-                if (event.data === YT.PlayerState.ENDED) {
-                    this.owner._data.state.onEnd();
-                }
-            });
-            this.owner._player.addEventListener(
-                "onError", event => this.owner._data.state.onError(event.data)
-            );
-            this.owner._player.playVideo();
-            this.owner._data.state =
-                new micro.components.VideoElement._PlayingInitialized(this.owner);
-        }
-
-        onSetUpError() {
-            ui.notify("Oops, there was a problem communicating with YouTube. Please try again in a few moments.");
-            this.owner._data.state =
-                new micro.components.VideoElement._PausedUninitialized(this.owner);
-            this.owner._switchPaused();
-        }
-
-        get playing() {
-            return true;
-        }
-
-        get duration() {
-            return 0;
-        }
-
-        get time() {
-            return 0;
-        }
-    },
-
-    _PlayingInitialized: class extends micro.components.VideoElement._State {
-        play() {}
-
-        pause() {
-            this.owner._player.pauseVideo();
-            this.owner._data.state =
-                new micro.components.VideoElement._PausedInitialized(this.owner);
-            this.owner._switchPaused();
-        }
-
-        onEnd() {
-            this.owner._player.cleanUp();
-            this.owner._data.state =
-                new micro.components.VideoElement._PausedUninitialized(this.owner);
-            this.owner._switchPaused();
-        }
-
-        onError(code) {
-            switch (code) {
-                case 5:
-                    ui.notify("Oops, there was a problem communicating with YouTube! Please try again in a few moments.");
-                    break;
-                case 100:
-                case 101:
-                case 150:
-                    ui.notify("Oops, the video is no longer available!");
-                    break;
-                default:
-                    throw new Error(code);
-            }
-            this.owner._player.cleanUp();
-            this.owner._data.state =
-                new micro.components.VideoElement._PausedUninitialized(this.owner);
-            this.owner._switchPaused();
-        }
-
-        get playing() {
-            return true;
-        }
-
-        get duration() {
-            return this.owner._player.getDuration();
-        }
-
-        get time() {
-            return this.owner._player.getCurrentTime();
-        }
-    },
-
-    _PausedInitialized: class extends micro.components.VideoElement._State {
-        play() {
-            this.owner._player.playVideo();
-            this.owner._data.state =
-                new micro.components.VideoElement._PlayingInitialized(this.owner);
-            this.owner._switchPlaying();
-        }
-
-        pause() {}
-
-        get playing() {
-            return false;
-        }
-
-        get duration() {
-            return this.owner._player.getDuration();
-        }
-
-        get time() {
-            return this.owner._player.getCurrentTime();
-        }
-    }
-});
-
-document.addEventListener(
-    "DOMContentLoaded", () => document.registerElement("micro-video", micro.components.VideoElement)
-);
-</script>
-
 <template id="micro-video-template">
     <div
         data-class-micro-video-controls-visible="controlsVisible" tabindex="0"
@@ -312,9 +5,16 @@ document.addEventListener(
         data-shortcut="new Shortcut 'C' 'Show / Hide controls'" data-onclick="onClick"
     >
         <img data-src="video.image.url" />
+        <div data-content="switch error">
+            <template>
+                <p>
+                    <span data-content="error"></span>
+                </p>
+            </template>
+        </div>
         <div class="micro-video-controls micro-panel">
             <button
-                is="micro-button" class="action" data-run="playPause"
+                is="micro-button" type="button" class="action" data-run="playPause"
                 data-shortcut="new Shortcut 'P' 'Play / Pause'"
                 data-onfocus="onControlFocus"
             >
@@ -353,15 +53,37 @@ micro-video > div:focus {
 }
 
 micro-video img,
-micro-video iframe[title] {
+micro-video iframe[title],
+micro-video p {
     display: block;
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
+}
+
+micro-video img {
     object-fit: contain;
+}
+
+micro-video iframe {
     pointer-events: none;
+}
+
+micro-video iframe:not([tabindex]) {
+    visibility: hidden;
+}
+
+micro-video p {
+    color: white;
+    background: black;
+}
+
+micro-video p > span {
+    display: block;
+    height: 100%;
+    overflow: hidden;
 }
 
 .micro-video-controls {

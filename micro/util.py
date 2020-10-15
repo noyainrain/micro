@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -22,10 +22,12 @@
 import argparse
 from argparse import ArgumentParser
 from asyncio import CancelledError, Task # pylint: disable=unused-import; typing
+import builtins
 from collections import OrderedDict
 from datetime import datetime, timezone
 import logging
 from logging import StreamHandler, getLogger
+from numbers import Real
 from os import walk
 from pathlib import Path
 import random
@@ -44,6 +46,7 @@ class OnType:
 ON = OnType()
 
 _T = TypeVar('_T')
+_U = TypeVar('_U')
 
 def str_or_none(str: str) -> Optional[str]:
     """Return *str* unmodified if it has content, otherwise return ``None``.
@@ -59,25 +62,20 @@ def randstr(length: int = 16, charset: str = string.ascii_lowercase) -> str:
     """
     return ''.join(random.choice(charset) for i in range(length))
 
-def parse_isotime(isotime: str, *, aware: bool = False) -> datetime:
+def parse_isotime(isotime: str) -> datetime:
     """Parse an ISO 8601 time string into a :class:`datetime.datetime`.
 
     Note that this rudimentary parser makes bold assumptions about the format: The first six
     components are always interpreted as year, month, day and optionally hour, minute and second.
     Everything else, i.e. microsecond and time zone information, is ignored.
-
-    .. deprecated:: 0.39.0
-
-       Naive time result. Work with aware object instead (with *aware* ``True``).
     """
     try:
         values = [int(t) for t in re.split(r'\D', isotime)[:6]]
         year, month, day = values[:3]
         hour, minute, second = (values[3:] + [0, 0, 0])[:3]
-        return datetime(year, month, day, hour, minute, second,
-                        tzinfo=timezone.utc if aware else None)
-    except (TypeError, ValueError):
-        raise ValueError('isotime_bad_format')
+        return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+    except (TypeError, ValueError) as e:
+        raise ValueError('isotime_bad_format') from e
 
 def parse_slice(str: str, limit: int = None) -> slice:
     """Parse a slice string into a :class:`slice`.
@@ -161,6 +159,9 @@ def make_command_line_parser() -> ArgumentParser:
         '--redis-url',
         help='URL of the Redis database, where path represents the database index. May be relative to redis://localhost/. Defaults to redis://localhost/0.')
     parser.add_argument(
+        '--files-path',
+        help='Directory where files are stored. Must be read and writable by the application. Defaults to data.')
+    parser.add_argument(
         '--smtp-url',
         help='URL of the SMTP server to use for outgoing email. Only host and port are considered, which default to localhost and 25 respectively.')
     parser.add_argument(
@@ -204,7 +205,7 @@ def run_instant(coro: Coroutine[object, object, _T]) -> _T:
     except StopIteration as e:
         return cast(_T, e.value)
 
-def expect_opt_type(cls: Type[_T]) -> ExpectFunc[Optional[object], Optional[_T]]:
+def expect_opt_type(cls: Type[_T]) -> ExpectFunc[Optional[_T]]:
     """Return a function that asserts a given *obj* is an instance of *cls* or ``None``."""
     def _f(obj: Optional[object]) -> Optional[_T]:
         if obj is not None and not isinstance(obj, cls):
@@ -228,8 +229,8 @@ def version(v):
     def _wrapper(*args, v=v, **kwargs):
         try:
             func = versions[v]
-        except KeyError:
-            raise NotImplementedError()
+        except KeyError as e:
+            raise NotImplementedError() from e
         return func(*args, **kwargs)
 
     def _version(v):
@@ -243,3 +244,39 @@ def version(v):
         versions[v] = func
         return _wrapper
     return _decorator
+
+class Expect:
+    """Compilation of type assertions.
+
+    .. attribute:: str
+
+       Assert that *obj* is a :class:`str`.
+
+    .. attribute:: float
+
+       Assert that *obj* is a :class:`float`.
+    """
+
+    str = expect_type(builtins.str)
+    float = expect_type(Real) # type: ignore
+
+    @staticmethod
+    def list(expect_item: ExpectFunc[_T]) -> ExpectFunc[List[_T]]:
+        """Return a function that asserts *obj* is a :class:`list`.
+
+        The type of each item is asserted with *expect_item*.
+        """
+        def _f(obj: object) -> List[_T]:
+            if not isinstance(obj, builtins.list):
+                raise TypeError()
+            for item in obj:
+                expect_item(item)
+            return obj
+        return _f
+
+    @staticmethod
+    def opt(expect: ExpectFunc[_T]) -> ExpectFunc[Optional[_T]]:
+        """Return a function that asserts *obj* is ``None`` or meets *expect*."""
+        def _f(obj: object) -> Optional[_T]:
+            return None if obj is None else expect(obj)
+        return _f

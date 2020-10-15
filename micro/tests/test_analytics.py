@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -12,6 +12,7 @@
 # You should have received a copy of the GNU Lesser General Public License along with this program.
 # If not, see <http://www.gnu.org/licenses/>.
 
+# type: ignore
 # pylint: disable=missing-docstring; test module
 
 from datetime import datetime, timedelta, timezone
@@ -56,3 +57,41 @@ class AnalyticsTest(MicroTestCase):
                          users_actual)
         self.assertEqual(self.app.analytics.statistics['users-active'].get(user=self.staff_member),
                          users_active)
+
+class ReferralsTest(MicroTestCase):
+    def test_add(self) -> None:
+        referral = self.app.analytics.referrals.add('https://example.org/', user=self.user)
+        self.assertEqual(referral.url, 'https://example.org/')
+        self.assertIn(referral.id, self.app.analytics.referrals)
+
+    def test_summarize(self) -> None:
+        self.app.user = self.staff_member
+        ten_days_ago = self.app.now() - timedelta(days=10)
+        with patch.object(self.app, 'now', return_value=ten_days_ago):
+            self.app.analytics.referrals.add('https://example.org/', user=self.user)
+        self.app.analytics.referrals.add('https://example.org/foo', user=self.user)
+        self.app.analytics.referrals.add('https://example.org/foo', user=self.user)
+        self.app.analytics.referrals.add('https://example.org/bar', user=self.user)
+
+        summary = self.app.analytics.referrals.summarize()
+
+        self.assertEqual(len(summary), 2)
+        self.assertEqual(summary[0], ('https://example.org/foo', 2))
+        self.assertEqual(summary[1], ('https://example.org/bar', 1))
+
+    def test_summarize_period(self) -> None:
+        self.app.user = self.staff_member
+        earlier = self.app.now() - timedelta(minutes=2)
+        with patch.object(self.app, 'now', return_value=earlier):
+            self.app.analytics.referrals.add('https://example.org/', user=self.user)
+        self.app.analytics.referrals.add('https://example.org/foo', user=self.user)
+        self.app.analytics.referrals.add('https://example.org/foo', user=self.user)
+        self.app.analytics.referrals.add('https://example.org/bar', user=self.user)
+
+        later = earlier + timedelta(minutes=1)
+        future = self.app.now() + timedelta(minutes=1)
+        summary = self.app.analytics.referrals.summarize((later, future))
+
+        self.assertEqual(len(summary), 2)
+        self.assertEqual(summary[0], ('https://example.org/foo', 2))
+        self.assertEqual(summary[1], ('https://example.org/bar', 1))

@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -42,7 +42,22 @@ micro.components.analytics.AnalyticsPage = class extends micro.Page {
         this.appendChild(
             document.importNode(ui.querySelector("#micro-analytics-page-template").content, true)
         );
+        this._data = new micro.bind.Watchable({
+            referrals: new micro.Collection("/api/stats/referrals"),
+            referralsComplete: false
+        });
+        micro.bind.bind(this.children, this._data);
+
         this.contentNode = this.querySelector(".micro-analytics-content");
+        this._data.referrals.events.addEventListener("fetch", () => {
+            this._data.referralsComplete = this._data.referrals.complete;
+        });
+    }
+
+    attachedCallback() {
+        super.attachedCallback();
+        const button = this.querySelector(".micro-analytics-more-referrals");
+        this.ready.when(button.trigger().catch(micro.util.catch));
     }
 };
 document.registerElement("micro-analytics-page", micro.components.analytics.AnalyticsPage);
@@ -117,9 +132,7 @@ micro.components.analytics.Chart = class extends HTMLElement {
             try {
                 Chart = await importChartjs();
                 statistics = await Promise.all(
-                    this.statistics.map(
-                        topic => ui.call("GET", `/api/analytics/statistics/${topic}`)
-                    )
+                    this.statistics.map(topic => ui.call("GET", `/api/stats/statistics/${topic}`))
                 );
             } catch (e) {
                 ui.handleCallError(e);
@@ -158,6 +171,17 @@ micro.components.analytics.Chart = class extends HTMLElement {
                             }
                         }]
                     },
+                    tooltips: {
+                        callbacks: {
+                            label(tooltipItem, data) {
+                                const dataset = data.datasets[tooltipItem.datasetIndex];
+                                const value = dataset.data[tooltipItem.index].y;
+                                const change =
+                                    value - dataset.data[Math.max(tooltipItem.index - 1, 0)].y;
+                                return `${dataset.label}: ${value} (${change >= 0 ? "+" : ""}${change})`;
+                            }
+                        }
+                    },
                     elements: {
                         point: {
                             radius: 0,
@@ -168,11 +192,12 @@ micro.components.analytics.Chart = class extends HTMLElement {
             });
 
             if (datasets[0].data.length >= 2) {
-                const from = datasets[0].data[0].t.toLocaleDateString(
-                    "en", micro.SHORT_DATE_FORMAT
+                const from = micro.bind.transforms.formatDate(
+                    null, datasets[0].data[0].t, micro.bind.transforms.SHORT_DATE_FORMAT
                 );
-                const to = datasets[0].data[datasets[0].data.length - 1].t.toLocaleDateString(
-                    "en", micro.SHORT_DATE_FORMAT
+                const to = micro.bind.transforms.formatDate(
+                    null, datasets[0].data[datasets[0].data.length - 1].t,
+                    micro.bind.transforms.SHORT_DATE_FORMAT
                 );
                 const summary = datasets.map(
                     dataset => `${dataset.label}: ${dataset.data[0].y} - ${dataset.data[dataset.data.length - 1].y}`

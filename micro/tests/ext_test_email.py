@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -12,6 +12,7 @@
 # You should have received a copy of the GNU Lesser General Public License along with this program.
 # If not, see <http://www.gnu.org/licenses/>.
 
+# type: ignore
 # pylint: disable=missing-docstring; test module
 
 import asyncore
@@ -81,7 +82,7 @@ class EmailTest(MicroTestCase):
 
     def test_user_set_email_auth_invalid(self):
         auth_request = self.user.set_email('happy@example.org')
-        with self.assertRaisesRegex(ValueError, 'auth_invalid'):
+        with self.assertRaisesRegex(ValueError, 'code'):
             self.user.finish_set_email(auth_request, 'foo')
 
     def test_user_remove_email(self):

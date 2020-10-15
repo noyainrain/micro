@@ -6,6 +6,14 @@
 
    Global :ref:`Activity` feed.
 
+.. http:get:: /api/activity/v2
+
+   Global :ref:`Activity` feed.
+
+   .. deprecated:: 0.57.0
+
+      Use :http:get:`/api/activity` instead.
+
 .. http:post:: /api/login
 
    ``{"code": null}``

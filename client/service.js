@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -102,6 +102,8 @@ micro.service.Service = class {
 
         const handlers = [
             ["^/api/.*$", () => {}],
+            ["^/files$", () => {}],
+            ["^/files/.*$", () => {}],
             ["^/log-client-error$", () => {}],
             ["^/manifest.webmanifest$", () => {}],
             [
@@ -114,11 +116,32 @@ micro.service.Service = class {
             ["^/.*$", event => event.respondWith(caches.match("/index.html", {ignoreSearch: true}))]
         ];
         addEventListener("fetch", event => {
-            if (!micro.service.MANIFEST.shell || micro.service.MANIFEST.debug) {
-                return;
-            }
             const url = new URL(event.request.url);
             if (url.origin !== location.origin) {
+                return;
+            }
+
+            // This is a preprocessor (instead of a handler) because we still need to post a message
+            // after the response is complete
+            if (event.request.method === "POST" && url.pathname === "/share") {
+                event.respondWith(Response.redirect("/share", 303));
+                event.waitUntil((async () => {
+                    const data = await event.request.formData();
+                    const client = await clients.get(event.resultingClientId);
+                    client.postMessage({
+                        type: "share",
+                        data: {
+                            title: data.get("title"),
+                            text: data.get("text"),
+                            url: data.get("url"),
+                            files: data.getAll("files")
+                        }
+                    });
+                })().catch(micro.util.catch));
+                return;
+            }
+
+            if (!micro.service.MANIFEST.shell || micro.service.MANIFEST.debug) {
                 return;
             }
             for (let [pattern, handle] of handlers) {

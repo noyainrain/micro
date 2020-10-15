@@ -6,6 +6,7 @@
         right: 0;
         box-shadow: var(--micro-shadow);
         background: white;
+        white-space: normal;
     }
 
     micro-contextual:not(.micro-contextual-active) {
@@ -13,9 +14,10 @@
         overflow: hidden;
     }
 
-    micro-contextual > :first-child,
-    micro-contextual > :last-child {
-        margin: 0;
+    micro-contextual .link,
+    micro-contextual .action,
+    micro-contextual p[tabindex] {
+        white-space: nowrap;
     }
 
     .micro-contextual-wrapper {

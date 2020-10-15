@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -17,8 +17,6 @@
 import builtins
 from typing import Dict
 
-from . import webapi
-
 class Error(Exception):
     """Base for micro errors."""
 
@@ -27,26 +25,7 @@ class Error(Exception):
         return {'__type__': type(self).__name__, 'message': str(self)}
 
 class ValueError(builtins.ValueError, Error):
-    """See :ref:`ValueError`.
+    """See :ref:`ValueError`."""
 
-    The first item of *args* is also available as *code*.
-    """
-
-    @property
-    def code(self) -> object:
-        # pylint: disable=missing-docstring; already documented
-        return self.args[0] if self.args else None # type: ignore
-
-    def json(self) -> Dict[str, object]:
-        # Compatibility for code (deprecated since 0.27.0)
-        return {**super().json(), 'code': self.code}
-
-class CommunicationError(Error):
-    """See :ref:`CommunicationError`.
-
-    .. deprecated:: 0.28.0
-
-       Use :exc:`webapi.CommunicationError` instead.
-    """
-# Compatibility for micro CommunicationError (deprecated since 0.28.0)
-webapi.CommunicationError = CommunicationError # type: ignore
+class PermissionError(Error):
+    """See :ref:`PermissionError`."""

@@ -2,6 +2,7 @@
 # Released into the public domain
 # https://github.com/noyainrain/micro/blob/master/micro/jsonredis.py
 
+# type: ignore
 # pylint: disable=missing-docstring; test module
 
 from collections import OrderedDict
@@ -16,7 +17,7 @@ from unittest.mock import Mock
 from redis import StrictRedis
 from redis.exceptions import ResponseError
 from micro.jsonredis import (JSONRedis, RedisList, RedisSortedSet, JSONRedisSequence,
-                             JSONRedisMapping, expect_type, bzpoptimed, zpoptimed)
+                             JSONRedisMapping, expect_type, bzpoptimed, script, zpoptimed)
 
 class JSONRedisTestCase(TestCase):
     def setUp(self) -> None:
@@ -235,6 +236,17 @@ class JSONRedisMappingTest(JSONRedisTestCase):
     def test_contains(self):
         self.assertTrue('cat:0' in self.cats)
         self.assertFalse('foo' in self.cats)
+
+class ScriptTest(JSONRedisTestCase):
+    def test_script(self) -> None:
+        f = script(self.r.r, 'return "Meow!"')
+        result = expect_type(bytes)(f()).decode()
+        self.assertEqual(result, 'Meow!')
+
+    def test_script_cached(self) -> None:
+        f_cached = script(self.r.r, 'return "Meow!"')
+        f = script(self.r.r, 'return "Meow!"')
+        self.assertIs(f, f_cached)
 
 class ZPopTimedTest(JSONRedisTestCase):
     def make_queue(self, t: float) -> List[Tuple[bytes, float]]:

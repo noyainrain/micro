@@ -2,6 +2,7 @@
 # Released into the public domain
 # https://github.com/noyainrain/micro/blob/master/micro/webapi.py
 
+# type: ignore
 # pylint: disable=missing-docstring; test module
 
 import json
@@ -52,6 +53,6 @@ class WebAPITest(AsyncHTTPTestCase):
 
     @gen_test
     async def test_call_no_host(self) -> None:
-        api = WebAPI('https://example.invalid/api/')
+        api = WebAPI('https://[::]/api/')
         with self.assertRaises(CommunicationError):
             await api.call('GET', 'echo')

@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -22,7 +22,10 @@
 
 "use strict";
 
+const http = require("http");
+
 let {Builder, WebElementCondition} = require("selenium-webdriver");
+const {FileDetector} = require("selenium-webdriver/remote");
 
 /**
  * Start a WebDriver session for running the given Mocha *test*.
@@ -44,6 +47,7 @@ exports.startBrowser = function(test, subject) {
         name: `[${subject}]${tag} ${test.fullTitle()}`
     };
     let browser = new Builder().usingServer(webdriverURL).withCapabilities(capabilities).build();
+    browser.setFileDetector(new FileDetector());
     browser.remote = Boolean(webdriverURL);
     return browser;
 };
@@ -73,5 +77,36 @@ exports.untilElementTextLocated = function(locator, text) {
         }
         let t = await elem.getText();
         return t.includes(text) ? elem : null;
+    });
+};
+
+/** Create a condition that will wait for the attribute with *attributeName* to match *regex*. */
+exports.untilElementAttributeMatches = function(element, attributeName, regex) {
+    return new WebElementCondition("until element attribute matches", async () => {
+        const value = await element.getAttribute(attributeName);
+        return regex.test(value) ? element : null;
+    });
+};
+
+/**
+ * Make an HTTP request.
+ *
+ * Async wrapper around :meth:`http.request`. *options* takes an additional attribute *body*, the
+ * request body as :cls:`Buffer` or string. The returned response has an additional attribute
+ * *body*, the response body as :cls:`Buffer`.
+ */
+exports.request = function(url, options) {
+    return new Promise((resolve, reject) => {
+        const request = http.request(url, options, response => {
+            const data = [];
+            response.on("data", chunk => data.push(chunk));
+            response.on("end", () => {
+                response.body = Buffer.concat(data);
+                resolve(response);
+            });
+            response.on("error", reject);
+        });
+        request.on("error", reject);
+        request.end(options.body);
     });
 };

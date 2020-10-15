@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -54,13 +54,16 @@ hello.StartPage = class extends micro.Page {
             greetings: new micro.Collection("/api/greetings"),
 
             createGreeting: async() => {
+                const input = this.querySelector("micro-content-input");
                 try {
-                    const form = this.querySelector("form");
-                    const text = form.elements.text.value;
-                    const match = text.match(/^https?:\/\/\S+/u);
-                    const resource = match ? match[0] : null;
-                    await ui.call("POST", "/api/greetings", {text, resource});
-                    form.reset();
+                    const {text, resource} = input.valueAsObject;
+                    const greeting = await ui.call(
+                        "POST", "/api/greetings", {text, resource: resource && resource.url}
+                    );
+                    input.valueAsObject = {text: null, resource: null};
+                    this._activity.events.dispatchEvent(
+                        {type: "greetings-create", object: null, detail: {greeting}}
+                    );
                 } catch (e) {
                     if (
                         e instanceof micro.APIError &&
@@ -69,7 +72,8 @@ hello.StartPage = class extends micro.Page {
                             "BrokenResourceError"
                         ].includes(e.error.__type__)
                     ) {
-                        ui.notify("Oops, there was a problem opening the link. Please try again in a few moments.");
+                        // Delete the resource if it is no longer retrievable
+                        input.valueAsObject = {text: input.valueAsObject.text, resource: null};
                     } else {
                         ui.handleCallError(e);
                     }
@@ -89,10 +93,15 @@ hello.StartPage = class extends micro.Page {
             try {
                 await this._data.greetings.fetch();
                 this._activity = await micro.Activity.open("/api/activity/stream");
-                this._activity.events.addEventListener(
-                    "greetings-create",
-                    event => this._data.greetings.items.unshift(event.detail.event.detail.greeting)
-                );
+                this._activity.events.addEventListener("greetings-create", event => {
+                    if (
+                        !this._data.greetings.items.find(
+                            greeting => greeting.id === event.detail.event.detail.greeting.id
+                        )
+                    ) {
+                        this._data.greetings.items.unshift(event.detail.event.detail.greeting);
+                    }
+                });
             } catch (e) {
                 ui.handleCallError(e);
             }

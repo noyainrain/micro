@@ -7,7 +7,8 @@ Arguments are passed to an endpoint simply as JSON object and the result is retu
 *Objects* contain a ``__type__`` attribute that holds the name of the object type.
 
 If a requested endpoint doesn't exist, a :ref:`NotFoundError` is returned. For any endpoint, an
-:ref:`InputError` is returned if the input contains invalid arguments.
+:ref:`InputError` is returned if the input contains invalid arguments. A :ref:`RateLimitError` is
+returned if the current client exceeds the allowed rate limit for an operation.
 
 The URL that uniquely identifies an object is referred to as *object-url*, e.g. ``users/abc`` for a
 :ref:`User` with the *id* ``abc``.
@@ -193,10 +194,13 @@ Location.
 
    Coordinates as latitude-longitude pair. May be ``null``.
 
+Resources
+---------
+
 .. _Resource:
 
 Resource
---------
+^^^^^^^^
 
 Web resource description.
 
@@ -205,7 +209,7 @@ Web resource description.
 .. _Image:
 
 Image
------
+^^^^^
 
 Image :ref:`Resource` description.
 
@@ -216,11 +220,20 @@ Note that the *image* representation is always ``null``.
 .. _Video:
 
 Video
------
+^^^^^
 
 Video :ref:`Resource` description.
 
 .. include:: micro/resource-attributes.inc
+
+Previews
+^^^^^^^^
+
+Web :ref:`Resource` previews.
+
+.. http:get:: /api/previews/(url)
+
+   Get a description of the web :ref:`Resource` at *url*.
 
 Analytics
 ---------
@@ -261,6 +274,57 @@ Statistic data point.
 
    Statistic value.
 
+.. _Referral:
+
+Referral
+^^^^^^^^
+
+Referral from another site.
+
+.. include:: micro/object-attributes.inc
+
+.. describe:: url
+
+   Absolute referrer URL.
+
+.. describe:: time
+
+   Date and time of the referral.
+
+.. _Referrals:
+
+Referrals
+^^^^^^^^^
+
+:ref:`Referral` :ref:`Collection`, latest first.
+
+Only staff members can query the referrals.
+
+.. include:: micro/collection-endpoints.inc
+
+.. http:post:: /api/analytics/referrals
+
+   ``{url}``
+
+   Record a :ref:`Referral` from *url* and return it.
+
+.. http:get:: /api/analytics/referrals/summary?period
+
+   Get a referral summary for the given time *period*.
+
+   *period* is a simple ISO 8601 time interval string and defaults to the last 7 days.
+
+   The summary is an object ``{referrers}``, where *referrers* is a sorted array of objects
+   ``{url, count}`` with the referrer *url* and *count* of occurrences.
+
+   Permission: Staff members.
+
+Files
+-----
+
+To upload a file, ``POST`` to ``/files``. Supported file types are ``image/bmp``, ``image/gif``,
+``image/jpeg``, ``image/png`` and ``image/svg+xml``.
+
 Errors
 ------
 
@@ -270,14 +334,6 @@ ValueError
 ^^^^^^^^^^
 
 Returned for value-related errors.
-
-.. describe:: code
-
-   Error string providing more information about the problem.
-
-   .. deprecated:: 0.27.0
-
-      Use :attr:`message` instead.
 
 .. _InputError:
 
@@ -312,6 +368,13 @@ PermissionError
 ^^^^^^^^^^^^^^^
 
 Returned if the current user is not allowed to perform an action.
+
+.. _RateLimitError:
+
+RateLimitError
+^^^^^^^^^^^^^^
+
+Returned if the current client exceeds the allowed rate limit for an operation.
 
 .. _CommunicationError:
 

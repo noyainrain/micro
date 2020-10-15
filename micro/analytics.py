@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -21,14 +21,21 @@
 
 from asyncio import Task, ensure_future, sleep # pylint: disable=unused-import; typing
 import json
+from collections import defaultdict
 from datetime import datetime, timedelta
+from logging import getLogger
 import typing
-from typing import Callable, Dict, Iterator, List, Mapping, Optional, cast
+from typing import Callable, DefaultDict, Dict, Iterator, List, Mapping, Optional, Tuple, cast
+from urllib.parse import urlsplit
 
-from .util import expect_type, parse_isotime
+from . import error
+from .core import RewriteFunc
+from .jsonredis import RedisSortedSet
+from .micro import Collection, Object, User
+from .util import expect_type, parse_isotime, randstr
 
 if typing.TYPE_CHECKING:
-    from micro import Application, User
+    from .micro import Application
 
 StatisticFunc = Callable[[datetime], float]
 
@@ -42,6 +49,10 @@ class Analytics:
     .. attribute:: statistics
 
        Statistics over time by topic.
+
+    .. attribute:: referrals
+
+       Referrals from other sites.
 
     .. attribute:: app
 
@@ -57,6 +68,7 @@ class Analytics:
             **definitions
         } # type: Dict[str, StatisticFunc]
         self.statistics = {topic: Statistic(topic, app=app) for topic in self.definitions}
+        self.referrals = Referrals(app=app)
         self.app = app
 
     def collect_statistics(self, *, _t: datetime = None) -> None:
@@ -74,6 +86,7 @@ class Analytics:
                 t += timedelta(days=1)
                 await sleep((t - self.app.now()).total_seconds())
                 self.collect_statistics(_t=t)
+                getLogger(__name__).info('Collected statistics for %s', format(t, '%d %b %Y'))
         return cast('Task[None]', ensure_future(_run()))
 
     def _count_users(self, t: datetime) -> float:
@@ -88,7 +101,7 @@ class Analytics:
         return sum(1 for user in self._actual_users()
                    if t - user.authenticate_time <= timedelta(days=30)) # type: ignore
 
-    def _actual_users(self) -> Iterator['User']:
+    def _actual_users(self) -> Iterator[User]:
         return (user for user in self.app.users[:] # type: ignore
                 if user.authenticate_time - user.create_time >= timedelta(days=1)) # type: ignore
 
@@ -109,14 +122,14 @@ class Statistic:
         self.app = app
         self._key = 'analytics.statistics.{}'.format(self.topic)
 
-    def get(self, *, user: Optional['User']) -> List['Point']:
+    def get(self, *, user: Optional[User]) -> List['Point']:
         """See :http:get:`/api/analytics/statistics/(topic)`."""
         if not user in self.app.settings.staff: # type: ignore
-            raise PermissionError()
+            raise error.PermissionError()
         return [Point.parse(json.loads(p.decode())) for p # type: ignore
                 in self.app.r.r.zrange(self._key, 0, -1)] # type: ignore
 
-    def json(self, *, user: 'User' = None) -> Dict[str, object]:
+    def json(self, *, user: User = None) -> Dict[str, object]:
         """See :meth:`micro.JSONifiable.json`."""
         return {'items': [p.json() for p in self.get(user=user)]}
 
@@ -136,7 +149,7 @@ class Point:
         v = data.get('v')
         if not isinstance(v, (float, int)):
             raise TypeError()
-        return Point(parse_isotime(expect_type(str)(data.get('t')), aware=True), float(v))
+        return Point(parse_isotime(expect_type(str)(data.get('t'))), float(v))
 
     def json(self) -> Dict[str, object]:
         """See :meth:`micro.JSONifiable.json`."""
@@ -144,3 +157,55 @@ class Point:
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Point) and self.t == other.t and self.v == other.v
+
+class Referral(Object):
+    """See :ref:`Referral`."""
+
+    def __init__(self, *, id: str, app: 'Application', url: str, time: str) -> None:
+        super().__init__(id=id, app=app)
+        self.url = url
+        self.time = parse_isotime(time)
+
+    def json(self, restricted: bool = False, include: bool = False, *,
+             rewrite: RewriteFunc = None) -> Dict[str, object]:
+        return {
+            **super().json(restricted=restricted, include=include, rewrite=rewrite),
+            'url': self.url,
+            'time': self.time.isoformat()
+        }
+
+class Referrals(Collection[Referral]):
+    """See :ref:`Referrals`."""
+
+    def __init__(self, *, app: 'Application') -> None:
+        super().__init__(RedisSortedSet('analytics.referrals', app.r.r),
+                         check=lambda key: self.app.check_user_is_staff(), app=app) # type: ignore
+
+    def add(self, url: str, *, user: Optional[User]) -> Referral:
+        """See :http:post:`/api/analytics/referrals`."""
+        # pylint: disable=unused-argument; part of API
+        if not urlsplit(url).scheme:
+            raise error.ValueError('Relative url {}'.format(url))
+        referral = Referral(id=randstr(), app=self.app, url=url, time=self.app.now().isoformat())
+        self.app.r.oset(referral.id, referral)
+        self.app.r.r.zadd(self.ids.key, {referral.id.encode(): -referral.time.timestamp()})
+        return referral
+
+    def summarize(self, period: Tuple[datetime, datetime] = None) -> List[Tuple[str, int]]:
+        """See :http:get:`/api/analytics/referrals/summary?period`."""
+        self.app.check_user_is_staff()
+
+        if period is None:
+            end = self.app.now()
+            period = (end - timedelta(days=7), end)
+        # Since the scores of the entries are timestamps * -1, we must also multiply the given
+        # timestamps by -1 and invert the order so it is still a valid interval
+        period = (-period[1].timestamp(), -period[0].timestamp())
+        keys = [key.decode() for key in self.app.r.r.zrangebyscore(self.ids.key, *period)]
+
+        result: DefaultDict[str, int] = defaultdict(lambda: 0)
+        referrals = self.app.r.omget(keys, default=AssertionError, expect=expect_type(Referral))
+        for referral in referrals:
+            result[referral.url] += 1
+
+        return sorted(result.items(), key=lambda x: (-x[1], x[0]))

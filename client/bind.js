@@ -141,20 +141,8 @@ micro.bind.Watchable = function(target = {}) {
  *
  * And the DOM will be updated automatically if a data property changes or the *posts* array is
  * modified.
- *
- * .. deprecated:: 0.9.0
- *
- *    *template* is deprecated.
  **/
-micro.bind.bind = function(elem, data, template = null) {
-    // Compatibility for template (deprecated since 0.9.0)
-    if (template) {
-        if (typeof template === "string") {
-            template = document.querySelector(template);
-        }
-        elem.appendChild(document.importNode(template.content, true));
-    }
-
+micro.bind.bind = function(elem, data) {
     let stack = [].concat(data, micro.bind.transforms);
     let elems;
     if (elem.length) {
@@ -436,6 +424,19 @@ micro.bind.transforms = {
     },
 
     /**
+     * Return a string representation of the given :class:`Date` *date*.
+     *
+     * Alternatively, *date* may be a string parsable by :class:`Date`. *format* is equivalent to
+     * the *options* argument of :meth:`Date.toLocaleString`.
+     */
+    formatDate(ctx, date, format) {
+        if (typeof date === "string") {
+            date = new Date(date);
+        }
+        return date.toLocaleString("en", format);
+    },
+
+    /**
      * Project *arr* into the DOM.
      *
      * If *arr* is :class:`Watchable`, the DOM will be live, i.e. updating *arr* will update the DOM
@@ -493,7 +494,7 @@ micro.bind.transforms = {
      * *separator* is inserted between adjacent items. *transform* and *args* are equivalent to the
      * arguments of :func:`micro.bind.list`.
      */
-    join(ctx, arr, itemName, separator = ", ", transform, ...args) {
+    join(ctx, arr, itemName, separator = ", ", transform = null, ...args) {
         if (!ctx.elem.__templates__) {
             ctx.elem.__templates__ = Array.from(ctx.elem.querySelectorAll("template"));
         }
@@ -580,82 +581,6 @@ micro.bind.transforms = {
         micro.bind.bind(elem, ctx.data);
         return elem;
     }
-};
-
-/**
- * Project the :class:`Watchable` array :class:*arr* into a live DOM fragment.
- *
- * Optionally, a live transform can be applied on *arr* with the function
- * ``transform(arr, ...args)``. *args* are passed through.
- *
- * .. deprecated:: 0.8.0
- *
- *    Use :func:`micro.bind.transforms.list`.
- */
-micro.bind.list = function(elem, arr, itemName, transform, ...args) {
-    function create(item) {
-        let child = document.importNode(elem.__templates__[0].content, true).querySelector("*");
-        child[itemName] = item;
-        return child;
-    }
-
-    if (!elem.__templates__) {
-        elem.__templates__ = Array.from(elem.querySelectorAll("template"));
-    }
-
-    let fragment = document.createDocumentFragment();
-
-    if (arr) {
-        if (transform) {
-            arr = transform(arr, ...args);
-        }
-
-        arr.watch(Symbol.for("*"), (prop, value) => {
-            elem.children[prop][itemName] = value;
-        });
-        arr.watch(Symbol.for("+"),
-                  (prop, value) => elem.insertBefore(create(value), elem.children[prop] || null));
-        arr.watch(Symbol.for("-"), prop => elem.children[prop].remove());
-
-        arr.forEach(item => fragment.appendChild(create(item)));
-    }
-
-    return fragment;
-};
-
-/**
- * Join all items of the array *arr* into a DOM fragment.
- *
- * *separator* is inserted between adjacent items. *transform* and *args* are equivalent to the
- * arguments of :func:`micro.bind.list`.
- *
- * .. deprecated:: 0.8.0
- *
- *    Use :func:`micro.bind.transforms.join`.
- */
-micro.bind.join = function(elem, arr, itemName, separator = ", ", transform, ...args) {
-    if (!elem.__templates__) {
-        elem.__templates__ = Array.from(elem.querySelectorAll("template"));
-    }
-
-    let fragment = document.createDocumentFragment();
-
-    if (arr) {
-        if (transform) {
-            arr = transform(arr, ...args);
-        }
-
-        for (let [i, item] of arr.entries()) {
-            if (i > 0) {
-                fragment.appendChild(document.createTextNode(separator));
-            }
-            let child = document.importNode(elem.__templates__[0].content, true).querySelector("*");
-            child[itemName] = item;
-            fragment.appendChild(child);
-        }
-    }
-
-    return fragment;
 };
 
 /** Convert a camel case *str* to dashed style. */
