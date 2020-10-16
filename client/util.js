@@ -23,28 +23,6 @@
 self.micro = self.micro || {};
 micro.util = {};
 
-/** Thrown if network communication failed. */
-micro.NetworkError = class NetworkError {};
-
-/**
- * Thrown for HTTP JSON REST API errors.
- *
- * .. attribute:: error
- *
- *    The error object.
- *
- * .. attribute:: status
- *
- *    The associated HTTP status code.
- */
-micro.APIError = class APIError extends Error {
-    constructor(error, status) {
-        super(`${error.__type__}: ${error.message}`);
-        this.error = error;
-        this.status = status;
-    }
-};
-
 /**
  * Call a *method* on the HTTP JSON REST API endpoint at *url*.
  *
@@ -54,10 +32,10 @@ micro.APIError = class APIError extends Error {
  * If an error occurs, the promise rejects with an :class:`APIError`. For any IO related errors, it
  * rejects with a :class:`micro.NetworkError`.
  */
-micro.call = async function(method, url, args) {
+/*micro.call = async function(method, url, args) {
     throw new Error("TODO");
     // return new micro.WebApi().call(method, url, {args});
-};
+};*/
 
 // TODO could add this in experimental branch, and just add headers option to micro.call
 // micro.call = async function(method, url, args, {headers = {}}) {}
@@ -65,43 +43,6 @@ micro.call = async function(method, url, args) {
 // micro.call(method, url, args, {
 //     headers: this.user ? {Authorization: `Bearer ${this.user.auth_secret}`} : {}
 // });
-micro.WebApi = class {
-    constructor({url = location.origin, query = {}, headers = {}} = {}) {
-        this.url = url;
-        this.query = query;
-        this.headers = headers;
-    }
-
-    async call(method, url, {args = null, query = {}} = {}) {
-        url = new URL(url, this.url);
-        for (let [key, value] of Object.entries(Object.assign({}, this.query, query))) {
-            url.searchParams.set(key, value);
-        }
-        const options = {method, credentials: "same-origin", headers: Object.assign({}, this.headers)};
-        if (args) {
-            options.headers["Content-Type"] = "application/json";
-            options.body = JSON.stringify(args);
-        }
-
-        let response;
-        let result;
-        try {
-            response = await fetch(url, options);
-            result = await response.json();
-        } catch (e) {
-            if (e instanceof TypeError) {
-                throw new micro.NetworkError(`${e.message} for ${method} ${url}`);
-            } else if (e instanceof SyntaxError) {
-                throw new micro.NetworkError(`Bad response format for ${method} ${url}`);
-            }
-            throw e;
-        }
-        if (!response.ok) {
-            throw new micro.APIError(result, response.status);
-        }
-        return result;
-    }
-};
 
 /**
  * Promise that resolves when another given promise is done.
@@ -359,7 +300,7 @@ micro.util.importCSS = function(url) {
  */
 micro.util.watchErrors = function() {
     async function report(e) {
-        await new micro.WebApi().call("POST", "/log-client-error", {args: {
+        await new micro.webapi.WebAPI().call("POST", "/log-client-error", {args: {
             type: e.constructor.name,
             // Stack traces may be truncated for security reasons, resulting in an empty string at
             // worst

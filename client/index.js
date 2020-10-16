@@ -78,7 +78,7 @@ micro.UI = class extends HTMLBodyElement {
         this._activities = new Set();
 
         // TODO subclass API
-        this.api = new micro.WebApi();
+        this.api = new micro.webapi.WebAPI({url: `${location.origin}/api/`});
 
         this.pages = [
             {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.EditUserPage.make},

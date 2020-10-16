@@ -1,3 +1,11 @@
+headers
+
+webapi constr
+        this.headers = headers;
+
+options:
+, headers: Object.assign({}, this.headers)};
+---
 
         if (version < 3) {
             document.cookie = "auth_secret=; path=/; max-age=0";
