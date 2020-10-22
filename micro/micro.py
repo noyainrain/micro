@@ -26,6 +26,7 @@ from logging import getLogger
 from pathlib import Path
 import re
 from smtplib import SMTP
+import string
 import sys
 from typing import (AsyncIterator, Awaitable, Callable, Coroutine, Dict, Generic, Iterator, List,
                     Optional, Set, Sequence, Tuple, Type, TypeVar, Union, cast, overload)
@@ -802,13 +803,13 @@ class User(Object, Editable):
         self.app.r.oset(self.id, self)
         self.app.r.hset('user_email_map', self.email, self.id)
 
-    def set_email(self, email):
+    def set_email(self, email: str) -> 'AuthRequest':
         """See :http:post:`/api/users/(id)/set-email`."""
         if self.app.user != self:
             raise error.PermissionError()
         check_email(email)
 
-        code = randstr()
+        code = randstr(length=5, charset=string.ascii_uppercase)
         auth_request = AuthRequest(id='AuthRequest:' + randstr(), app=self.app, email=email,
                                    code=code)
         self.app.r.oset(auth_request.id, auth_request)
@@ -905,7 +906,7 @@ class User(Object, Editable):
                 })
         }
 
-    def _send_email(self, to, msg):
+    def _send_email(self, to: str, msg: str) -> None:
         match = re.fullmatch(r'Subject: ([^\n]+)\n\n(.+)', msg, re.DOTALL)
         if not match:
             raise ValueError('msg_invalid')

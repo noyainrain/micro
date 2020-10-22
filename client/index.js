@@ -78,7 +78,7 @@ micro.UI = class extends HTMLBodyElement {
         this._activities = new Set();
 
         this.pages = [
-            {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.EditUserPage.make},
+            {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.components.user.EditUserPage.make},
             {url: "^/settings/edit$", page: micro.EditSettingsPage.make},
             {url: "^/analytics$", page: micro.components.analytics.AnalyticsPage.make},
             {url: "^/activity$", page: micro.ActivityPage.make}
@@ -1690,191 +1690,6 @@ micro.AboutPage = class extends micro.Page {
 };
 
 /**
- * Edit user page.
- */
-micro.EditUserPage = class extends micro.Page {
-    static async make(url, id) {
-        id = id || ui.user.id;
-        let user = await ui.call("GET", `/api/users/${id}`);
-        if (!(ui.user.id === user.id)) {
-            return document.createElement("micro-forbidden-page");
-        }
-        let page = document.createElement("micro-edit-user-page");
-        page.user = user;
-        return page;
-    }
-
-    createdCallback() {
-        super.createdCallback();
-        this._user = null;
-        this.caption = "Edit user settings";
-        this.appendChild(document.importNode(
-            ui.querySelector(".micro-edit-user-page-template").content, true));
-        this._form = this.querySelector("form");
-        this.querySelector(".micro-edit-user-edit").addEventListener("submit", this);
-
-        this._setEmail1 = this.querySelector(".micro-edit-user-set-email-1");
-        this._setEmailForm = this.querySelector(".micro-edit-user-set-email-1 form");
-        this._setEmail2 = this.querySelector(".micro-edit-user-set-email-2");
-        this._emailP = this.querySelector(".micro-edit-user-email-value");
-        this._setEmailAction = this.querySelector(".micro-edit-user-set-email-1 form button");
-        this._cancelSetEmailAction = this.querySelector(".micro-edit-user-cancel-set-email");
-        this._removeEmailAction = this.querySelector(".micro-edit-user-remove-email");
-        this._removeEmailAction.addEventListener("click", this);
-        this._setEmailAction.addEventListener("click", this);
-        this._cancelSetEmailAction.addEventListener("click", this);
-        this._setEmailForm.addEventListener("submit", e => e.preventDefault());
-    }
-
-    attachedCallback() {
-        super.attachedCallback();
-        this.ready.when((async() => {
-            let match = /^#set-email=([^:]+):([^:]+)$/u.exec(location.hash);
-            if (match) {
-                history.replaceState(null, null, location.pathname);
-                let authRequestID = `AuthRequest:${match[1]}`;
-                let authRequest = JSON.parse(localStorage.authRequest || null);
-                if (!authRequest || authRequestID !== authRequest.id) {
-                    ui.notify(
-                        "The email link was not opened on the same browser/device on which the email address was entered (or the email link is outdated).");
-                    return;
-                }
-
-                this._showSetEmailPanel2(true);
-                try {
-                    this.user = await ui.call(
-                        "POST", `/api/users/${this._user.id}/finish-set-email`, {
-                            auth_request_id: authRequest.id,
-                            auth: match[2]
-                        });
-                    delete localStorage.authRequest;
-                    this._hideSetEmailPanel2();
-                } catch (e) {
-                    if (e instanceof micro.APIError && e.error.__type__ === "ValueError") {
-                        if (e.error.message.includes("code")) {
-                            this._showSetEmailPanel2();
-                            ui.notify("The email link was modified. Please try again.");
-                        } else {
-                            delete localStorage.authRequest;
-                            this._hideSetEmailPanel2();
-                            ui.notify({
-                                auth_request_not_found:
-                                    "The email link is expired. Please try again.",
-                                email_duplicate:
-                                    "The given email address is already in use by another user."
-                            }[e.error.message]);
-                        }
-                    } else {
-                        ui.handleCallError(e);
-                    }
-                }
-            }
-
-            this._form.elements.name.focus();
-        })().catch(micro.util.catch));
-    }
-
-    /**
-     * :ref:`User` to edit.
-     */
-    get user() {
-        return this._user;
-    }
-
-    set user(value) {
-        this._user = value;
-        this.classList.toggle("micro-edit-user-has-email", this._user.email);
-        this._form.elements.name.value = this._user.name;
-        this._emailP.textContent = this._user.email;
-    }
-
-    async _setEmail() {
-        if (!this._setEmailForm.checkValidity()) {
-            return;
-        }
-
-        try {
-            let authRequest = await ui.call("POST", `/api/users/${this.user.id}/set-email`, {
-                email: this._setEmailForm.elements.email.value
-            });
-            localStorage.authRequest = JSON.stringify(authRequest);
-            this._setEmailForm.reset();
-            this._showSetEmailPanel2();
-        } catch (e) {
-            ui.handleCallError(e);
-        }
-    }
-
-    _cancelSetEmail() {
-        this._hideSetEmailPanel2();
-    }
-
-    async _removeEmail() {
-        try {
-            this.user = await ui.call("POST", `/api/users/${this.user.id}/remove-email`);
-        } catch (e) {
-            if (e instanceof micro.APIError && e.__type__ === "ValueError") {
-                // If the email address has already been removed, we just update the UI
-                this.user.email = null;
-                // eslint-disable-next-line no-self-assign
-                this.user = this.user;
-            } else {
-                ui.handleCallError(e);
-            }
-        }
-    }
-
-    _showSetEmailPanel2(progress) {
-        progress = progress || false;
-        let progressP = this.querySelector(".micro-edit-user-set-email-2 .micro-progress");
-        let actions = this.querySelector(".micro-edit-user-cancel-set-email");
-        this._emailP.style.display = "none";
-        this._setEmail1.style.display = "none";
-        this._setEmail2.style.display = "block";
-        if (progress) {
-            progressP.style.display = "";
-            actions.style.display = "none";
-        } else {
-            progressP.style.display = "none";
-            actions.style.display = "";
-        }
-    }
-
-    _hideSetEmailPanel2() {
-        this._emailP.style.display = "";
-        this._setEmail1.style.display = "";
-        this._setEmail2.style.display = "";
-    }
-
-    handleEvent(event) {
-        if (event.currentTarget === this._form) {
-            event.preventDefault();
-            (async() => {
-                try {
-                    let user = await ui.call("POST", `/api/users/${this._user.id}`, {
-                        name: this._form.elements.name.value
-                    });
-                    ui.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
-                } catch (e) {
-                    if (e instanceof micro.APIError && e.error.__type__ === "InputError") {
-                        ui.notify("The name is missing.");
-                    } else {
-                        ui.handleCallError(e);
-                    }
-                }
-            })().catch(micro.util.catch);
-
-        } else if (event.currentTarget === this._setEmailAction && event.type === "click") {
-            this._setEmail().catch(micro.util.catch);
-        } else if (event.currentTarget === this._cancelSetEmailAction && event.type === "click") {
-            this._cancelSetEmail();
-        } else if (event.currentTarget === this._removeEmailAction && event.type === "click") {
-            this._removeEmail().catch(micro.util.catch);
-        }
-    }
-};
-
-/**
  * Edit settings page.
  */
 micro.EditSettingsPage = class extends micro.Page {
@@ -2048,6 +1863,5 @@ document.registerElement("micro-page", micro.Page);
 document.registerElement("micro-not-found-page", micro.NotFoundPage);
 document.registerElement("micro-forbidden-page", micro.ForbiddenPage);
 document.registerElement("micro-about-page", micro.AboutPage);
-document.registerElement("micro-edit-user-page", micro.EditUserPage);
 document.registerElement("micro-edit-settings-page", micro.EditSettingsPage);
 document.registerElement("micro-activity-page", micro.ActivityPage);

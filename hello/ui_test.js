@@ -99,11 +99,11 @@ describe("UI", function() {
         await browser.wait(
             untilElementTextLocated({css: "micro-edit-user-page h1"}, "Edit user settings"),
             timeout);
-        form = await browser.findElement({css: ".micro-edit-user-edit"});
+        form = await browser.findElement({css: "micro-edit-user-page form"});
         input = await form.findElement({name: "name"});
         await input.clear();
         await input.sendKeys("Happy");
-        await form.findElement({css: "button"}).click();
+        await form.findElement({css: "button:not([type])"}).click();
         await browser.wait(
             until.elementTextContains(
                 await browser.findElement({css: ".micro-ui-header micro-user"}),

@@ -401,6 +401,7 @@ fieldset label {
 }
 
 .micro-panel > h1,
+.micro-panel > div > h1,
 .micro-panel > .link > h1 {
     border-bottom: none;
     font-size: 1rem;

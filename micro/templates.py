@@ -20,11 +20,7 @@ MESSAGE_TEMPLATES = {
 
         Hi there!
 
-        To add your email address {{ email }} to {{ app.settings.title }}, simply open this link:
-
-        {{ server.url }}/user/edit#set-email={{ auth_request.id[12:] }}:{{ auth }}
-
-        Or copy and paste the following code into the app:
+        Here is the verification code to add your email address to {{ app.settings.title }}:
 
         {{ auth }}
 

@@ -408,55 +408,6 @@
     </section>
 </template>
 
-<template class="micro-edit-user-page-template">
-    <form class="micro-edit-user-edit">
-        <header class="micro-heading micro-panel">
-            <h1>Edit user settings</h1>
-            <button class="action"><i class="fa fa-check-circle"></i> Save</button>
-        </header>
-        <label>
-            <small>Name</small>
-            <small>Your name or nick name.</small>
-            <input name="name" />
-        </label>
-    </form>
-
-    <section>
-        <header class="micro-heading micro-panel">
-            <h1>Email</h1>
-            <button class="micro-edit-user-remove-email action">
-                <i class="fa fa-trash"></i> Remove
-            </button>
-        </header>
-
-        <div class="micro-edit-user-set-email-1">
-            <form>
-                <label>
-                    <small>Email address</small>
-                    <input name="email" type="email" required="required" />
-                </label>
-                <button class="action">
-                    <i class="fa fa-check-circle"></i> Add email address
-                </button>
-            </form>
-        </div>
-
-        <section class="micro-edit-user-set-email-2">
-            <h1>Add email address</h1>
-            <p>
-                We've sent a message to your email address. Please open it and follow the
-                instructions.
-            </p>
-            <button class="micro-edit-user-cancel-set-email link">Cancel</button>
-            <p class="micro-progress"><i class="fa fa-spin fa-spinner"></i></p>
-        </section>
-
-        <p class="micro-edit-user-email-value"></p>
-
-        <p><small>The email address is only visible to you.</small></p>
-    </section>
-</template>
-
 <template class="micro-edit-settings-page-template">
     <form class="micro-edit-settings-edit">
         <header class="micro-heading micro-panel">
@@ -535,8 +486,9 @@
 </style>
 
 {% include 'components/analytics.html' %}
+{% include 'components/contentinput.html' %}
 {% include 'components/contextual.html' %}
 {% include 'components/image.html' %}
 {% include 'components/link.html' %}
+{% include 'components/user.html' %}
 {% include 'components/video.html' %}
-{% include 'components/contentinput.html' %}
