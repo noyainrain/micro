@@ -141,13 +141,13 @@ class Device(Object):
 class Devices:
     """See :ref:`Devices`."""
 
-    def __init__(self, app: 'Application'):
+    def __init__(self, app: 'Application') -> None:
         self.app = app
 
     def __getitem__(self, key: str) -> Device:
-        if not self.app.r.r.sismember('devices', key):
+        if not key.startswith('Device:'):
             raise KeyError(key)
-        device = self.app.r.oget(key, default=AssertionError, expect=expect_type(Device))
+        device = self.app.r.oget(key, default=KeyError, expect=expect_type(Device))
         user = context.user.get()
         if not (user and user.id == device.user_id):
             raise error.PermissionError()

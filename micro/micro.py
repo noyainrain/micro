@@ -182,7 +182,7 @@ class Application:
             'Referral': Referral
         } # type: Dict[str, Type[JSONifiable]]
         self.user = None # type: Optional[User]
-        self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)
+        self.users = Users(self)
         self.devices = Devices(self)
         self.analytics = Analytics(app=self)
 
@@ -903,6 +903,8 @@ class User(Object, Editable):
     def json(self, restricted: bool = False, include: bool = False, *,
              rewrite: RewriteFunc = None) -> Dict[str, object]:
         """See :meth:`Object.json`."""
+        # Compatibility with device attributes (deprecated since 0.58.0)
+        device = context.device.get()
         return {
             **super().json(restricted=restricted, include=include, rewrite=rewrite),
             **Editable.json(self, restricted=restricted, include=include, rewrite=rewrite),
@@ -913,13 +915,12 @@ class User(Object, Editable):
                     'create_time': self.create_time.isoformat(),
                     'authenticate_time': self.authenticate_time.isoformat()
                 }),
-            # Compatibility with device attributes (deprecated since 0.58.0)
             **(
                 {
-                    'auth_secret': self.auth_secret,
-                    'device_notification_status': self.device_notification_status,
-                    'push_subscription': self.push_subscription
-                } if restricted and context.user.get() == self else {})
+                    'auth_secret': device.auth_secret,
+                    'device_notification_status': device.notification_status,
+                    'push_subscription': device.push_subscription
+                } if restricted and context.user.get() == self and device else {})
         }
 
     def _send_email(self, to: str, msg: str) -> None:
@@ -956,6 +957,26 @@ class User(Object, Editable):
     def _check_user(self, _: Union[int, slice, str]) -> None:
         if context.user.get() != self:
             raise error.PermissionError()
+
+class Users:
+    """See :ref:`Users`."""
+
+    def __init__(self, app: Application) -> None:
+        self.app = app
+        self._ids = RedisList('users', app.r.r)
+
+    def __len__(self) -> int:
+        return len(self._ids)
+
+    def __getitem__(self, key: str) -> User:
+        if not key.startswith('User:'):
+            raise KeyError(key)
+        return self.app.r.oget(key, default=KeyError, expect=expect_type(User))
+
+    def __iter__(self) -> Iterator[User]:
+        users = self.app.r.omget([id.decode() for id in self._ids], default=AssertionError,
+                                 expect=expect_type(User))
+        return iter(users)
 
 class Settings(Object, Editable):
     """See :ref:`Settings`.

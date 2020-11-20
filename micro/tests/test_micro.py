@@ -106,7 +106,7 @@ class ApplicationUpdateTest(AsyncTestCase):
         await sleep(1)
         app = CatApp(redis_url='15', files_path=mkdtemp())
         app.update()
-        user = app.users[1]
+        user = sorted(app.users, key=lambda user: user.create_time, reverse=True)[0]
         context.user.set(user)
 
         device = user.devices[0]
@@ -123,7 +123,7 @@ class ApplicationUpdateTest(AsyncTestCase):
         await sleep(1)
         app = CatApp(redis_url='15', files_path=mkdtemp())
         app.update()
-        user = app.users[1]
+        user = sorted(app.users, key=lambda user: user.create_time, reverse=True)[0]
         context.user.set(user)
 
         # Update to version 9

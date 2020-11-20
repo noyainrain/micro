@@ -102,8 +102,8 @@ class Analytics:
                    if t - user.authenticate_time <= timedelta(days=30)) # type: ignore
 
     def _actual_users(self) -> Iterator[User]:
-        return (user for user in self.app.users[:] # type: ignore
-                if user.authenticate_time - user.create_time >= timedelta(days=1)) # type: ignore
+        return (user for user in self.app.users
+                if user.authenticate_time - user.create_time >= timedelta(days=1))
 
 class Statistic:
     """See :ref:`Statistic`.
