@@ -1,1 +1,1 @@
-noyainrain.micro ~= 0.57.2
+noyainrain.micro ~= 0.58.0

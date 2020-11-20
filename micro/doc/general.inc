@@ -97,6 +97,76 @@ Collection of objects.
 
 .. include:: micro/collection-endpoints.inc
 
+.. _Device:
+
+Device
+------
+
+:ref:`User` device.
+
+.. describe:: auth_secret
+
+   Secret for authentication.
+
+.. describe:: authenticate_time
+
+   Time the device last authenticated.
+
+.. describe:: notification_status
+
+   Notification status:
+
+   * ``on``: Notifications are enabled
+   * ``off``: Notifications are disabled
+   * ``off.expired``: Notifications are disabled because *push_subscription* expired
+
+.. describe:: push_subscription
+
+   Push subscription token used for sending notifications. May be ``null``.
+
+.. describe:: user_id
+
+   ID of the :ref:`User` the device belongs to.
+
+.. describe:: user
+
+   :ref:`User` the device belongs to.
+
+.. _Devices:
+
+Devices
+-------
+
+.. http:post:: /api/devices
+
+   Create and sign in a new :ref:`User`. A :ref:`Device` is registered for the user and
+   returned.
+
+   The very first user who signs in is granted staff membership.
+
+.. http:get:: /api/devices/(id)
+
+   Get the :ref:`Device` with *id*.
+
+   Permission: Device owner.
+
+.. http:patch:: /api/devices/(id)
+
+   ``{"op": "enable_notifications", "push_subscription"}``
+
+   Enable notifications for the device, using *push_subscription*.
+
+   A confirmation message is sent to the device. If there is a communication issue, a
+   :ref:`CommunicationError` is returned.
+
+   Permission: Device owner.
+
+   ``{"op": "disable_notifications"}``
+
+   Disable notifications for the device.
+
+   Permission: Device owner.
+
 .. _AuthRequest:
 
 AuthRequest

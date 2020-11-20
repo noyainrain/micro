@@ -22,6 +22,6 @@ import os
 
 from micro.micro import (
     Application, Object, Gone, Editable, Trashable, Collection, Orderable, User, Settings, Activity,
-    Event, AuthRequest, Location, InputError, AuthenticationError, EmailError, WithContent)
+    Event, AuthRequest, Location, InputError, EmailError, WithContent)
 
 DOC_PATH = os.path.join(os.path.dirname(__file__), 'doc')

@@ -27,5 +27,8 @@ class Error(Exception):
 class ValueError(builtins.ValueError, Error):
     """See :ref:`ValueError`."""
 
+class AuthenticationError(Error):
+    """See :ref:`AuthenticationError`."""
+
 class PermissionError(Error):
     """See :ref:`PermissionError`."""

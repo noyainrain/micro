@@ -61,6 +61,10 @@ micro.LIST_LIMIT = 100;
  *    visualize :ref:`Event` s. A hook has the form *renderEvent(event)* and is responsible to
  *    render the given *event* to a :class:`Node`.
  *
+ * .. attribute:: device
+ *
+ *    Current user :ref:`Device`.
+ *
  * .. describe:: navigate
  *
  *    Fired when the user navigates around the UI (either via link, browser history,
@@ -83,7 +87,6 @@ micro.UI = class extends HTMLBodyElement {
             {url: "^/analytics$", page: micro.components.analytics.AnalyticsPage.make},
             {url: "^/activity$", page: micro.ActivityPage.make}
         ];
-
         this.renderEvent = {
             "editable-edit": event => {
                 let a = document.createElement("a");
@@ -96,6 +99,9 @@ micro.UI = class extends HTMLBodyElement {
                                                  {settings: a, user: userElem});
             }
         };
+
+        this.device = null;
+        this.service = null;
 
         window.addEventListener("error", event => {
             // Work around bogus EventSource polyfill errors
@@ -119,7 +125,13 @@ micro.UI = class extends HTMLBodyElement {
                 this.url = `#${event.target.id}`;
             }
         });
-        this.addEventListener("user-edit", this);
+        this.addEventListener("user-edit", event => {
+            localStorage.microUser = JSON.stringify(event.detail.user);
+            this._data.user = event.detail.user;
+        });
+        this.addEventListener(
+            "device-enable-notifications", event => this._storeDevice(event.detail.device)
+        );
         this.addEventListener("settings-edit", this);
 
         // Register UI as global
@@ -176,7 +188,6 @@ micro.UI = class extends HTMLBodyElement {
                 .map(([feature]) => `micro-feature-${micro.bind.dash(feature)}`));
         this.classList.toggle("micro-ui-map-service-enabled", this.mapServiceKey);
 
-        this.service = null;
         if (this.features.serviceWorkers) {
             let url = document.querySelector("link[rel=service]").href;
             // Technically the app should stop with an offline indication on any network error, but
@@ -197,38 +208,35 @@ micro.UI = class extends HTMLBodyElement {
             })().catch(micro.util.catch);
         }
 
-        const version = parseInt(localStorage.microVersion) || null;
-        if (!version) {
-            this._storeUser(null);
-            localStorage.microSettings = JSON.stringify(null);
-            localStorage.microVersion = 2;
-        }
-
         // Go!
         let go = async() => {
             try {
                 this._progressElem.style.display = "block";
-                await Promise.resolve(this.update());
+
+                const version = parseInt(localStorage.microVersion) || null;
+                if (!version) {
+                    this._storeDevice(null);
+                    localStorage.microSettings = JSON.stringify(null);
+                    localStorage.microVersion = 2;
+                }
+                if (!("device" in localStorage)) {
+                    let device = null;
+                    const user = JSON.parse(localStorage.microUser);
+                    if (user) {
+                        const devices = await ui.call("GET", `/api/users/${user.id}/devices`);
+                        device = devices.items[0];
+                    }
+                    this._storeDevice(device);
+                }
+                await this.update();
+
                 this._data.user = JSON.parse(localStorage.microUser);
+                this.device = JSON.parse(localStorage.microDevice);
                 this._data.settings = JSON.parse(localStorage.microSettings);
 
-                // If requested, log in with code
-                let match = /^#login=(.+)$/u.exec(location.hash);
-                if (match) {
-                    history.replaceState(null, null, location.pathname);
-                    try {
-                        this._storeUser(await ui.call("POST", "/api/login", {code: match[1]}));
-                    } catch (e) {
-                        // Ignore invalid login codes
-                        if (!(e instanceof micro.APIError)) {
-                            throw e;
-                        }
-                    }
-                }
-
-                // If not logged in (yet), log in as a new user
-                if (!this.user) {
-                    this._storeUser(await ui.call("POST", "/api/login"));
+                if (!this.device) {
+                    const device = await ui.call("POST", "/api/devices");
+                    this._storeDevice(device);
                 }
 
                 if (!this.settings) {
@@ -329,9 +337,7 @@ micro.UI = class extends HTMLBodyElement {
         return this._data.user;
     }
 
-    /**
-     * App settings.
-     */
+    /** App settings. */
     get settings() {
         return this._data.settings;
     }
@@ -396,7 +402,7 @@ micro.UI = class extends HTMLBodyElement {
             // their account on another device or b) the database has been reset (during
             // development)
             if (e instanceof micro.APIError && e.error.__type__ === "AuthenticationError") {
-                this._storeUser(null);
+                this._storeDevice(null);
                 location.reload();
                 // Never return
                 await new Promise(() => {});
@@ -502,11 +508,12 @@ micro.UI = class extends HTMLBodyElement {
         }
         subscription = JSON.stringify(subscription.toJSON());
 
-        let user;
         try {
-            user = await ui.call("PATCH", `/api/users/${this.user.id}`,
-                                 {op: "enable_notifications", push_subscription: subscription});
-            micro.util.dispatchEvent(this, new CustomEvent("user-edit", {detail: {user}}));
+            const device = await ui.call(
+                "PATCH", `/api/devices/${this.device.id}`,
+                {op: "enable_notifications", push_subscription: subscription}
+            );
+            ui.dispatchEvent(new CustomEvent("device-enable-notifications", {detail: {device}}));
             return "ok";
         } catch (e) {
             if (e instanceof micro.APIError && e.error.__type__ === "CommunicationError") {
@@ -595,16 +602,16 @@ micro.UI = class extends HTMLBodyElement {
         document.title = [this.page.caption, this._data.settings.title].filter(p => p).join(" - ");
     }
 
-    _storeUser(user) {
+    _storeDevice(device) {
+        localStorage.microDevice = JSON.stringify(device);
+        document.cookie = device
+            ? `auth_secret=${device.auth_secret}; path=/; max-age=${360 * 24 * 60 * 60}`
+            : "auth_secret=; path=/; max-age=0";
+        this.device = device;
+
+        const user = device && device.user;
+        localStorage.microUser = JSON.stringify(user);
         this._data.user = user;
-        if (user) {
-            localStorage.microUser = JSON.stringify(user);
-            document.cookie =
-                `auth_secret=${user.auth_secret}; path=/; max-age=${360 * 24 * 60 * 60}`;
-        } else {
-            localStorage.microUser = null;
-            document.cookie = "auth_secret=; path=/; max-age=0";
-        }
     }
 
     _addActivity(activity) {
@@ -621,10 +628,7 @@ micro.UI = class extends HTMLBodyElement {
     }
 
     handleEvent(event) {
-        if (event.target === this && event.type === "user-edit") {
-            this._storeUser(event.detail.user);
-
-        } else if (event.target === this && event.type === "settings-edit") {
+        if (event.target === this && event.type === "settings-edit") {
             this._data.settings = event.detail.settings;
             localStorage.microSettings = JSON.stringify(event.detail.settings);
         }

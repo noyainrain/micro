@@ -14,8 +14,10 @@
 
 """Core parts of micro."""
 
+from __future__ import annotations
+
 from asyncio import (CancelledError, Task, Queue, # pylint: disable=unused-import; typing
-                     ensure_future, get_event_loop, shield, sleep)
+                     create_task, ensure_future, get_event_loop, shield, sleep)
 import builtins
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -38,14 +40,13 @@ from py_vapid.utils import b64urlencode
 from redis import StrictRedis
 from redis.exceptions import ResponseError
 from requests.exceptions import RequestException
-from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
 from . import error
-from .core import RewriteFunc, context
+from .core import Device, Devices, Object, RewriteFunc, context
 from .error import ValueError
 from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, RedisList, RedisSequence,
-                        bzpoptimed)
+                        RedisSortedSet, bzpoptimed)
 from .ratelimit import RateLimit, RateLimiter
 from .resource import ( # pylint: disable=unused-import; typing
     Analyzer, Files, HandleResourceFunc, Image, Resource, Video, handle_image, handle_webpage,
@@ -170,6 +171,7 @@ class Application:
         from .analytics import Analytics, Referral
         self.types = {
             'User': User,
+            'Device': Device,
             'Settings': Settings,
             'Activity': Activity,
             'Event': Event,
@@ -181,6 +183,7 @@ class Application:
         } # type: Dict[str, Type[JSONifiable]]
         self.user = None # type: Optional[User]
         self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)
+        self.devices = Devices(self)
         self.analytics = Analytics(app=self)
 
         self.email = email
@@ -256,14 +259,40 @@ class Application:
             r.omset({cast(str, user['id']): user for user in users})
             r.set('micro_version', 9)
 
-        self.do_update()
+        user_updates = {}
+        device_updates = {}
+        users = r.omget([id.decode() for id in r.r.lrange('users', 0, -1)], default=AssertionError)
+        for user in users:
+            # Deprecated since 0.58.0
+            if 'auth_secret' in user:
+                device = Device(
+                    id=f'Device:{randstr()}', app=self, auth_secret=user.pop('auth_secret'),
+                    notification_status=user.pop('device_notification_status'),
+                    push_subscription=user.pop('push_subscription'), user_id=user['id'])
+                r.sadd('devices', device.id)
+                authenticate_time = parse_isotime(cast(str, user['authenticate_time']))
+                r.zadd(f"{user['id']}.devices", {device.id: -authenticate_time.timestamp()})
+                r.hset('auth_secret_map', device.auth_secret, device.id)
+                user_updates[cast(str, user['id'])] = user
+                device_updates[device.id] = device.json()
+        r.omset(user_updates)
+        r.omset(device_updates)
 
-    def do_update(self) -> None:
+        updates = {'User': len(user_updates), 'Device': len(device_updates), **self.do_update()}
+        getLogger(__name__).info('Updated database\n%s',
+                                 '\n'.join(f'{name}: {n}' for name, n in updates.items()))
+
+    def do_update(self) -> Dict[str, int]:
         """Subclass API: Perform the database update.
+
+        Information about the update, more precisely the number of entity updates by type, is
+        returned.
 
         May be overridden by subclass. Called by :meth:`update`, which takes care of updating (or
         initializing) micro specific data. The default implementation does nothing.
         """
+        # pylint: disable=no-self-use; part of subclass API
+        return {}
 
     def create_user(self, data: Dict[str, object]) -> 'User':
         """Subclass API: Create a new user.
@@ -285,63 +314,19 @@ class Application:
         """
         raise NotImplementedError()
 
-    def authenticate(self, secret: str) -> 'User':
-        """Authenticate an :class:`User` (device) with *secret*.
-
-        The identified user is set as current *user* and returned. If the authentication fails, an
-        :exc:`AuthenticationError` is raised.
-        """
-        id = self.r.r.hget('auth_secret_map', secret.encode())
-        if not id:
-            raise AuthenticationError()
-        user = self.users[id.decode()]
-        self.user = user
-
-        now = self.now()
-        if now - user.authenticate_time >= timedelta(hours=1): # type: ignore
-            user.authenticate_time = now
-            self.r.oset(user.id, user)
-        return user
-
     def login(self, code: str = None) -> 'User':
         """See :http:post:`/api/login`.
 
         The logged-in user is set as current *user*.
         """
+        # Compatibility for login (deprecated since 0.58.0)
         if code:
             id = self.r.r.hget('auth_secret_map', code.encode())
             if not id:
                 raise ValueError('code_invalid')
-            id = id.decode()
-            user = self.users[id]
-
-        else:
-            id = 'User:' + randstr()
-            now = self.now()
-            user = self.create_user({
-                'id': id,
-                'app': self,
-                'authors': [id],
-                'name': 'Guest',
-                'email': None,
-                'auth_secret': randstr(),
-                'create_time': now.isoformat(),
-                'authenticate_time': now.isoformat(),
-                'device_notification_status': 'off',
-                'push_subscription': None
-            })
-            self.r.oset(user.id, user)
-            self.r.rpush('users', user.id)
-            self.r.hset('auth_secret_map', user.auth_secret, user.id)
-
-            # Promote first user to staff
-            if len(self.users) == 1:
-                settings = self.settings # type: ignore
-                # pylint: disable=protected-access; Settings is a friend
-                settings._staff = [user.id] # type: ignore
-                self.r.oset(settings.id, settings) # type: ignore
-
-        return self.authenticate(user.auth_secret)
+            device = self.r.oget(id.decode(), default=AssertionError, expect=expect_type(Device))
+            return self.devices.authenticate(device.auth_secret).user
+        return self.devices.sign_in().user
 
     def get_object(self, id, default=KeyError):
         """Get the :class:`Object` given by *id*.
@@ -415,6 +400,42 @@ class Application:
         # pylint: disable=no-self-use; part of API
         return iter(())
 
+    async def send_device_notification(self, push_subscription: str, event: Event) -> None:
+        """Send an *event* notification to the device with *push_subscription*.
+
+        If there is a communication issue, a :exc:`micro.error.CommunicationError` is raised.
+        """
+        try:
+            push_subscription = json.loads(push_subscription)
+            if not isinstance(push_subscription, dict):
+                raise builtins.ValueError()
+            urlparts = urlparse(push_subscription['endpoint'])
+            pusher = WebPusher(push_subscription)
+        except (builtins.ValueError, KeyError, WebPushException) as e:
+            raise ValueError('push_subscription_invalid') from e
+
+        # Unfortunately sign() tries to validate the email address
+        email = 'bot@email.localhost' if self.email == 'bot@localhost' else self.email
+        headers = Vapid.from_raw(self.settings.push_vapid_private_key.encode()).sign({
+            'aud': '{}://{}'.format(urlparts.scheme, urlparts.netloc),
+            'sub': 'mailto:{}'.format(email)
+        })
+
+        try:
+            # Firefox does not yet support aes128gcm encoding (see
+            # https://bugzilla.mozilla.org/show_bug.cgi?id=1525872)
+            send = partial(pusher.send, json.dumps(event.json(restricted=True, include=True)),
+                           headers=headers, ttl=_PUSH_TTL, content_encoding='aesgcm')
+            response = await get_event_loop().run_in_executor(None, send)
+        except RequestException as e:
+            raise CommunicationError(f"{e} for POST {push_subscription['endpoint']}") from e
+        if response.status_code in (404, 410):
+            raise ValueError('push_subscription_invalid')
+        if response.status_code != 201:
+            raise CommunicationError(
+                'Unexpected response status {} for POST {}'.format(response.status_code,
+                                                                   push_subscription['endpoint']))
+
     @staticmethod
     def _encode(object: JSONifiable) -> Dict[str, object]:
         return object.json()
@@ -448,31 +469,6 @@ class Application:
         vapid.generate_keys()
         return (b64urlencode(vapid.private_key.private_numbers().private_value.to_bytes(32, 'big')),
                 b64urlencode(vapid.public_key.public_numbers().encode_point()))
-
-class Object:
-    """Object in the application universe.
-
-    .. attribute:: app
-
-       Context :class:`Application`.
-    """
-
-    def __init__(self, id: str, app: Application) -> None:
-        self.id = id
-        self.app = app
-
-    def json(self, restricted: bool = False, include: bool = False, *,
-             rewrite: RewriteFunc = None) -> Dict[str, object]:
-        """See :meth:`JSONifiable.json`.
-
-        Subclass API: May be overridden by subclass. The default implementation returns the
-        attributes of :class:`Object`. *restricted* and *include* are ignored.
-        """
-        # pylint: disable=unused-argument; part of subclass API
-        return {'__type__': type(self).__name__, 'id': self.id}
-
-    def __repr__(self):
-        return '<{}>'.format(self.id)
 
 class Gone:
     """See :ref:`Gone`."""
@@ -780,11 +776,29 @@ class User(Object, Editable):
         Editable.__init__(self, authors=cast(List[str], data['authors']))
         self.name = cast(str, data['name'])
         self.email = cast(Optional[str], data['email'])
-        self.auth_secret = cast(str, data['auth_secret'])
         self.create_time = parse_isotime(cast(str, data['create_time']))
         self.authenticate_time = parse_isotime(cast(str, data['authenticate_time']))
-        self.device_notification_status = cast(str, data['device_notification_status'])
-        self.push_subscription = cast(Optional[str], data['push_subscription'])
+        self.devices = Collection(
+            RedisSortedSet(f'{self.id}.devices', app.r.r), check=self._check_user,
+            expect=expect_type(Device), app=app)
+
+    @property
+    def auth_secret(self) -> str:
+        # pylint: disable=missing-function-docstring; already documented
+        # Compatibility with device attributes (deprecated since 0.58.0)
+        return self.devices[0].auth_secret
+
+    @property
+    def device_notification_status(self) -> str:
+        # pylint: disable=missing-function-docstring; already documented
+        # Compatibility with device attributes (deprecated since 0.58.0)
+        return self.devices[0].notification_status
+
+    @property
+    def push_subscription(self) -> Optional[str]:
+        # pylint: disable=missing-function-docstring; already documented
+        # Compatibility with device attributes (deprecated since 0.58.0)
+        return self.devices[0].push_subscription
 
     def store_email(self, email: str) -> None:
         """Update the user's *email* address.
@@ -851,30 +865,28 @@ class User(Object, Editable):
             raise ValueError('user_no_email')
         self._send_email(self.email, msg)
 
-    def notify(self, event: 'Event') -> None:
-        """Notify the user about the :class:`Event` *event*.
+    def notify(self, event: Event) -> None:
+        """Notify the user about *event*.
 
-        If :attr:`push_subscription` has expired, device notifications are disabled.
+        The notification is delivered to all enabled devices. If a device's *push_subscription* has
+        expired, notifications are disabled for that device.
         """
-        if self.device_notification_status != 'on':
-            return
-        IOLoop.current().add_callback(self._notify, event) # type: ignore
+        devices = self.app.r.omget([id.decode() for id in self.devices.ids], default=AssertionError,
+                                   expect=expect_type(Device))
+        for device in devices:
+            if device.notification_status == 'on':
+                create_task(self._notify(device, event))
 
-    async def enable_device_notifications(self, push_subscription):
+    async def enable_device_notifications(self, push_subscription: str) -> None:
         """See :http:patch:`/api/users/(id)` (``enable_device_notifications``)."""
-        if self.app.user != self:
-            raise error.PermissionError()
-        await self._send_device_notification(
-            push_subscription, Event.create('user-enable-device-notifications', self, app=self.app))
-        self.device_notification_status = 'on'
-        self.push_subscription = push_subscription
-        self.app.r.oset(self.id, self)
+        # Compatibility with device actions (deprecated since 0.58.0)
+        await self.devices[0].enable_notifications(push_subscription,
+                                                   _event_type='user-enable-device-notifications')
 
-    def disable_device_notifications(self, user: 'User' = None) -> None:
+    def disable_device_notifications(self) -> None:
         """See :http:patch:`/api/users/(id)` (``disable_device_notifications``)."""
-        if user != self:
-            raise error.PermissionError()
-        self._disable_device_notifications()
+        # Compatibility with device actions (deprecated since 0.58.0)
+        self.devices[0].disable_notifications()
 
     def do_edit(self, **attrs):
         if self.app.user != self:
@@ -896,14 +908,18 @@ class User(Object, Editable):
             **Editable.json(self, restricted=restricted, include=include, rewrite=rewrite),
             'name': self.name,
             **(
-                {} if restricted and self.app.user != self else {
+                {} if restricted and context.user.get() != self else {
                     'email': self.email,
-                    'auth_secret': self.auth_secret,
                     'create_time': self.create_time.isoformat(),
-                    'authenticate_time': self.authenticate_time.isoformat(),
+                    'authenticate_time': self.authenticate_time.isoformat()
+                }),
+            # Compatibility with device attributes (deprecated since 0.58.0)
+            **(
+                {
+                    'auth_secret': self.auth_secret,
                     'device_notification_status': self.device_notification_status,
                     'push_subscription': self.push_subscription
-                })
+                } if restricted and context.user.get() == self else {})
         }
 
     def _send_email(self, to: str, msg: str) -> None:
@@ -926,52 +942,20 @@ class User(Object, Editable):
         except OSError as e:
             raise EmailError() from e
 
-    async def _notify(self, event):
+    async def _notify(self, device: Device, event: Event) -> None:
         try:
-            await self._send_device_notification(self.push_subscription, event)
+            assert device.push_subscription
+            await self.app.send_device_notification(device.push_subscription, event)
         except (ValueError, CommunicationError) as e:
             if isinstance(e, ValueError):
                 if str(e) != 'push_subscription_invalid':
                     raise e
-                self._disable_device_notifications(reason='expired')
+                device.abort_notifications()
             getLogger(__name__).error('Failed to deliver notification: %s', str(e))
 
-    async def _send_device_notification(self, push_subscription, event):
-        try:
-            push_subscription = json.loads(push_subscription)
-            if not isinstance(push_subscription, dict):
-                raise builtins.ValueError()
-            urlparts = urlparse(push_subscription['endpoint'])
-            pusher = WebPusher(push_subscription)
-        except (builtins.ValueError, KeyError, WebPushException) as e:
-            raise ValueError('push_subscription_invalid') from e
-
-        # Unfortunately sign() tries to validate the email address
-        email = 'bot@email.localhost' if self.app.email == 'bot@localhost' else self.app.email
-        headers = Vapid.from_raw(self.app.settings.push_vapid_private_key.encode()).sign({
-            'aud': '{}://{}'.format(urlparts.scheme, urlparts.netloc),
-            'sub': 'mailto:{}'.format(email)
-        })
-
-        try:
-            # Firefox does not yet support aes128gcm encoding (see
-            # https://bugzilla.mozilla.org/show_bug.cgi?id=1525872)
-            send = partial(pusher.send, json.dumps(event.json(restricted=True, include=True)),
-                           headers=headers, ttl=_PUSH_TTL, content_encoding='aesgcm')
-            response = await get_event_loop().run_in_executor(None, send)
-        except RequestException as e:
-            raise CommunicationError(f"{e} for POST {push_subscription['endpoint']}") from e
-        if response.status_code in (404, 410):
-            raise ValueError('push_subscription_invalid')
-        if response.status_code != 201:
-            raise CommunicationError(
-                'Unexpected response status {} for POST {}'.format(response.status_code,
-                                                                   push_subscription['endpoint']))
-
-    def _disable_device_notifications(self, reason: str = None) -> None:
-        self.device_notification_status = 'off.{}'.format(reason) if reason else 'off'
-        self.push_subscription = None
-        self.app.r.oset(self.id, self)
+    def _check_user(self, _: Union[int, slice, str]) -> None:
+        if context.user.get() != self:
+            raise error.PermissionError()
 
 class Settings(Object, Editable):
     """See :ref:`Settings`.
@@ -1326,9 +1310,6 @@ class InputError(ValueError):
         """
         if self.errors:
             raise self
-
-class AuthenticationError(Exception):
-    """See :ref:`AuthenticationError`."""
 
 class EmailError(Exception):
     """Raised if communication with the SMTP server fails."""

@@ -83,7 +83,7 @@ describe("UI", function() {
         );
 
         // Observe greeting created by someone else
-        const response = await request(`${URL}/api/login`, {method: "POST"});
+        const response = await request(`${URL}/api/devices`, {method: "POST"});
         const headers = {Cookie: `auth_secret=${JSON.parse(response.body.toString()).auth_secret}`};
         await request(
             `${URL}/api/greetings`,

@@ -43,10 +43,10 @@ class AnalyticsTest(MicroTestCase):
 
         self.app.analytics.collect_statistics()
         AnalyticsTest.now = timeline[1]
-        self.app.authenticate(self.user.auth_secret)
+        self.app.devices.authenticate(self.user.devices[0].auth_secret)
         self.app.analytics.collect_statistics()
         AnalyticsTest.now = timeline[2]
-        self.app.login()
+        self.app.devices.sign_in()
         self.app.analytics.collect_statistics()
 
         users = [Point(timeline[0], 2), Point(timeline[1], 2), Point(timeline[2], 3)]

@@ -16,6 +16,10 @@ User is editable by the user oneself.
 
    Secret for authentication. Visible only to the user oneself.
 
+   .. deprecated:: 0.58.0
+
+      Use :ref:`Device` *auth_secret* instead.
+
 .. describe:: create_time
 
    Time the user account was created. Visible only to the user oneself.
@@ -32,6 +36,18 @@ User is editable by the user oneself.
    * ``off``: Notifications are disabled
    * ``off.expired``: Notifications are disabled because *push_subscription* expired
 
+   .. deprecated:: 0.58.0
+
+      Use :ref:`Device` *notification_status* instead.
+
 .. describe:: push_subscription
 
    Push subscription token used for sending device notifications. May be ``null``.
+
+   .. deprecated:: 0.58.0
+
+      Use :ref:`Device` *push_subscription* instead.
+
+.. attribute:: devices
+
+   Registered user :ref:`UserDevices`.

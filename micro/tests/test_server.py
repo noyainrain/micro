@@ -24,6 +24,7 @@ from urllib.parse import quote
 from tornado.httpclient import HTTPClientError
 from tornado.testing import gen_test
 
+from micro.core import context
 from micro.server import (CollectionEndpoint, Server, make_orderable_endpoints,
                           make_trashable_endpoints)
 from micro.test import ServerTestCase, CatApp
@@ -42,12 +43,14 @@ class ServerTest(ServerTestCase):
             self.app, handlers, client_config={'path': 'hello', 'modules_path': 'node_modules'},
             port=16160)
         self.server.start()
-        self.staff_member = self.app.login()
-        self.user = self.app.login()
-        self.client_user = self.user
+        self.staff_member_device = self.app.devices.sign_in()
+        self.client_device = self.app.devices.sign_in()
+        self.user = self.client_device.user
+        context.user.set(self.user)
 
     @gen_test
-    async def test_availability(self):
+    async def test_availability(self) -> None:
+        device = self.user.devices[0]
         file_url = await self.app.files.write(b'Meow!', 'text/plain')
 
         # UI
@@ -61,8 +64,11 @@ class ServerTest(ServerTestCase):
         await self.request('/api/login', method='POST', body='')
         await self.request('/api/users/' + self.user.id)
         await self.request('/api/users/' + self.user.id, method='POST', body='{"name": "Happy"}')
-        await self.request('/api/users/{}'.format(self.app.user.id), method='PATCH',
-                           body='{"op": "disable_notifications"}')
+        await self.request(f'/api/users/{self.user.id}/devices')
+        await self.request('/api/devices', method='POST', body='')
+        await self.request(f'/api/devices/{device.id}')
+        await self.request(f'/api/devices/{device.id}', method='PATCH',
+                           body=json.dumps({'op': 'disable_notifications'}))
         await self.request('/api/settings')
         await self.request('/api/analytics/referrals', method='POST',
                            body='{"url": "https://example.org/"}')
@@ -80,7 +86,7 @@ class ServerTest(ServerTestCase):
         await self.request('/api/cats/{}/restore'.format(cat.id), method='POST', body='')
 
         # API (as staff member)
-        self.client_user = self.staff_member
+        self.client_device = self.staff_member_device
         await self.request(
             '/api/settings', method='POST',
             body='{"title": "CatzApp", "icon": "http://example.org/static/icon.svg"}')

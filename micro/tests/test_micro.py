@@ -25,8 +25,8 @@ from unittest.mock import Mock, patch
 from redis.exceptions import RedisError
 from tornado.testing import AsyncTestCase, gen_test
 
-import micro
 from micro import Activity, Collection, Event, Gone, Location, Trashable, WithContent, error
+from micro.core import context
 from micro.jsonredis import RedisList
 from micro.resource import Analyzer, Resource
 from micro.test import CatApp, Cat
@@ -60,38 +60,24 @@ class MicroTestCase(AsyncTestCase):
         super().setUp()
         self.app = CatApp(redis_url='15', files_path=mkdtemp())
         self.app.r.flushdb()
-        self.app.update() # type: ignore
-        self.staff_member = self.app.login() # type: ignore
-        self.user = self.app.login()
+        self.app.update()
+        self.staff_member = self.app.devices.sign_in().user
+        self.user = self.app.devices.sign_in().user
+        context.user.set(self.user)
 
 class ApplicationTest(MicroTestCase):
     def test_init_redis_url_invalid(self) -> None:
         with self.assertRaisesRegex(error.ValueError, 'redis_url_invalid'):
             CatApp(redis_url='//localhost:foo')
 
-    def test_authenticate(self):
-        user = self.app.authenticate(self.user.auth_secret)
-        self.assertEqual(user, self.user)
-        self.assertEqual(user, self.app.user)
-
-    def test_authenticate_secret_invalid(self):
-        with self.assertRaises(micro.AuthenticationError):
-            self.app.authenticate('foo')
-
-    def test_login(self):
-        # login() is called by setUp()
-        self.assertIn(self.user.id, self.app.users)
-        self.assertEqual(self.user, self.app.user)
-        self.assertIn(self.staff_member, self.app.settings.staff)
-
     def test_login_no_redis(self):
         app = CatApp(redis_url='//localhost:16160')
         with self.assertRaises(RedisError):
             app.login()
 
-    def test_login_code(self):
-        user = self.app.login(code=self.staff_member.auth_secret)
-        self.assertEqual(user, self.staff_member)
+    def test_login_code(self) -> None:
+        user = self.app.login(code=self.user.devices[0].auth_secret)
+        self.assertEqual(user, self.user)
 
     def test_login_code_invalid(self) -> None:
         with self.assertRaisesRegex(error.ValueError, 'code_invalid'):
@@ -116,20 +102,20 @@ class ApplicationUpdateTest(AsyncTestCase):
 
     @gen_test # type: ignore[misc]
     async def test_update_db_version_previous(self):
-        self.setup_db('0.38.1')
+        self.setup_db('0.57.2')
         await sleep(1)
         app = CatApp(redis_url='15', files_path=mkdtemp())
         app.update()
-
-        app.user = app.settings.staff[0]
-        first = app.activity[-1].time
-        last = app.activity[0].time
-        self.assertEqual(app.user.create_time, first)
-        self.assertEqual(app.user.authenticate_time, last)
         user = app.users[1]
-        self.assertEqual(user.create_time, user.authenticate_time)
-        self.assertAlmostEqual(user.create_time, app.now(), delta=timedelta(minutes=1))
-        self.assertGreater(user.create_time, last)
+        context.user.set(user)
+
+        device = user.devices[0]
+        self.assertEqual(device, app.devices.authenticate(device.auth_secret))
+        self.assertEqual(device.notification_status, 'off')
+        self.assertIsNone(device.push_subscription)
+        self.assertEqual(device.user_id, user.id)
+        self.assertEqual(device, app.devices[device.id])
+        self.assertEqual(user.devices[:], [device])
 
     @gen_test # type: ignore[misc]
     async def test_update_db_version_first(self):
@@ -137,6 +123,8 @@ class ApplicationUpdateTest(AsyncTestCase):
         await sleep(1)
         app = CatApp(redis_url='15', files_path=mkdtemp())
         app.update()
+        user = app.users[1]
+        context.user.set(user)
 
         # Update to version 9
         app.user = app.settings.staff[0]
@@ -144,10 +132,17 @@ class ApplicationUpdateTest(AsyncTestCase):
         last = app.activity[0].time
         self.assertEqual(app.user.create_time, first)
         self.assertEqual(app.user.authenticate_time, last)
-        user = app.users[1]
         self.assertEqual(user.create_time, user.authenticate_time)
         self.assertAlmostEqual(user.create_time, app.now(), delta=timedelta(minutes=1))
         self.assertGreater(user.create_time, last)
+        # Device
+        device = user.devices[0]
+        self.assertEqual(device, app.devices.authenticate(device.auth_secret))
+        self.assertEqual(device.notification_status, 'off')
+        self.assertIsNone(device.push_subscription)
+        self.assertEqual(device.user_id, user.id)
+        self.assertEqual(device, app.devices[device.id])
+        self.assertEqual(user.devices[:], [device])
 
 class EditableTest(MicroTestCase):
     def setUp(self) -> None:
@@ -158,7 +153,8 @@ class EditableTest(MicroTestCase):
     async def test_edit(self) -> None:
         await self.cat.edit(name='Happy')
         await self.cat.edit(name='Grumpy')
-        user2 = self.app.login()
+        user2 = self.app.devices.sign_in().user
+        context.user.set(user2)
         await self.cat.edit(name='Hover')
         self.assertEqual(self.cat.authors, [self.user, user2]) # type: ignore[misc]
 
@@ -331,6 +327,13 @@ class UserTest(MicroTestCase):
         await self.user.edit(name='Happy')
         self.assertEqual(self.user.name, 'Happy')
 
+class UserDevicesTest(MicroTestCase):
+    def test_getitem_as_user(self) -> None:
+        context.user.set(self.app.devices.sign_in().user)
+        with self.assertRaises(error.PermissionError):
+            # pylint: disable=pointless-statement; error raised on access
+            self.user.devices[:]
+
 class ActivityTest(MicroTestCase):
     def make_activity(self) -> Activity:
         return Activity('Activity:more', self.app, subscriber_ids=[])
@@ -339,7 +342,7 @@ class ActivityTest(MicroTestCase):
     def test_publish(self, notify):
         activity = self.make_activity()
         activity.subscribe()
-        self.app.login()
+        context.user.set(self.app.devices.sign_in().user)
         activity.subscribe()
 
         event = Event.create('meow', None, app=self.app)

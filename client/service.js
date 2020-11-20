@@ -68,7 +68,7 @@ micro.service.Service = class {
     constructor() {
         this.settings = null;
         this.notificationRenderers = {
-            "user-enable-device-notifications": () => ({
+            "device-enable-notifications": () => ({
                 title: this.settings.title,
                 body: "Notifications enabled",
                 url: "/"

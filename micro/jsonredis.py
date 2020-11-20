@@ -403,7 +403,7 @@ def zpoptimed(r: Redis, key: str) -> Union[Tuple[bytes, float], float]:
         end
         return "+inf"
     """)
-    result = f([key])
+    result = cast(Union[List[bytes], bytes], f([key]))
     if isinstance(result, list):
         return (expect_type(bytes)(result[0]), float(result[1]))
     if isinstance(result, bytes):

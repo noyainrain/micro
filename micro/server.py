@@ -45,8 +45,7 @@ from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandle
 from . import micro, templates, error
 from .core import context
 from .micro import ( # pylint: disable=unused-import; typing
-    Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError, AuthenticationError,
-    Trashable)
+    Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError, Trashable)
 from .ratelimit import RateLimitError
 from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
 from .util import (Expect, ExpectFunc, cancel, look_up_files, str_or_none, parse_slice,
@@ -200,6 +199,10 @@ class Server:
             (r'/api/users/([^/]+)/set-email$', _UserSetEmailEndpoint),
             (r'/api/users/([^/]+)/finish-set-email$', _UserFinishSetEmailEndpoint),
             (r'/api/users/([^/]+)/remove-email$', _UserRemoveEmailEndpoint),
+            (r'/api/users/([^/]+)/devices$', CollectionEndpoint,
+             {'get_collection': lambda id: self.app.users[id].devices}), # type: ignore[misc]
+            (r'/api/devices$', _DevicesEndpoint),
+            (r'/api/devices/([^/]+)$', _DeviceEndpoint),
             (r'/api/settings$', _SettingsEndpoint),
             *make_activity_endpoints(r'/api/activity', get_activity),
             # Compatibility with old global activity URL (deprecated since 0.57.0)
@@ -321,8 +324,10 @@ class Endpoint(RequestHandler):
         self.app.user = None
         auth_secret = self.get_cookie('auth_secret')
         if auth_secret:
-            self.current_user = self.app.authenticate(auth_secret)
+            device = self.app.devices.authenticate(auth_secret)
+            self.current_user = device.user
             context.user.set(self.current_user)
+            context.device.set(device)
 
         if self.request.body:
             try:
@@ -350,9 +355,6 @@ class Endpoint(RequestHandler):
         if isinstance(e, KeyError):
             self.set_status(http.client.NOT_FOUND)
             self.write({'__type__': 'NotFoundError'}) # type: ignore
-        elif isinstance(e, AuthenticationError):
-            self.set_status(http.client.BAD_REQUEST)
-            self.write({'__type__': type(e).__name__}) # type: ignore
         elif isinstance(e, RateLimitError):
             self.set_status(http.client.TOO_MANY_REQUESTS)
             data = {'__type__': type(e).__name__, 'message': str(e)}
@@ -366,6 +368,7 @@ class Endpoint(RequestHandler):
         elif isinstance(e, error.Error):
             status = {
                 error.ValueError: http.client.BAD_REQUEST,
+                error.AuthenticationError: http.client.BAD_REQUEST,
                 error.PermissionError: http.client.FORBIDDEN,
                 NoResourceError: http.client.NOT_FOUND,
                 ForbiddenResourceError: http.client.FORBIDDEN,
@@ -378,9 +381,7 @@ class Endpoint(RequestHandler):
 
     def log_exception(self, typ, value, tb):
         # These errors are handled specially and there is no need to log them as exceptions
-        if issubclass(
-                typ,
-                (KeyError, AuthenticationError, RateLimitError, CommunicationError, error.Error)):
+        if issubclass(typ, (KeyError, RateLimitError, CommunicationError, error.Error)):
             return
         super().log_exception(typ, value, tb)
 
@@ -849,6 +850,7 @@ class _LoginEndpoint(Endpoint):
     def post(self):
         args = self.check_args({'code': (str, 'opt')})
         user = self.app.login(**args)
+        context.user.set(user)
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
 class _UserEndpoint(Endpoint):
@@ -861,17 +863,19 @@ class _UserEndpoint(Endpoint):
         await user.edit(**args)
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
-    async def patch_enable_notifications(self, id):
+    async def patch_enable_notifications(self, id: str) -> None:
         # pylint: disable=missing-docstring; private
+        # Compatibility with device actions (deprecated since 0.58.0)
         user = self.app.users[id]
-        args = self.check_args({'push_subscription': str})
-        await user.enable_device_notifications(**args)
+        push_subscription = self.get_arg('push_subscription', Expect.str)
+        await user.enable_device_notifications(push_subscription)
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
     def patch_disable_notifications(self, id: str) -> None:
         # pylint: disable=missing-docstring; private
+        # Compatibility with device actions (deprecated since 0.58.0)
         user = self.app.users[id]
-        user.disable_device_notifications(self.current_user)
+        user.disable_device_notifications()
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
 class _UserSetEmailEndpoint(Endpoint):
@@ -896,6 +900,31 @@ class _UserRemoveEmailEndpoint(Endpoint):
         user = self.app.users[id]
         user.remove_email()
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
+
+class _DevicesEndpoint(Endpoint):
+    def post(self) -> None:
+        device = self.app.devices.sign_in()
+        context.user.set(device.user)
+        self.set_status(HTTPStatus.CREATED)
+        self.write(device.json(restricted=True, include=True, rewrite=self.server.rewrite))
+
+class _DeviceEndpoint(Endpoint):
+    def get(self, id: str) -> None:
+        device = self.app.devices[id]
+        self.write(device.json(restricted=True, include=True, rewrite=self.server.rewrite))
+
+    async def patch_enable_notifications(self, id: str) -> None:
+        # pylint: disable=missing-docstring; private
+        device = self.app.devices[id]
+        push_subscription = self.get_arg('push_subscription', Expect.str)
+        await device.enable_notifications(push_subscription)
+        self.write(device.json(restricted=True, include=True, rewrite=self.server.rewrite))
+
+    def patch_disable_notifications(self, id: str) -> None:
+        # pylint: disable=missing-docstring; private
+        device = self.app.devices[id]
+        device.disable_notifications()
+        self.write(device.json(restricted=True, include=True, rewrite=self.server.rewrite))
 
 class _SettingsEndpoint(Endpoint):
     def get(self):

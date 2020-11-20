@@ -25,3 +25,5 @@
 
    If *code* is ``null``, create and log in a new user. The very first user who logs in is
    registered as staff member.
+
+   .. deprecated:: 0.58.0

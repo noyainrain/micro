@@ -1,8 +1,11 @@
-from typing import Dict, List, Optional, Sequence, Tuple, overload
+from typing import Dict, List, Optional, Sequence, Tuple, Union, overload
 
 from typing_extensions import Literal
 
 from .connection import ConnectionPool
+
+_Key = Union[str, bytes]
+_Value = Union[bytes, float, int, str]
 
 class Redis:
     connection_pool: ConnectionPool
@@ -31,6 +34,8 @@ class Redis:
     def pubsub(self) -> PubSub: ...
 
     def register_script(self, script: str) -> Script: ...
+
+    def sismember(self, name: _Key, value: _Value) -> bool: ...
 
     def zadd(self, name: str, mapping: Dict[bytes, float]) -> int: ...
 
@@ -62,4 +67,4 @@ class PubSub:
                     timeout: float = ...) -> Optional[Dict[str, object]]: ...
 
 class Script:
-    def __call__(self, keys: Sequence[str] = ...) -> object: ...
+    def __call__(self, keys: Sequence[_Key] = ..., args: Sequence[_Value] = ...): ...
