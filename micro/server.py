@@ -33,7 +33,7 @@ import re
 from signal import SIGINT
 from typing import (Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union,
                     cast)
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlsplit
 
 from mypy_extensions import TypedDict, VarArg
 from tornado.httpclient import AsyncHTTPClient, HTTPResponse # pylint: disable=unused-import; typing
@@ -365,10 +365,13 @@ class Endpoint(RequestHandler):
         elif isinstance(e, CommunicationError):
             self.set_status(http.client.BAD_GATEWAY)
             self.write({'__type__': type(e).__name__, 'message': str(e)}) # type: ignore
+        elif isinstance(e, error.AuthenticationError):
+            self.set_status(http.client.BAD_REQUEST)
+            self.clear_cookie('auth_secret')
+            self.write(e.json())
         elif isinstance(e, error.Error):
             status = {
                 error.ValueError: http.client.BAD_REQUEST,
-                error.AuthenticationError: http.client.BAD_REQUEST,
                 error.PermissionError: http.client.FORBIDDEN,
                 NoResourceError: http.client.NOT_FOUND,
                 ForbiddenResourceError: http.client.FORBIDDEN,
@@ -906,11 +909,19 @@ class _DevicesEndpoint(Endpoint):
         device = self.app.devices.sign_in()
         context.user.set(device.user)
         self.set_status(HTTPStatus.CREATED)
+        self.set_cookie(
+            'auth_secret', device.auth_secret, expires_days=360,
+            secure=urlsplit(self.server.url).scheme == 'https', httponly=True)
         self.write(device.json(restricted=True, include=True, rewrite=self.server.rewrite))
 
 class _DeviceEndpoint(Endpoint):
     def get(self, id: str) -> None:
-        device = self.app.devices[id]
+        device = context.device.get() if id == 'self' else self.app.devices[id]
+        if device is None:
+            raise KeyError(id)
+        self.set_cookie(
+            'auth_secret', device.auth_secret, expires_days=360,
+            secure=urlsplit(self.server.url).scheme == 'https', httponly=True)
         self.write(device.json(restricted=True, include=True, rewrite=self.server.rewrite))
 
     async def patch_enable_notifications(self, id: str) -> None:

@@ -129,9 +129,10 @@ micro.UI = class extends HTMLBodyElement {
             localStorage.microUser = JSON.stringify(event.detail.user);
             this._data.user = event.detail.user;
         });
-        this.addEventListener(
-            "device-enable-notifications", event => this._storeDevice(event.detail.device)
-        );
+        this.addEventListener("device-enable-notifications", event => {
+            localStorage.microDevice = JSON.stringify(event.detail.device);
+            this.device = event.detail.device;
+        });
         this.addEventListener("settings-edit", this);
 
         // Register UI as global
@@ -215,18 +216,14 @@ micro.UI = class extends HTMLBodyElement {
 
                 const version = parseInt(localStorage.microVersion) || null;
                 if (!version) {
-                    this._storeDevice(null);
+                    localStorage.microDevice = JSON.stringify(null);
+                    localStorage.microUser = JSON.stringify(null);
                     localStorage.microSettings = JSON.stringify(null);
                     localStorage.microVersion = 2;
                 }
-                if (!("device" in localStorage)) {
-                    let device = null;
-                    const user = JSON.parse(localStorage.microUser);
-                    if (user) {
-                        const devices = await ui.call("GET", `/api/users/${user.id}/devices`);
-                        device = devices.items[0];
-                    }
-                    this._storeDevice(device);
+                // Deprecated since 0.58.0
+                if (!("microDevice" in localStorage)) {
+                    localStorage.microDevice = JSON.stringify(null);
                 }
                 await this.update();
 
@@ -235,9 +232,27 @@ micro.UI = class extends HTMLBodyElement {
                 this._data.settings = JSON.parse(localStorage.microSettings);
 
                 if (!this.device) {
-                    const device = await ui.call("POST", "/api/devices");
-                    this._storeDevice(device);
+                    let device;
+                    try {
+                        // For some browsers, storage is ephemeral while only cookies are persistent
+                        device = await ui.call("GET", "/api/devices/self");
+                    } catch (e) {
+                        if (e instanceof micro.APIError && e.error.__type__ === "NotFoundError") {
+                            // Sign in new user
+                            device = await ui.call("POST", "/api/devices");
+                        } else {
+                            throw e;
+                        }
+                    }
+                    localStorage.microDevice = JSON.stringify(device);
+                    localStorage.microUser = JSON.stringify(device.user);
+                    this.device = device;
+                    this._data.user = device.user;
                 }
+
+                // Cookies may be cleared independent of storage
+                const secure = location.protocol === "https:" ? " Secure;" : "";
+                document.cookie = `auth_secret=${this.device.auth_secret}; Path=/; Max-Age=${360 * 24 * 60 * 60};${secure}`;
 
                 if (!this.settings) {
                     this._data.settings = await ui.call("GET", "/api/settings");
@@ -247,8 +262,13 @@ micro.UI = class extends HTMLBodyElement {
                 // Update user details and settings
                 (async() => {
                     try {
-                        const user = await ui.call("GET", `/api/users/${this.user.id}`);
-                        this.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
+                        const device = await ui.call("GET", "/api/devices/self");
+                        this.dispatchEvent(
+                            new CustomEvent("device-enable-notifications", {detail: {device}})
+                        );
+                        this.dispatchEvent(
+                            new CustomEvent("user-edit", {detail: {user: device.user}})
+                        );
                         const settings = await ui.call("GET", "/api/settings");
                         this.dispatchEvent(new CustomEvent("settings-edit", {detail: {settings}}));
                         if (
@@ -402,7 +422,8 @@ micro.UI = class extends HTMLBodyElement {
             // their account on another device or b) the database has been reset (during
             // development)
             if (e instanceof micro.APIError && e.error.__type__ === "AuthenticationError") {
-                this._storeDevice(null);
+                localStorage.microDevice = JSON.stringify(null);
+                localStorage.microUser = JSON.stringify(null);
                 location.reload();
                 // Never return
                 await new Promise(() => {});
@@ -600,18 +621,6 @@ micro.UI = class extends HTMLBodyElement {
 
     _updateTitle() {
         document.title = [this.page.caption, this._data.settings.title].filter(p => p).join(" - ");
-    }
-
-    _storeDevice(device) {
-        localStorage.microDevice = JSON.stringify(device);
-        document.cookie = device
-            ? `auth_secret=${device.auth_secret}; path=/; max-age=${360 * 24 * 60 * 60}`
-            : "auth_secret=; path=/; max-age=0";
-        this.device = device;
-
-        const user = device && device.user;
-        localStorage.microUser = JSON.stringify(user);
-        this._data.user = user;
     }
 
     _addActivity(activity) {

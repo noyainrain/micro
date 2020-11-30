@@ -148,6 +148,8 @@ Devices
 
    Get the :ref:`Device` with *id*.
 
+   ``self`` refers to the authenticated user device.
+
    Permission: Device owner.
 
 .. http:patch:: /api/devices/(id)

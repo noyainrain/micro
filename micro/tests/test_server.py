@@ -66,6 +66,7 @@ class ServerTest(ServerTestCase):
         await self.request('/api/users/' + self.user.id, method='POST', body='{"name": "Happy"}')
         await self.request(f'/api/users/{self.user.id}/devices')
         await self.request('/api/devices', method='POST', body='')
+        await self.request('/api/devices/self')
         await self.request(f'/api/devices/{device.id}')
         await self.request(f'/api/devices/{device.id}', method='PATCH',
                            body=json.dumps({'op': 'disable_notifications'}))
