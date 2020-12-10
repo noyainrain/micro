@@ -1,3 +1,19 @@
+<style>
+    .micro-dialog {
+        display: block;
+        max-width: 70ch;
+        border-radius: var(--micro-size-xs);
+        margin: 0 auto;
+        background: white;
+        box-shadow: var(--micro-shadow);
+    }
+
+    .micro-dialog h1 {
+        font-size: 1rem;
+        font-weight: bold;
+    }
+</style>
+
 <template class="micro-ui-template">
     <header class="micro-ui-header" style="display: none;">
         <nav class="micro-ui-inside micro-panel">
@@ -78,6 +94,11 @@
 
         <div class="micro-ui-notification-space"></div>
     </header>
+
+    <div
+        class="micro-ui-dialog-layer" tabindex="-1"
+        data-shortcut-context="new ShortcutContext" data-content="dialog"
+    ></div>
 </template>
 <style>
     body[noninteractive] .micro-interactive {
@@ -123,6 +144,27 @@
         font-weight: bold;
     }
 
+    .micro-ui-dialog-layer {
+        position: fixed;
+        z-index: 2;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        padding: calc(var(--micro-size-m) + 3 * var(--micro-size-s)) var(--micro-size-s);
+        background: rgba(0, 0, 0, 0.66);
+        overflow: hidden auto;
+        cursor: default;
+    }
+
+    .micro-ui-dialog-layer:focus {
+        box-shadow: none;
+    }
+
+    .micro-ui-dialog-layer:empty {
+        display: none;
+    }
+
     body > [slot],
     body:not(.micro-ui-settings-have-icon-small) .micro-ui-logo img,
     body:not(.micro-ui-offline) .micro-ui-header-offline,
@@ -135,7 +177,7 @@
 <template class="micro-simple-notification-template">
     <div class="micro-ui-inside compact">
         <div class="micro-simple-notification-content"></div>
-        <button class="micro-simple-notification-dismiss link">Dismiss</button>
+        <button type="button" class="micro-simple-notification-dismiss link">Dismiss</button>
     </div>
 </template>
 
@@ -147,7 +189,7 @@
             the inconvenience!
         </p>
         <p>In the meantime, you may reload the page and give it another try.</p>
-        <button class="micro-error-notification-reload action micro-highlight">
+        <button type="button" class="micro-error-notification-reload action micro-highlight">
             Reload the page
         </button>
     </div>
@@ -223,7 +265,7 @@
         z-index: 0;
         height: calc(70ch * 9 / 16);
         font: inherit;
-        background: #d1d1d1; /* Map tile background */
+        background: #cbd2d3; /* Map tile background */
     }
 
     .leaflet-container:focus {
@@ -366,55 +408,6 @@
     </section>
 </template>
 
-<template class="micro-edit-user-page-template">
-    <form class="micro-edit-user-edit">
-        <header class="micro-heading micro-panel">
-            <h1>Edit user settings</h1>
-            <button class="action"><i class="fa fa-check-circle"></i> Save</button>
-        </header>
-        <label>
-            <small>Name</small>
-            <small>Your name or nick name.</small>
-            <input name="name" />
-        </label>
-    </form>
-
-    <section>
-        <header class="micro-heading micro-panel">
-            <h1>Email</h1>
-            <button class="micro-edit-user-remove-email action">
-                <i class="fa fa-trash"></i> Remove
-            </button>
-        </header>
-
-        <div class="micro-edit-user-set-email-1">
-            <form>
-                <label>
-                    <small>Email address</small>
-                    <input name="email" type="email" required="required" />
-                </label>
-                <button class="action">
-                    <i class="fa fa-check-circle"></i> Add email address
-                </button>
-            </form>
-        </div>
-
-        <section class="micro-edit-user-set-email-2">
-            <h1>Add email address</h1>
-            <p>
-                We've sent a message to your email address. Please open it and follow the
-                instructions.
-            </p>
-            <button class="micro-edit-user-cancel-set-email link">Cancel</button>
-            <p class="micro-progress"><i class="fa fa-spin fa-spinner"></i></p>
-        </section>
-
-        <p class="micro-edit-user-email-value"></p>
-
-        <p><small>The email address is only visible to you.</small></p>
-    </section>
-</template>
-
 <template class="micro-edit-settings-page-template">
     <form class="micro-edit-settings-edit">
         <header class="micro-heading micro-panel">
@@ -477,7 +470,7 @@
         <ul>
             <li class="micro-activity-show-more">
                 <p>
-                    <button is="micro-button" class="link">
+                    <button is="micro-button" type="button" class="link">
                         <i class="fa fa-ellipsis-v"></i> More
                     </button>
                 </p>
@@ -493,8 +486,9 @@
 </style>
 
 {% include 'components/analytics.html' %}
+{% include 'components/contentinput.html' %}
 {% include 'components/contextual.html' %}
 {% include 'components/image.html' %}
 {% include 'components/link.html' %}
+{% include 'components/user.html' %}
 {% include 'components/video.html' %}
-{% include 'components/contentinput.html' %}

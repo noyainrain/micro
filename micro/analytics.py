@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -102,8 +102,8 @@ class Analytics:
                    if t - user.authenticate_time <= timedelta(days=30)) # type: ignore
 
     def _actual_users(self) -> Iterator[User]:
-        return (user for user in self.app.users[:] # type: ignore
-                if user.authenticate_time - user.create_time >= timedelta(days=1)) # type: ignore
+        return (user for user in self.app.users
+                if user.authenticate_time - user.create_time >= timedelta(days=1))
 
 class Statistic:
     """See :ref:`Statistic`.
@@ -125,7 +125,7 @@ class Statistic:
     def get(self, *, user: Optional[User]) -> List['Point']:
         """See :http:get:`/api/analytics/statistics/(topic)`."""
         if not user in self.app.settings.staff: # type: ignore
-            raise PermissionError()
+            raise error.PermissionError()
         return [Point.parse(json.loads(p.decode())) for p # type: ignore
                 in self.app.r.r.zrange(self._key, 0, -1)] # type: ignore
 
@@ -149,7 +149,7 @@ class Point:
         v = data.get('v')
         if not isinstance(v, (float, int)):
             raise TypeError()
-        return Point(parse_isotime(expect_type(str)(data.get('t')), aware=True), float(v))
+        return Point(parse_isotime(expect_type(str)(data.get('t'))), float(v))
 
     def json(self) -> Dict[str, object]:
         """See :meth:`micro.JSONifiable.json`."""
@@ -164,7 +164,7 @@ class Referral(Object):
     def __init__(self, *, id: str, app: 'Application', url: str, time: str) -> None:
         super().__init__(id=id, app=app)
         self.url = url
-        self.time = parse_isotime(time, aware=True)
+        self.time = parse_isotime(time)
 
     def json(self, restricted: bool = False, include: bool = False, *,
              rewrite: RewriteFunc = None) -> Dict[str, object]:

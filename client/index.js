@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -23,15 +23,6 @@
 micro.util.watchErrors();
 
 micro.LIST_LIMIT = 100;
-
-/**
- * Find the first ancestor of *elem* that satisfies *predicate*.
- *
- * .. deprecated: 0.11.0
- *
- *    Use :func:`micro.keyboard.findAncestor` .
- */
-micro.findAncestor = micro.keyboard.findAncestor;
 
 /**
  * User interface of a micro app.
@@ -70,6 +61,10 @@ micro.findAncestor = micro.keyboard.findAncestor;
  *    visualize :ref:`Event` s. A hook has the form *renderEvent(event)* and is responsible to
  *    render the given *event* to a :class:`Node`.
  *
+ * .. attribute:: device
+ *
+ *    Current user :ref:`Device`.
+ *
  * .. describe:: navigate
  *
  *    Fired when the user navigates around the UI (either via link, browser history,
@@ -87,12 +82,11 @@ micro.UI = class extends HTMLBodyElement {
         this._activities = new Set();
 
         this.pages = [
-            {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.EditUserPage.make},
+            {url: "^/(?:users/([^/]+)|user)/edit$", page: micro.components.user.EditUserPage.make},
             {url: "^/settings/edit$", page: micro.EditSettingsPage.make},
             {url: "^/analytics$", page: micro.components.analytics.AnalyticsPage.make},
             {url: "^/activity$", page: micro.ActivityPage.make}
         ];
-
         this.renderEvent = {
             "editable-edit": event => {
                 let a = document.createElement("a");
@@ -106,6 +100,9 @@ micro.UI = class extends HTMLBodyElement {
             }
         };
 
+        this.device = null;
+        this.service = null;
+
         window.addEventListener("error", event => {
             // Work around bogus EventSource polyfill errors
             if (event.message.startsWith("EventSource")) {
@@ -115,7 +112,9 @@ micro.UI = class extends HTMLBodyElement {
         });
         window.addEventListener("popstate", () => this._navigate().catch(micro.util.catch));
         this.addEventListener("click", event => {
-            let a = micro.findAncestor(event.target, e => e instanceof HTMLAnchorElement, this);
+            let a = micro.keyboard.findAncestor(
+                event.target, e => e instanceof HTMLAnchorElement, this
+            );
             if (a && a.origin === location.origin && !a.pathname.startsWith("/files/")) {
                 event.preventDefault();
                 this.navigate(a.pathname + a.hash).catch(micro.util.catch);
@@ -126,7 +125,14 @@ micro.UI = class extends HTMLBodyElement {
                 this.url = `#${event.target.id}`;
             }
         });
-        this.addEventListener("user-edit", this);
+        this.addEventListener("user-edit", event => {
+            localStorage.microUser = JSON.stringify(event.detail.user);
+            this._data.user = event.detail.user;
+        });
+        this.addEventListener("device-enable-notifications", event => {
+            localStorage.microDevice = JSON.stringify(event.detail.device);
+            this.device = event.detail.device;
+        });
         this.addEventListener("settings-edit", this);
 
         // Register UI as global
@@ -150,7 +156,8 @@ micro.UI = class extends HTMLBodyElement {
         this._data = new micro.bind.Watchable({
             user: null,
             settings: null,
-            offline: false
+            offline: false,
+            dialog: null
         });
         micro.bind.bind(this.children, this._data);
 
@@ -182,7 +189,6 @@ micro.UI = class extends HTMLBodyElement {
                 .map(([feature]) => `micro-feature-${micro.bind.dash(feature)}`));
         this.classList.toggle("micro-ui-map-service-enabled", this.mapServiceKey);
 
-        this.service = null;
         if (this.features.serviceWorkers) {
             let url = document.querySelector("link[rel=service]").href;
             // Technically the app should stop with an offline indication on any network error, but
@@ -203,44 +209,50 @@ micro.UI = class extends HTMLBodyElement {
             })().catch(micro.util.catch);
         }
 
-        const version = parseInt(localStorage.microVersion) || null;
-        if (!version) {
-            this._storeUser(null);
-            localStorage.microSettings = JSON.stringify(null);
-            localStorage.microVersion = 2;
-        }
-        // Deprecated since 0.36.0
-        if (version < 2) {
-            localStorage.microSettings = JSON.stringify(null);
-            localStorage.microVersion = 2;
-        }
-
         // Go!
         let go = async() => {
             try {
                 this._progressElem.style.display = "block";
-                await Promise.resolve(this.update());
+
+                const version = parseInt(localStorage.microVersion) || null;
+                if (!version) {
+                    localStorage.microDevice = JSON.stringify(null);
+                    localStorage.microUser = JSON.stringify(null);
+                    localStorage.microSettings = JSON.stringify(null);
+                    localStorage.microVersion = 2;
+                }
+                // Deprecated since 0.58.0
+                if (!("microDevice" in localStorage)) {
+                    localStorage.microDevice = JSON.stringify(null);
+                }
+                await this.update();
+
                 this._data.user = JSON.parse(localStorage.microUser);
+                this.device = JSON.parse(localStorage.microDevice);
                 this._data.settings = JSON.parse(localStorage.microSettings);
 
-                // If requested, log in with code
-                let match = /^#login=(.+)$/u.exec(location.hash);
-                if (match) {
-                    history.replaceState(null, null, location.pathname);
+                if (!this.device) {
+                    let device;
                     try {
-                        this._storeUser(await ui.call("POST", "/api/login", {code: match[1]}));
+                        // For some browsers, storage is ephemeral while only cookies are persistent
+                        device = await ui.call("GET", "/api/devices/self");
                     } catch (e) {
-                        // Ignore invalid login codes
-                        if (!(e instanceof micro.APIError)) {
+                        if (e instanceof micro.APIError && e.error.__type__ === "NotFoundError") {
+                            // Sign in new user
+                            device = await ui.call("POST", "/api/devices");
+                        } else {
                             throw e;
                         }
                     }
+                    localStorage.microDevice = JSON.stringify(device);
+                    localStorage.microUser = JSON.stringify(device.user);
+                    this.device = device;
+                    this._data.user = device.user;
                 }
 
-                // If not logged in (yet), log in as a new user
-                if (!this.user) {
-                    this._storeUser(await ui.call("POST", "/api/login"));
-                }
+                // Cookies may be cleared independent of storage
+                const secure = location.protocol === "https:" ? " Secure;" : "";
+                document.cookie = `auth_secret=${this.device.auth_secret}; Path=/; Max-Age=${360 * 24 * 60 * 60};${secure}`;
 
                 if (!this.settings) {
                     this._data.settings = await ui.call("GET", "/api/settings");
@@ -250,8 +262,13 @@ micro.UI = class extends HTMLBodyElement {
                 // Update user details and settings
                 (async() => {
                     try {
-                        const user = await ui.call("GET", `/api/users/${this.user.id}`);
-                        this.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
+                        const device = await ui.call("GET", "/api/devices/self");
+                        this.dispatchEvent(
+                            new CustomEvent("device-enable-notifications", {detail: {device}})
+                        );
+                        this.dispatchEvent(
+                            new CustomEvent("user-edit", {detail: {user: device.user}})
+                        );
                         const settings = await ui.call("GET", "/api/settings");
                         this.dispatchEvent(new CustomEvent("settings-edit", {detail: {settings}}));
                         if (
@@ -311,10 +328,27 @@ micro.UI = class extends HTMLBodyElement {
         this._page = value;
         if (this._page) {
             this._pageSpace.appendChild(this._page);
-            // Compatibility for overriding attachedCallback without chaining (deprecated since
-            // 0.19.0)
-            micro.Page.prototype.attachedCallback.call(this._page);
             this._updateTitle();
+        }
+    }
+
+    /**
+     * Active :class:`micro.core.Dialog`.
+     *
+     * Set to open the given the dialog. May be ``null``.
+     */
+    get dialog() {
+        return this._data.dialog;
+    }
+
+    set dialog(value) {
+        this._data.dialog = value;
+        if (this._data.dialog) {
+            this.querySelector(".micro-ui-dialog-layer").focus();
+            (async() => {
+                await this._data.dialog.result;
+                this.dialog = null;
+            })().catch(micro.util.catch);
         }
     }
 
@@ -323,9 +357,7 @@ micro.UI = class extends HTMLBodyElement {
         return this._data.user;
     }
 
-    /**
-     * App settings.
-     */
+    /** App settings. */
     get settings() {
         return this._data.settings;
     }
@@ -390,7 +422,8 @@ micro.UI = class extends HTMLBodyElement {
             // their account on another device or b) the database has been reset (during
             // development)
             if (e instanceof micro.APIError && e.error.__type__ === "AuthenticationError") {
-                this._storeUser(null);
+                localStorage.microDevice = JSON.stringify(null);
+                localStorage.microUser = JSON.stringify(null);
                 location.reload();
                 // Never return
                 await new Promise(() => {});
@@ -499,11 +532,12 @@ micro.UI = class extends HTMLBodyElement {
         }
         subscription = JSON.stringify(subscription.toJSON());
 
-        let user;
         try {
-            user = await ui.call("PATCH", `/api/users/${this.user.id}`,
-                                 {op: "enable_notifications", push_subscription: subscription});
-            micro.util.dispatchEvent(this, new CustomEvent("user-edit", {detail: {user}}));
+            const device = await ui.call(
+                "PATCH", `/api/devices/${this.device.id}`,
+                {op: "enable_notifications", push_subscription: subscription}
+            );
+            ui.dispatchEvent(new CustomEvent("device-enable-notifications", {detail: {device}}));
             return "ok";
         } catch (e) {
             if (e instanceof micro.APIError && e.error.__type__ === "CommunicationError") {
@@ -525,6 +559,8 @@ micro.UI = class extends HTMLBodyElement {
         let oldURL = this._url;
         let oldLocation = oldURL ? new URL(oldURL, location.origin) : null;
         this._url = location.pathname + location.hash;
+
+        this.dialog = null;
 
         if (oldLocation === null || location.pathname !== oldLocation.pathname) {
             this._progressElem.style.display = "block";
@@ -590,18 +626,6 @@ micro.UI = class extends HTMLBodyElement {
         document.title = [this.page.caption, this._data.settings.title].filter(p => p).join(" - ");
     }
 
-    _storeUser(user) {
-        this._data.user = user;
-        if (user) {
-            localStorage.microUser = JSON.stringify(user);
-            document.cookie =
-                `auth_secret=${user.auth_secret}; path=/; max-age=${360 * 24 * 60 * 60}`;
-        } else {
-            localStorage.microUser = null;
-            document.cookie = "auth_secret=; path=/; max-age=0";
-        }
-    }
-
     _addActivity(activity) {
         const update = () => {
             this._data.offline = !Array.from(this._activities).every(a => a.connected);
@@ -616,10 +640,7 @@ micro.UI = class extends HTMLBodyElement {
     }
 
     handleEvent(event) {
-        if (event.target === this && event.type === "user-edit") {
-            this._storeUser(event.detail.user);
-
-        } else if (event.target === this && event.type === "settings-edit") {
+        if (event.target === this && event.type === "settings-edit") {
             this._data.settings = event.detail.settings;
             localStorage.microSettings = JSON.stringify(event.detail.settings);
         }
@@ -689,6 +710,12 @@ micro.Collection = class {
  *    Indicates if the stream is connected and ready to emit events. If disconnected, it'll be
  *    reconnected automatically.
  *
+ * .. function:: dispatchEvent(event)
+ *
+ *    Dispatch an :cls:`Event` *event*.
+ *
+ *    Alternatively, *event* may be a set of attributes for a synthetic :ref:`Event`.
+ *
  * .. describe:: connect
  *
  *    Dispatched if the stream has been reconnected.
@@ -725,7 +752,21 @@ micro.Activity = class {
 
         this.url = eventSource.url;
         this.connected = eventSource.readyState === 1;
+
         this.events = document.createElement("span");
+        this.events.dispatchEvent = function(event) {
+            if (!(event instanceof Event)) {
+                event = Object.assign({}, event, {
+                    __type__: "Event",
+                    id: "Event",
+                    user: ui.user,
+                    time: new Date().toISOString()
+                });
+                event = new CustomEvent(event.type, {detail: {event}});
+            }
+            return Object.getPrototypeOf(this).dispatchEvent.call(this, event);
+        };
+
         this._eventSource = eventSource;
         this._timeout = null;
 
@@ -858,12 +899,13 @@ micro.OL = class extends HTMLOListElement {
             case "touchstart":
             case "mousedown":
                 // Locate li intended for moving
-                handle = micro.findAncestor(event.target,
-                                            e => e.classList.contains("micro-ol-handle"), this);
+                handle = micro.keyboard.findAncestor(
+                    event.target, e => e.classList.contains("micro-ol-handle"), this
+                );
                 if (!handle) {
                     break;
                 }
-                this._li = micro.findAncestor(handle, e => e.parentElement === this, this);
+                this._li = micro.keyboard.findAncestor(handle, e => e.parentElement === this, this);
                 if (!this._li) {
                     break;
                 }
@@ -891,8 +933,9 @@ micro.OL = class extends HTMLOListElement {
                     x = event.clientX;
                     y = event.clientY;
                 }
-                over = micro.findAncestor(document.elementFromPoint(x, y),
-                                          e => e.parentElement === this, this);
+                over = micro.keyboard.findAncestor(
+                    document.elementFromPoint(x, y), e => e.parentElement === this, this
+                );
                 if (!over) {
                     break;
                 }
@@ -1256,11 +1299,18 @@ micro.MapElement = class extends HTMLElement {
             this._leaflet.control.attribution({prefix: false, position: "bottomright"})
                 .addTo(this._map);
 
-            let url = `https://api.mapbox.com/v4/mapbox.light/{z}/{x}/{y}.png?access_token=${ui.mapServiceKey}`;
-            let attribution = document.importNode(
+            const url = `https://api.mapbox.com/styles/v1/mapbox/light-v10/tiles/{z}/{x}/{y}?access_token=${ui.mapServiceKey}`;
+            const attribution = document.importNode(
                 ui.querySelector("#micro-map-attribution-template").content, true
             ).firstElementChild.outerHTML;
-            this._leaflet.tileLayer(url, {attribution, noWrap: true}).addTo(this._map);
+            this._leaflet.tileLayer(url, {
+                minZoom: 1,
+                zoomOffset: -1,
+                tileSize: 512,
+                bounds: this._map.options.maxBounds,
+                noWrap: true,
+                attribution
+            }).addTo(this._map);
 
             this._updateView();
         })().catch(micro.util.catch));
@@ -1345,7 +1395,6 @@ micro.MapElement = class extends HTMLElement {
             );
         } else {
             this._map.fitWorld({animate: false});
-            this._map.zoomIn(1, {animate: false});
         }
     }
 };
@@ -1464,21 +1513,7 @@ micro.LocationInputElement = class extends HTMLElement {
         });
     }
 
-    /**
-     * Current value as :ref:`Location`. May be ``null``.
-     *
-     * .. deprecated:: 0.35.0
-     *
-     *    Use :attr:`valueAsObject` instead.
-     */
-    get value() {
-        return this.valueAsObject;
-    }
-
-    set value(value) {
-        this.valueAsObject = value;
-    }
-
+    /** Current value as :ref:`Location`. May be ``null``. */
     get valueAsObject() {
         return this.nativeInput.valueAsObject;
     }
@@ -1552,11 +1587,6 @@ micro.Page = class extends HTMLElement {
         this._caption = null;
     }
 
-    /**
-     * .. deprecated:: 0.19.0
-     *
-     *    Overriding without chaining.
-     */
     attachedCallback() {
         setTimeout(
             () => {
@@ -1676,191 +1706,6 @@ micro.AboutPage = class extends micro.Page {
 };
 
 /**
- * Edit user page.
- */
-micro.EditUserPage = class extends micro.Page {
-    static async make(url, id) {
-        id = id || ui.user.id;
-        let user = await ui.call("GET", `/api/users/${id}`);
-        if (!(ui.user.id === user.id)) {
-            return document.createElement("micro-forbidden-page");
-        }
-        let page = document.createElement("micro-edit-user-page");
-        page.user = user;
-        return page;
-    }
-
-    createdCallback() {
-        super.createdCallback();
-        this._user = null;
-        this.caption = "Edit user settings";
-        this.appendChild(document.importNode(
-            ui.querySelector(".micro-edit-user-page-template").content, true));
-        this._form = this.querySelector("form");
-        this.querySelector(".micro-edit-user-edit").addEventListener("submit", this);
-
-        this._setEmail1 = this.querySelector(".micro-edit-user-set-email-1");
-        this._setEmailForm = this.querySelector(".micro-edit-user-set-email-1 form");
-        this._setEmail2 = this.querySelector(".micro-edit-user-set-email-2");
-        this._emailP = this.querySelector(".micro-edit-user-email-value");
-        this._setEmailAction = this.querySelector(".micro-edit-user-set-email-1 form button");
-        this._cancelSetEmailAction = this.querySelector(".micro-edit-user-cancel-set-email");
-        this._removeEmailAction = this.querySelector(".micro-edit-user-remove-email");
-        this._removeEmailAction.addEventListener("click", this);
-        this._setEmailAction.addEventListener("click", this);
-        this._cancelSetEmailAction.addEventListener("click", this);
-        this._setEmailForm.addEventListener("submit", e => e.preventDefault());
-    }
-
-    attachedCallback() {
-        super.attachedCallback();
-        this.ready.when((async() => {
-            let match = /^#set-email=([^:]+):([^:]+)$/u.exec(location.hash);
-            if (match) {
-                history.replaceState(null, null, location.pathname);
-                let authRequestID = `AuthRequest:${match[1]}`;
-                let authRequest = JSON.parse(localStorage.authRequest || null);
-                if (!authRequest || authRequestID !== authRequest.id) {
-                    ui.notify(
-                        "The email link was not opened on the same browser/device on which the email address was entered (or the email link is outdated).");
-                    return;
-                }
-
-                this._showSetEmailPanel2(true);
-                try {
-                    this.user = await ui.call(
-                        "POST", `/api/users/${this._user.id}/finish-set-email`, {
-                            auth_request_id: authRequest.id,
-                            auth: match[2]
-                        });
-                    delete localStorage.authRequest;
-                    this._hideSetEmailPanel2();
-                } catch (e) {
-                    if (e instanceof micro.APIError && e.__type__ === "ValueError") {
-                        if (e.error.code === "auth_invalid") {
-                            this._showSetEmailPanel2();
-                            ui.notify("The email link was modified. Please try again.");
-                        } else {
-                            delete localStorage.authRequest;
-                            this._hideSetEmailPanel2();
-                            ui.notify({
-                                auth_request_not_found:
-                                    "The email link is expired. Please try again.",
-                                email_duplicate:
-                                    "The given email address is already in use by another user."
-                            }[e.error.code]);
-                        }
-                    } else {
-                        ui.handleCallError(e);
-                    }
-                }
-            }
-
-            this._form.elements.name.focus();
-        })().catch(micro.util.catch));
-    }
-
-    /**
-     * :ref:`User` to edit.
-     */
-    get user() {
-        return this._user;
-    }
-
-    set user(value) {
-        this._user = value;
-        this.classList.toggle("micro-edit-user-has-email", this._user.email);
-        this._form.elements.name.value = this._user.name;
-        this._emailP.textContent = this._user.email;
-    }
-
-    async _setEmail() {
-        if (!this._setEmailForm.checkValidity()) {
-            return;
-        }
-
-        try {
-            let authRequest = await ui.call("POST", `/api/users/${this.user.id}/set-email`, {
-                email: this._setEmailForm.elements.email.value
-            });
-            localStorage.authRequest = JSON.stringify(authRequest);
-            this._setEmailForm.reset();
-            this._showSetEmailPanel2();
-        } catch (e) {
-            ui.handleCallError(e);
-        }
-    }
-
-    _cancelSetEmail() {
-        this._hideSetEmailPanel2();
-    }
-
-    async _removeEmail() {
-        try {
-            this.user = await ui.call("POST", `/api/users/${this.user.id}/remove-email`);
-        } catch (e) {
-            if (e instanceof micro.APIError && e.__type__ === "ValueError") {
-                // If the email address has already been removed, we just update the UI
-                this.user.email = null;
-                // eslint-disable-next-line no-self-assign
-                this.user = this.user;
-            } else {
-                ui.handleCallError(e);
-            }
-        }
-    }
-
-    _showSetEmailPanel2(progress) {
-        progress = progress || false;
-        let progressP = this.querySelector(".micro-edit-user-set-email-2 .micro-progress");
-        let actions = this.querySelector(".micro-edit-user-cancel-set-email");
-        this._emailP.style.display = "none";
-        this._setEmail1.style.display = "none";
-        this._setEmail2.style.display = "block";
-        if (progress) {
-            progressP.style.display = "";
-            actions.style.display = "none";
-        } else {
-            progressP.style.display = "none";
-            actions.style.display = "";
-        }
-    }
-
-    _hideSetEmailPanel2() {
-        this._emailP.style.display = "";
-        this._setEmail1.style.display = "";
-        this._setEmail2.style.display = "";
-    }
-
-    handleEvent(event) {
-        if (event.currentTarget === this._form) {
-            event.preventDefault();
-            (async() => {
-                try {
-                    let user = await ui.call("POST", `/api/users/${this._user.id}`, {
-                        name: this._form.elements.name.value
-                    });
-                    ui.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
-                } catch (e) {
-                    if (e instanceof micro.APIError && e.error.__type__ === "InputError") {
-                        ui.notify("The name is missing.");
-                    } else {
-                        ui.handleCallError(e);
-                    }
-                }
-            })().catch(micro.util.catch);
-
-        } else if (event.currentTarget === this._setEmailAction && event.type === "click") {
-            this._setEmail().catch(micro.util.catch);
-        } else if (event.currentTarget === this._cancelSetEmailAction && event.type === "click") {
-            this._cancelSetEmail();
-        } else if (event.currentTarget === this._removeEmailAction && event.type === "click") {
-            this._removeEmail().catch(micro.util.catch);
-        }
-    }
-};
-
-/**
  * Edit settings page.
  */
 micro.EditSettingsPage = class extends micro.Page {
@@ -1911,6 +1756,7 @@ micro.EditSettingsPage = class extends micro.Page {
     }
 
     attachedCallback() {
+        super.attachedCallback();
         this.querySelector("[name=title]").focus();
     }
 };
@@ -2033,6 +1879,5 @@ document.registerElement("micro-page", micro.Page);
 document.registerElement("micro-not-found-page", micro.NotFoundPage);
 document.registerElement("micro-forbidden-page", micro.ForbiddenPage);
 document.registerElement("micro-about-page", micro.AboutPage);
-document.registerElement("micro-edit-user-page", micro.EditUserPage);
 document.registerElement("micro-edit-settings-page", micro.EditSettingsPage);
 document.registerElement("micro-activity-page", micro.ActivityPage);

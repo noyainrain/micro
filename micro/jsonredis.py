@@ -118,8 +118,8 @@ class JSONRedis(Generic[T]):
                     import builtins
                     data: Dict[str, builtins.object] = json.loads(value.decode())
                     object = cast(T, self.decode(data) if self.decode else data)
-                except ValueError:
-                    raise ResponseError()
+                except ValueError as e:
+                    raise ResponseError() from e
                 if self.caching:
                     self._cache[key] = object
         if object is None:
@@ -406,7 +406,7 @@ def zpoptimed(r: Redis, key: str) -> Union[Tuple[bytes, float], float]:
         end
         return "+inf"
     """)
-    result = f([key])
+    result = cast(Union[List[bytes], bytes], f([key]))
     if isinstance(result, list):
         return (expect_type(bytes)(result[0]), float(result[1]))
     if isinstance(result, bytes):

@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -27,7 +27,7 @@ let {promisify} = require("util");
 
 let {until} = require("selenium-webdriver");
 
-const {getWithServiceWorker, startBrowser, untilElementTextLocated} =
+const {getWithServiceWorker, startBrowser, untilElementTextLocated, request} =
     require("@noyainrain/micro/test");
 
 const URL = "http://localhost:8081";
@@ -79,7 +79,18 @@ describe("UI", function() {
         await browser.wait(until.elementLocated({css: "micro-image"}), timeout);
         await form.findElement({css: "button:not([type])"}).click();
         await browser.wait(
-            untilElementTextLocated({css: ".hello-start-greetings > li > p"}, "Meow!"), timeout
+            untilElementTextLocated({css: ".hello-start-greetings li > p"}, "Meow!"), timeout
+        );
+
+        // Observe greeting created by someone else
+        const response = await request(`${URL}/api/devices`, {method: "POST"});
+        const headers = {Cookie: `auth_secret=${JSON.parse(response.body.toString()).auth_secret}`};
+        await request(
+            `${URL}/api/greetings`,
+            {method: "POST", headers, body: JSON.stringify({text: "Purr!", resource: null})}
+        );
+        await browser.wait(
+            untilElementTextLocated({css: ".hello-start-greetings li > p"}, "Purr!"), timeout
         );
 
         // Edit user
@@ -88,11 +99,11 @@ describe("UI", function() {
         await browser.wait(
             untilElementTextLocated({css: "micro-edit-user-page h1"}, "Edit user settings"),
             timeout);
-        form = await browser.findElement({css: ".micro-edit-user-edit"});
+        form = await browser.findElement({css: "micro-edit-user-page form"});
         input = await form.findElement({name: "name"});
         await input.clear();
         await input.sendKeys("Happy");
-        await form.findElement({css: "button"}).click();
+        await form.findElement({css: "button:not([type])"}).click();
         await browser.wait(
             until.elementTextContains(
                 await browser.findElement({css: ".micro-ui-header micro-user"}),

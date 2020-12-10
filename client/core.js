@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -23,6 +23,33 @@ micro.core = {};
 
 // Work around missing look behind by capturing whitespace
 micro.core.URL_PATTERN = "(^|[\\s!-.:-@])(https?://.+?)(?=[!-.:-@]?(\\s|$))";
+
+/**
+ * Modal dialog to query additional information for an action.
+ *
+ * .. attribute:: result
+ *
+ *    Promise that resolves with the result of the concluded dialog. ``null`` if the dialog is
+ *    closed.
+ */
+micro.core.Dialog = class extends HTMLElement {
+    createdCallback() {
+        this.result = new micro.util.PromiseWhen();
+        this.classList.add("micro-dialog");
+    }
+
+    detachedCallback() {
+        try {
+            this.result.when(null);
+        } catch (e) {
+            if (e.message.includes("when")) {
+                // Ignore if result is already resolved on close
+            } else {
+                throw e;
+            }
+        }
+    }
+};
 
 Object.assign(micro.bind.transforms, {
     /**

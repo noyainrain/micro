@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -24,12 +24,13 @@ from urllib.parse import quote
 from tornado.httpclient import HTTPClientError
 from tornado.testing import gen_test
 
+from micro.core import context
 from micro.server import (CollectionEndpoint, Server, make_orderable_endpoints,
                           make_trashable_endpoints)
 from micro.test import ServerTestCase, CatApp
 
 class ServerTest(ServerTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.app = CatApp(redis_url='15', files_path=mkdtemp())
         self.app.r.flushdb()
@@ -38,15 +39,18 @@ class ServerTest(ServerTestCase):
             *make_orderable_endpoints(r'/api/cats', lambda: self.app.cats),
             *make_trashable_endpoints(r'/api/cats/([^/]+)', lambda i: self.app.cats[i])
         ]
-        self.server = Server(self.app, handlers, client_path='hello',
-                             client_modules_path='node_modules', port=16160)
+        self.server = Server(
+            self.app, handlers, client_config={'path': 'hello', 'modules_path': 'node_modules'},
+            port=16160)
         self.server.start()
-        self.staff_member = self.app.login()
-        self.user = self.app.login()
-        self.client_user = self.user
+        self.staff_member_device = self.app.devices.sign_in()
+        self.client_device = self.app.devices.sign_in()
+        self.user = self.client_device.user
+        context.user.set(self.user)
 
     @gen_test
-    async def test_availability(self):
+    async def test_availability(self) -> None:
+        device = self.user.devices[0]
         file_url = await self.app.files.write(b'Meow!', 'text/plain')
 
         # UI
@@ -60,8 +64,12 @@ class ServerTest(ServerTestCase):
         await self.request('/api/login', method='POST', body='')
         await self.request('/api/users/' + self.user.id)
         await self.request('/api/users/' + self.user.id, method='POST', body='{"name": "Happy"}')
-        await self.request('/api/users/{}'.format(self.app.user.id), method='PATCH',
-                           body='{"op": "disable_notifications"}')
+        await self.request(f'/api/users/{self.user.id}/devices')
+        await self.request('/api/devices', method='POST', body='')
+        await self.request('/api/devices/self')
+        await self.request(f'/api/devices/{device.id}')
+        await self.request(f'/api/devices/{device.id}', method='PATCH',
+                           body=json.dumps({'op': 'disable_notifications'}))
         await self.request('/api/settings')
         await self.request('/api/analytics/referrals', method='POST',
                            body='{"url": "https://example.org/"}')
@@ -79,14 +87,14 @@ class ServerTest(ServerTestCase):
         await self.request('/api/cats/{}/restore'.format(cat.id), method='POST', body='')
 
         # API (as staff member)
-        self.client_user = self.staff_member
+        self.client_device = self.staff_member_device
         await self.request(
             '/api/settings', method='POST',
             body='{"title": "CatzApp", "icon": "http://example.org/static/icon.svg"}')
         await self.request('/api/activity/v2')
         await self.request('/api/activity/v2', method='PATCH', body='{"op": "subscribe"}')
         await self.request('/api/activity/v2', method='PATCH', body='{"op": "unsubscribe"}')
-        await self.request('/api/analytics/stats/users')
+        await self.request('/api/analytics/statistics/users')
         await self.request('/api/analytics/referrals')
         start = quote((self.app.now() - timedelta(days=10)).isoformat())
         end = quote((self.app.now() - timedelta(days=2)).isoformat())

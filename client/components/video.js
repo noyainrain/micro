@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -46,6 +46,7 @@ micro.components.VideoElement = class extends HTMLElement {
             video: null,
             state: new micro.components.VideoElement._PausedUninitialized(this),
             controlsVisible: true,
+            error: null,
 
             playPause: () => {
                 // Wait until button does not touch icon anymore
@@ -141,30 +142,43 @@ micro.components.VideoElement = class extends HTMLElement {
             return p;
         }
 
-        function createPlayer(elem, videoId) {
-            return new Promise(resolve => {
-                new YT.Player(
-                    elem,
-                    {
-                        videoId,
-                        playerVars: {controls: 0, disablekb: 1},
-                        events: {onReady: event => resolve(event.target)}
-                    }
-                );
+        const createPlayer = (elem, options) => {
+            const TIMEOUT = 20 * 1000;
+            return new Promise((resolve, reject) => {
+                const player = new YT.Player(elem, options);
+                player.addEventListener("onReady", () => {
+                    clearTimeout(timeout);
+                    resolve(player);
+                });
+                // iframe doesn't dispatch error events, so handle error via timeout
+                const timeout = setTimeout(() => {
+                    player.destroy();
+                    reject(Object.assign(new Error(), {data: 0}));
+                }, TIMEOUT);
             });
-        }
+        };
 
         await importYT();
         const videoId = new URL(this._data.video.url).searchParams.get("v");
         const div = document.createElement("div");
-        this.querySelector("div").appendChild(div);
-        const player = await createPlayer(div, videoId);
-        player.cleanUp = () => {
-            player.destroy();
-            div.remove();
+        this.firstElementChild.appendChild(div);
+        try {
+            const player = await createPlayer(
+                div, {videoId, playerVars: {controls: 0, disablekb: 1}}
+            );
+            player.getIframe().tabIndex = -1;
+            player.cleanUp = () => {
+                player.destroy();
+                div.remove();
+            }
+            return player;
+        } catch (e) {
+            if (e.data === 0) {
+                div.remove();
+                throw new micro.NetworkError(`Error loading YouTube iframe player ${videoId}`);
+            }
+            throw e;
         }
-        player.getIframe().tabIndex = -1;
-        return player;
     }
 }
 
@@ -198,6 +212,7 @@ Object.assign(micro.components.VideoElement, {
                     }
                 }
             })());
+            this.owner._data.error = null;
             this.owner._data.state =
                 new micro.components.VideoElement._PlayingInitializing(this.owner);
             this.owner._switchPlaying();
@@ -246,7 +261,7 @@ Object.assign(micro.components.VideoElement, {
         }
 
         onSetUpError() {
-            ui.notify("Oops, there was a problem communicating with YouTube. Please try again in a few moments.");
+            this.owner._data.error = "Oops, there was a problem communicating with YouTube. Please try again in a few moments.";
             this.owner._data.state =
                 new micro.components.VideoElement._PausedUninitialized(this.owner);
             this.owner._switchPaused({ended: true});
@@ -287,12 +302,12 @@ Object.assign(micro.components.VideoElement, {
         onError(code) {
             switch (code) {
                 case 5:
-                    ui.notify("Oops, there was a problem communicating with YouTube! Please try again in a few moments.");
+                    this.owner._data.error = "Oops, there was a problem communicating with YouTube! Please try again in a few moments.";
                     break;
                 case 100:
                 case 101:
                 case 150:
-                    ui.notify("Oops, the video is no longer available!");
+                    this.owner._data.error = "Oops, the video is no longer available!";
                     break;
                 default:
                     throw new Error(code);

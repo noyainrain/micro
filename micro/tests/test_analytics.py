@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -43,10 +43,10 @@ class AnalyticsTest(MicroTestCase):
 
         self.app.analytics.collect_statistics()
         AnalyticsTest.now = timeline[1]
-        self.app.authenticate(self.user.auth_secret)
+        self.app.devices.authenticate(self.user.devices[0].auth_secret)
         self.app.analytics.collect_statistics()
         AnalyticsTest.now = timeline[2]
-        self.app.login()
+        self.app.devices.sign_in()
         self.app.analytics.collect_statistics()
 
         users = [Point(timeline[0], 2), Point(timeline[1], 2), Point(timeline[2], 3)]

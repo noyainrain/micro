@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -21,9 +21,9 @@ from tempfile import mkdtemp
 from tornado.testing import AsyncTestCase, AsyncHTTPTestCase, gen_test
 from tornado.web import Application, RequestHandler
 
-from micro.error import CommunicationError
 from micro.resource import (Analyzer, BrokenResourceError, Files, ForbiddenResourceError, Image,
                             NoResourceError, Resource)
+from micro.webapi import CommunicationError
 
 class AnalyzerTestCase(AsyncHTTPTestCase):
     def get_app(self) -> Application:
@@ -96,7 +96,7 @@ class AnalyzerTestCase(AsyncHTTPTestCase):
     async def test_analyze_no_host(self) -> None:
         analyzer = Analyzer()
         with self.assertRaises(CommunicationError):
-            await analyzer.analyze('https://example.invalid/')
+            await analyzer.analyze('https://[::]/')
 
 class FilesTest(AsyncTestCase):
     def setUp(self) -> None:

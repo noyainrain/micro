@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -20,11 +20,7 @@ MESSAGE_TEMPLATES = {
 
         Hi there!
 
-        To add your email address {{ email }} to {{ app.settings.title }}, simply open this link:
-
-        {{ server.url }}/user/edit#set-email={{ auth_request.id[12:] }}:{{ auth }}
-
-        Or copy and paste the following code into the app:
+        Here is the verification code to add your email address to {{ app.settings.title }}:
 
         {{ auth }}
 

@@ -42,11 +42,3 @@
 .. describe:: push_vapid_public_key
 
    VAPID public key used for sending device notifications.
-
-.. describe:: favicon
-
-   URL of the site icon optimized for a small size. May be ``null``.
-
-   .. deprecated:: 0.13.0
-
-      Use *icon_small* instead.

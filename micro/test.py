@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -17,14 +17,15 @@
 from typing import Dict, List, Optional, cast
 from urllib.parse import urljoin
 
-from tornado.httpclient import AsyncHTTPClient
+from tornado.httpclient import AsyncHTTPClient, HTTPResponse
 from tornado.testing import AsyncTestCase
 
-from .core import RewriteFunc
-from .jsonredis import JSONRedis, RedisList
+from .core import Device, RewriteFunc
+from .jsonredis import RedisList
 from .micro import (Activity, Application, Collection, Editable, Object, Orderable, Settings,
                     Trashable, WithContent)
 from .resource import Resource
+from .server import Server
 from .util import expect_opt_type, expect_type, randstr
 
 class ServerTestCase(AsyncTestCase):
@@ -34,26 +35,29 @@ class ServerTestCase(AsyncTestCase):
 
        :class:`server.Server` under test. Must be set by subclass.
 
-    .. attribute:: client_user
+    .. attribute:: client_device
 
-       :class:`User` interacting with the server. May be set by subclass.
+       User device for interacting with the server. May be set by subclass.
     """
 
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
-        self.server = None
-        self.client_user = None
+        self.server: Optional[Server] = None
+        self.client_device: Optional[Device] = None
 
-    def request(self, url, **args):
+    async def request(self, url: str, *, headers: Dict[str, str] = {},
+                      raise_error: bool = True, **args: object) -> HTTPResponse:
         """Run a request against the given *url* path.
 
         The request is issued by :attr:`client_user`, if set. This is a convenient wrapper around
-        :meth:`tornado.httpclient.AsyncHTTPClient.fetch` and *args* are passed through.
+        :meth:`tornado.httpclient.AsyncHTTPClient.fetch` and keyword arguments are passed through.
         """
-        headers = args.pop('headers', {})
-        if self.client_user:
-            headers.update({'Cookie': 'auth_secret=' + self.client_user.auth_secret})
-        return AsyncHTTPClient().fetch(urljoin(self.server.url, url), headers=headers, **args)
+        if not self.server:
+            raise ValueError('No server')
+        if self.client_device:
+            headers.update({'Cookie': f'auth_secret={self.client_device.auth_secret}'})
+        return await AsyncHTTPClient().fetch(urljoin(self.server.url, url), headers=headers,
+                                             raise_error=raise_error, **args)
 
 class CatApp(Application):
     """Simple application for testing purposes.
@@ -82,35 +86,12 @@ class CatApp(Application):
         self.types.update({'Cat': Cat})
         self.cats = self.Cats(app=self)
 
-    def do_update(self):
-        r = JSONRedis(self.r.r)
-        r.caching = False
-
-        cats = r.omget(r.lrange('cats', 0, -1))
-        for cat in cats:
-            # Deprecated since 0.14.0
-            if 'activity' not in cat:
-                cat['activity'] = Activity(
-                    '{}.activity'.format(cat['id']), app=self, subscriber_ids=[]).json()
-            # Deprecated since 0.27.0
-            if 'text' not in cat:
-                cat['text'] = None
-                cat['resource'] = None
-        r.omset({cat['id']: cat for cat in cats})
-
     def create_settings(self) -> Settings:
         # pylint: disable=unexpected-keyword-arg; decorated
         return Settings(
             id='Settings', app=self, authors=[], title='CatApp', icon=None, icon_small=None,
             icon_large=None, provider_name=None, provider_url=None, provider_description={},
-            feedback_url=None, staff=[], push_vapid_private_key=None, push_vapid_public_key=None,
-            v=2)
-
-    def sample(self):
-        """Set up some sample data."""
-        user = self.login()
-        auth_request = user.set_email('happy@example.org')
-        self.r.set('auth_request', auth_request.id)
+            feedback_url=None, staff=[], push_vapid_private_key='', push_vapid_public_key='')
 
 class Cat(Object, Editable, Trashable, WithContent):
     """Cute cat."""

@@ -6,6 +6,14 @@
 
    Global :ref:`Activity` feed.
 
+.. http:get:: /api/activity/v2
+
+   Global :ref:`Activity` feed.
+
+   .. deprecated:: 0.57.0
+
+      Use :http:get:`/api/activity` instead.
+
 .. http:post:: /api/login
 
    ``{"code": null}``
@@ -17,3 +25,5 @@
 
    If *code* is ``null``, create and log in a new user. The very first user who logs in is
    registered as staff member.
+
+   .. deprecated:: 0.58.0
