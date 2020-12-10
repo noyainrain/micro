@@ -51,7 +51,9 @@ class Hello(Application):
 
             greeting = Greeting(
                 id='Greeting:{}'.format(randstr()), app=self.app, authors=[user.id],
-                text=attrs['text'], resource=attrs['resource'])
+                text=attrs['text'],
+                resource=(
+                    attrs['resource'].json() if isinstance(attrs['resource'], Resource) else None))
             self.app.r.oset(greeting.id, greeting)
             self.app.r.lpush(self.ids.key, greeting.id)
             self.app.activity.publish(
