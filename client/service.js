@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -68,7 +68,7 @@ micro.service.Service = class {
     constructor() {
         this.settings = null;
         this.notificationRenderers = {
-            "user-enable-device-notifications": () => ({
+            "device-enable-notifications": () => ({
                 title: this.settings.title,
                 body: "Notifications enabled",
                 url: "/"

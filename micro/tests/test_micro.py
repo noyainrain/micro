@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -15,63 +15,44 @@
 # pylint: disable=missing-docstring; test module
 
 from asyncio import sleep
-from datetime import timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 import subprocess
 from tempfile import gettempdir, mkdtemp
+from typing import Callable, List, Tuple, Union, cast
 from unittest.mock import Mock, patch
-
-from typing import List, Tuple, cast
 
 from redis.exceptions import RedisError
 from tornado.testing import AsyncTestCase, gen_test
 
-import micro
-from micro import Activity, Collection, Event, Gone, Location, Trashable, WithContent
+from micro import Activity, Collection, Event, Gone, Location, Trashable, WithContent, error
+from micro.core import context
 from micro.jsonredis import RedisList
 from micro.resource import Analyzer, Resource
 from micro.test import CatApp, Cat
-from micro.util import ON, randstr
+from micro.util import expect_type, randstr
 
 SETUP_DB_SCRIPT = """\
+import asyncio
 from time import sleep
 
 from micro.test import CatApp
 
-# Forward compatibility for redis-py 3 (deprecated since 0.30.0)
-redis_url = 'redis://localhost/15'
+async def main():
+    app = CatApp(redis_url='15')
+    app.r.flushdb()
+    app.update()
+    app.login()
 
-app = CatApp(redis_url=redis_url)
-app.r.flushdb()
-app.update()
-app.sample()
+    # Events at different times
+    app.settings.edit(provider_name='Meow Inc.')
+    sleep(1)
+    app.settings.edit(provider_url='https://meow.example.com/')
 
-# Compatibility for unmigrated global activity data (deprecated since 0.24.1)
-from micro import Event
-event = Event.create('meow', None, app=app)
-if int(app.r.get('micro_version')) == 6:
-    app.r.oset(event.id, event)
-    app.r.lpush('activity', event.id)
-else:
-    app.activity.publish(event)
+    # User without activity
+    app.login()
 
-# Events at different times
-app.settings.edit(provider_name='Meow Inc.')
-sleep(1)
-app.settings.edit(provider_url='https://meow.example.com/')
-
-# Compatibility for app without cats (deprecated since 0.6.0)
-if not hasattr(app, 'cats'):
-    from micro.test import Cat
-    app.r.oset('Cat:0', Cat(id='Cat:0', trashed=False, app=app, authors=[], name=None))
-    app.r.oset('Cat:1', Cat(id='Cat:1', trashed=True, app=app, authors=[], name=None))
-    app.r.rpush('cats', 'Cat:0', 'Cat:1')
-else:
-    app.cats.create()
-    app.cats.create().trash()
-
-# User without activity
-app.login()
+asyncio.run(main())
 """
 
 class MicroTestCase(AsyncTestCase):
@@ -79,41 +60,27 @@ class MicroTestCase(AsyncTestCase):
         super().setUp()
         self.app = CatApp(redis_url='15', files_path=mkdtemp())
         self.app.r.flushdb()
-        self.app.update() # type: ignore
-        self.staff_member = self.app.login() # type: ignore
-        self.user = self.app.login() # type: ignore
+        self.app.update()
+        self.staff_member = self.app.devices.sign_in().user
+        self.user = self.app.devices.sign_in().user
+        context.user.set(self.user)
 
 class ApplicationTest(MicroTestCase):
-    def test_init_redis_url_invalid(self):
-        with self.assertRaisesRegex(micro.ValueError, 'redis_url_invalid'):
+    def test_init_redis_url_invalid(self) -> None:
+        with self.assertRaisesRegex(error.ValueError, 'redis_url_invalid'):
             CatApp(redis_url='//localhost:foo')
-
-    def test_authenticate(self):
-        user = self.app.authenticate(self.user.auth_secret)
-        self.assertEqual(user, self.user)
-        self.assertEqual(user, self.app.user)
-
-    def test_authenticate_secret_invalid(self):
-        with self.assertRaises(micro.AuthenticationError):
-            self.app.authenticate('foo')
-
-    def test_login(self):
-        # login() is called by setUp()
-        self.assertIn(self.user.id, self.app.users)
-        self.assertEqual(self.user, self.app.user)
-        self.assertIn(self.staff_member, self.app.settings.staff)
 
     def test_login_no_redis(self):
         app = CatApp(redis_url='//localhost:16160')
         with self.assertRaises(RedisError):
             app.login()
 
-    def test_login_code(self):
-        user = self.app.login(code=self.staff_member.auth_secret)
-        self.assertEqual(user, self.staff_member)
+    def test_login_code(self) -> None:
+        user = self.app.login(code=self.user.devices[0].auth_secret)
+        self.assertEqual(user, self.user)
 
-    def test_login_code_invalid(self):
-        with self.assertRaisesRegex(micro.ValueError, 'code_invalid'):
+    def test_login_code_invalid(self) -> None:
+        with self.assertRaisesRegex(error.ValueError, 'code_invalid'):
             self.app.login(code='foo')
 
 class ApplicationUpdateTest(AsyncTestCase):
@@ -135,88 +102,73 @@ class ApplicationUpdateTest(AsyncTestCase):
 
     @gen_test # type: ignore[misc]
     async def test_update_db_version_previous(self):
-        self.setup_db('0.38.1')
-        await sleep(1)
-        app = CatApp(redis_url='15', files_path=mkdtemp())
-        app.update() # type: ignore
-
-        app.user = app.settings.staff[0]
-        first = app.activity[-1].time.replace(tzinfo=timezone.utc)
-        last = app.cats[1].activity[0].time.replace(tzinfo=timezone.utc)
-        self.assertEqual(app.user.create_time, first)
-        self.assertEqual(app.user.authenticate_time, last)
-        user = app.users[1]
-        self.assertEqual(user.create_time, user.authenticate_time)
-        self.assertAlmostEqual(user.create_time, app.now(), delta=timedelta(minutes=1))
-        self.assertGreater(user.create_time, last)
-
-    @gen_test # type: ignore[misc]
-    async def test_update_db_version_first(self):
-        Trashable.RETENTION = timedelta(seconds=0.2)
-        # NOTE: Tag tmp can be removed on next database update
-        self.setup_db('tmp')
+        self.setup_db('0.57.2')
         await sleep(1)
         app = CatApp(redis_url='15', files_path=mkdtemp())
         app.update()
+        user = sorted(app.users, key=lambda user: user.create_time, reverse=True)[0]
+        context.user.set(user)
 
-        # Update to version 3
-        self.assertFalse(app.settings.provider_description)
-        # Update to version 4
-        self.assertNotIn('trashed', app.settings.json())
-        self.assertFalse(app.cats[0].trashed)
-        # Update to version 5
-        self.assertFalse(hasattr(app.settings, 'favicon'))
-        self.assertIsNone(app.settings.icon_small)
-        self.assertIsNone(app.settings.icon_large)
-        # Update to version 6
-        user = app.settings.staff[0]
-        self.assertTrue(app.settings.push_vapid_private_key)
-        self.assertTrue(app.settings.push_vapid_public_key)
-        self.assertIsNotNone(app.activity.subscribers)
-        self.assertEqual(user.device_notification_status, 'off')
-        self.assertIsNone(user.push_subscription)
-        # Update to version 7
-        app.user = app.settings.staff[0]
-        self.assertEqual([event.type for event in app.activity],
-                         ['editable-edit', 'editable-edit', 'meow'])
-        # Update to version 8
-        cats = list(app.cats.values())
-        app.start_empty_trash()
-        await sleep(0.1)
-        self.assertEqual(list(app.cats.values()), cats)
-        await sleep(0.3)
-        self.assertEqual(list(app.cats.values()), cats[:1])
+        device = user.devices[0]
+        self.assertEqual(device, app.devices.authenticate(device.auth_secret))
+        self.assertEqual(device.notification_status, 'off')
+        self.assertIsNone(device.push_subscription)
+        self.assertEqual(device.user_id, user.id)
+        self.assertEqual(device, app.devices[device.id])
+        self.assertEqual(user.devices[:], [device])
+
+    @gen_test # type: ignore[misc]
+    async def test_update_db_version_first(self):
+        self.setup_db('0.38.1')
+        await sleep(1)
+        app = CatApp(redis_url='15', files_path=mkdtemp())
+        app.update()
+        user = sorted(app.users, key=lambda user: user.create_time, reverse=True)[0]
+        context.user.set(user)
+
         # Update to version 9
-        first = app.activity[-1].time.replace(tzinfo=timezone.utc)
-        last = app.activity[0].time.replace(tzinfo=timezone.utc)
+        app.user = app.settings.staff[0]
+        first = app.activity[-1].time
+        last = app.activity[0].time
         self.assertEqual(app.user.create_time, first)
         self.assertEqual(app.user.authenticate_time, last)
-        user = app.users[1]
         self.assertEqual(user.create_time, user.authenticate_time)
         self.assertAlmostEqual(user.create_time, app.now(), delta=timedelta(minutes=1))
         self.assertGreater(user.create_time, last)
+        # Device
+        device = user.devices[0]
+        self.assertEqual(device, app.devices.authenticate(device.auth_secret))
+        self.assertEqual(device.notification_status, 'off')
+        self.assertIsNone(device.push_subscription)
+        self.assertEqual(device.user_id, user.id)
+        self.assertEqual(device, app.devices[device.id])
+        self.assertEqual(user.devices[:], [device])
 
 class EditableTest(MicroTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.cat = self.app.cats.create()
 
-    def test_edit(self):
-        self.cat.edit(name='Happy')
-        self.cat.edit(name='Grumpy')
-        user2 = self.app.login()
-        self.cat.edit(name='Hover')
-        self.assertEqual(self.cat.authors, [self.user, user2])
+    @gen_test # type: ignore[misc]
+    async def test_edit(self) -> None:
+        await self.cat.edit(name='Happy')
+        await self.cat.edit(name='Grumpy')
+        user2 = self.app.devices.sign_in().user
+        context.user.set(user2)
+        await self.cat.edit(name='Hover')
+        self.assertEqual(self.cat.authors, [self.user, user2]) # type: ignore[misc]
 
-    def test_edit_cat_trashed(self):
+    @gen_test # type: ignore[misc]
+    async def test_edit_cat_trashed(self) -> None:
         self.cat.trash()
-        with self.assertRaisesRegex(micro.ValueError, 'object_trashed'):
-            self.cat.edit(name='Happy')
+        with self.assertRaisesRegex(error.ValueError, 'object_trashed'):
+            await self.cat.edit(name='Happy')
 
-    def test_edit_user_anonymous(self):
+    @gen_test # type: ignore[misc]
+    async def test_edit_user_anonymous(self) -> None:
         self.app.user = None
-        with self.assertRaises(micro.PermissionError):
-            self.cat.edit(name='Happy')
+        with self.assertRaises(error.PermissionError):
+            await self.cat.edit(name='Happy')
 
 @patch('micro.test.Cat.delete', autospec=True)
 class TrashableTest(MicroTestCase):
@@ -275,19 +227,22 @@ class WithContentTest(MicroTestCase):
     async def test_edit(self, analyze) -> None:
         # pylint: disable=unused-argument; part of API
         cat = self.app.cats.create()
-        await cat.edit(resource='http://example.org/', asynchronous=ON)
-        await cat.edit(text='Meow!', resource='http://example.org/', asynchronous=ON)
+        await cat.edit(resource='http://example.org/')
+        await cat.edit(text='Meow!', resource='http://example.org/')
         self.assertEqual(cat.text, 'Meow!')
         assert cat.resource
         self.assertEqual(cat.resource.url, 'http://example.org/')
 
 class CollectionTest(MicroTestCase):
-    def make_cats(self, *, check=None):
+    def make_cats(
+            self, *, check: Callable[[Union[int, slice, str]], None] = None
+        ) -> Tuple[Collection[Cat], List[Cat]]:
         objects = [Cat.make(name='Happy', app=self.app), Cat.make(name='Grumpy', app=self.app),
                    Cat.make(name='Long', app=self.app), Cat.make(name='Monorail', app=self.app)]
         self.app.r.omset({cat.id: cat for cat in objects})
         self.app.r.rpush('cats', *(cat.id for cat in objects))
-        cats = Collection(RedisList('cats', self.app.r.r), check=check, app=self.app)
+        cats = Collection(RedisList('cats', self.app.r.r), check=check, expect=expect_type(Cat),
+                          app=self.app)
         return cats, objects
 
     def test_index(self):
@@ -323,9 +278,9 @@ class CollectionTest(MicroTestCase):
         cats[1]
         check.assert_called_once_with(1)
 
-    def test_iter(self):
+    def test_iter(self) -> None:
         cats, objects = self.make_cats()
-        self.assertEqual(list(iter(cats)), [obj.id for obj in objects])
+        self.assertEqual(list(iter(cats)), objects) # type: ignore[misc]
 
     def test_contains(self):
         cats, objects = self.make_cats()
@@ -336,40 +291,48 @@ class CollectionTest(MicroTestCase):
         self.assertFalse(Cat.make(app=self.app) in cats)
 
 class OrderableTest(MicroTestCase):
-    def make_cats(self):
+    def make_cats(self) -> List[Cat]:
         return [self.app.cats.create(), self.app.cats.create(), self.app.cats.create()]
 
-    def test_move(self):
+    def test_move(self) -> None:
         cats = self.make_cats()
         self.app.cats.move(cats[1], cats[2])
-        self.assertEqual(list(self.app.cats.values()), [cats[0], cats[2], cats[1]])
+        self.assertEqual(list(self.app.cats), [cats[0], cats[2], cats[1]]) # type: ignore[misc]
 
-    def test_move_to_none(self):
+    def test_move_to_none(self) -> None:
         cats = self.make_cats()
         self.app.cats.move(cats[1], None)
-        self.assertEqual(list(self.app.cats.values()), [cats[1], cats[0], cats[2]])
+        self.assertEqual(list(self.app.cats), [cats[1], cats[0], cats[2]]) # type: ignore[misc]
 
-    def test_move_to_item(self):
+    def test_move_to_item(self) -> None:
         cats = self.make_cats()
         self.app.cats.move(cats[1], cats[1])
-        self.assertEqual(list(self.app.cats.values()), cats)
+        self.assertEqual(list(self.app.cats), cats) # type: ignore[misc]
 
-    def test_move_item_external(self):
+    def test_move_item_external(self) -> None:
         cats = self.make_cats()
         external = Cat.make(app=self.app)
-        with self.assertRaisesRegex(micro.ValueError, 'item_not_found'):
+        with self.assertRaisesRegex(error.ValueError, 'item_not_found'):
             self.app.cats.move(external, cats[0])
 
-    def test_move_to_external(self):
+    def test_move_to_external(self) -> None:
         cats = self.make_cats()
         external = Cat.make(app=self.app)
-        with self.assertRaisesRegex(micro.ValueError, 'to_not_found'):
+        with self.assertRaisesRegex(error.ValueError, 'to_not_found'):
             self.app.cats.move(cats[0], external)
 
 class UserTest(MicroTestCase):
-    def test_edit(self):
-        self.user.edit(name='Happy')
+    @gen_test # type: ignore[misc]
+    async def test_edit(self) -> None:
+        await self.user.edit(name='Happy')
         self.assertEqual(self.user.name, 'Happy')
+
+class UserDevicesTest(MicroTestCase):
+    def test_getitem_as_user(self) -> None:
+        context.user.set(self.app.devices.sign_in().user)
+        with self.assertRaises(error.PermissionError):
+            # pylint: disable=pointless-statement; error raised on access
+            self.user.devices[:]
 
 class ActivityTest(MicroTestCase):
     def make_activity(self) -> Activity:
@@ -379,7 +342,7 @@ class ActivityTest(MicroTestCase):
     def test_publish(self, notify):
         activity = self.make_activity()
         activity.subscribe()
-        self.app.login()
+        context.user.set(self.app.devices.sign_in().user)
         activity.subscribe()
 
         event = Event.create('meow', None, app=self.app)

@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -22,7 +22,7 @@ from tornado.testing import AsyncTestCase, gen_test
 from micro.resource import Analyzer, Video, handle_image, handle_youtube
 
 class AnalyzeServiceTest(AsyncTestCase):
-    @gen_test
+    @gen_test(timeout=20)
     async def test_analyze_youtube(self) -> None:
         config = ConfigParser()
         config.read('test.cfg')

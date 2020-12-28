@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -58,10 +58,13 @@ hello.StartPage = class extends micro.Page {
                 try {
                     const {text, resource} = input.valueAsObject;
                     await ui.onboard();
-                    await ui.call(
+                    const greeting = await ui.call(
                         "POST", "/api/greetings", {text, resource: resource && resource.url}
                     );
                     input.valueAsObject = {text: null, resource: null};
+                    this._activity.events.dispatchEvent(
+                        {type: "greetings-create", object: null, detail: {greeting}}
+                    );
                 } catch (e) {
                     if (
                         e instanceof micro.APIError &&
@@ -87,15 +90,19 @@ hello.StartPage = class extends micro.Page {
 
     attachedCallback() {
         super.attachedCallback();
-        ui.onboard();
         this.ready.when((async() => {
             try {
                 await this._data.greetings.fetch();
                 this._activity = await micro.Activity.open("/api/activity/stream");
-                this._activity.events.addEventListener(
-                    "greetings-create",
-                    event => this._data.greetings.items.unshift(event.detail.event.detail.greeting)
-                );
+                this._activity.events.addEventListener("greetings-create", event => {
+                    if (
+                        !this._data.greetings.items.find(
+                            greeting => greeting.id === event.detail.event.detail.greeting.id
+                        )
+                    ) {
+                        this._data.greetings.items.unshift(event.detail.event.detail.greeting);
+                    }
+                });
             } catch (e) {
                 ui.handleCallError(e);
             }

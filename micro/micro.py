@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -14,8 +14,10 @@
 
 """Core parts of micro."""
 
+from __future__ import annotations
+
 from asyncio import (CancelledError, Task, Queue, # pylint: disable=unused-import; typing
-                     ensure_future, get_event_loop, shield, sleep)
+                     create_task, ensure_future, get_event_loop, shield, sleep)
 import builtins
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -26,9 +28,10 @@ from logging import getLogger
 from pathlib import Path
 import re
 from smtplib import SMTP
+import string
 import sys
 from typing import (AsyncIterator, Awaitable, Callable, Coroutine, Dict, Generic, Iterator, List,
-                    Optional, Set, Tuple, Type, TypeVar, Union, cast, overload)
+                    Optional, Set, Sequence, Tuple, Type, TypeVar, Union, cast, overload)
 from urllib.parse import SplitResult, urlparse, urlsplit
 
 from pywebpush import WebPusher, WebPushException
@@ -37,19 +40,20 @@ from py_vapid.utils import b64urlencode
 from redis import StrictRedis
 from redis.exceptions import ResponseError
 from requests.exceptions import RequestException
-from tornado.ioloop import IOLoop
 from typing_extensions import Protocol
 
-from .core import RewriteFunc, context
-from .error import CommunicationError, ValueError
-from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, JSONRedisMapping, RedisList,
-                        RedisSequence, bzpoptimed)
+from . import error
+from .core import Device, Devices, Object, RewriteFunc, context
+from .error import ValueError
+from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, RedisList, RedisSequence,
+                        RedisSortedSet, bzpoptimed)
 from .ratelimit import RateLimit, RateLimiter
 from .resource import ( # pylint: disable=unused-import; typing
     Analyzer, Files, HandleResourceFunc, Image, Resource, Video, handle_image, handle_webpage,
     handle_youtube)
-from .util import (Expect, OnType, check_email, expect_opt_type, expect_type, parse_isotime,
-                   randstr, run_instant, str_or_none)
+from .util import (Expect, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
+                   str_or_none)
+from .webapi import CommunicationError
 
 _PUSH_TTL = 24 * 60 * 60
 
@@ -167,6 +171,7 @@ class Application:
         from .analytics import Analytics, Referral
         self.types = {
             'User': User,
+            'Device': Device,
             'Settings': Settings,
             'Activity': Activity,
             'Event': Event,
@@ -177,7 +182,8 @@ class Application:
             'Referral': Referral
         } # type: Dict[str, Type[JSONifiable]]
         self.user = None # type: Optional[User]
-        self.users = Collection(RedisList('users', self.r.r), expect=expect_type(User), app=self)
+        self.users = Users(self)
+        self.devices = Devices(self)
         self.analytics = Analytics(app=self)
 
         self.email = email
@@ -208,7 +214,7 @@ class Application:
         """Return the current UTC date and time, as aware object with second accuracy."""
         return datetime.now(timezone.utc).replace(microsecond=0)
 
-    def update(self):
+    def update(self) -> None:
         """Update the database.
 
         If the database is fresh, it will be initialized. If the database is already up-to-date,
@@ -222,7 +228,7 @@ class Application:
         if not v:
             settings = self.create_settings()
             settings.push_vapid_private_key, settings.push_vapid_public_key = (
-                self._generate_push_vapid_keys())
+                self._generate_push_vapid_keys()) # type: ignore
             self.r.oset(settings.id, settings)
             activity = Activity(id='Activity', app=self, subscriber_ids=[])
             self.r.oset(activity.id, activity)
@@ -233,93 +239,60 @@ class Application:
         v = int(v)
         r = JSONRedis[Dict[str, object]](self.r.r)
         r.caching = False
-        expect_str = expect_type(str)
-
-        # Deprecated since 0.15.0
-        if v < 3:
-            data = r.oget('Settings', default=AssertionError)
-            data['provider_name'] = None
-            data['provider_url'] = None
-            data['provider_description'] = {}
-            r.oset('Settings', data)
-            r.set('micro_version', 3)
-
-        # Deprecated since 0.6.0
-        if v < 4:
-            for obj in self._scan_objects(r):
-                if not issubclass(self.types[expect_str(obj['__type__'])], Trashable):
-                    del obj['trashed']
-                    r.oset(expect_str(obj['id']), obj)
-            r.set('micro_version', 4)
-
-        # Deprecated since 0.13.0
-        if v < 5:
-            data = r.oget('Settings', default=AssertionError)
-            data['icon_small'] = data['favicon']
-            del data['favicon']
-            data['icon_large'] = None
-            r.oset('Settings', data)
-            r.set('micro_version', 5)
-
-        # Deprecated since 0.14.0
-        if v < 6:
-            data = r.oget('Settings', default=AssertionError)
-            data['push_vapid_private_key'], data['push_vapid_public_key'] = (
-                cast(Tuple[str, str], self._generate_push_vapid_keys())) # type: ignore
-            r.oset('Settings', data)
-            activity = Activity(id='Activity', app=self, subscriber_ids=[])
-            r.oset(activity.id, activity.json())
-
-            users = r.omget([id.decode() for id in cast(List[bytes], r.lrange('users', 0, -1))],
-                            default=AssertionError)
-            for user in users:
-                user['device_notification_status'] = 'off'
-                user['push_subscription'] = None
-            r.omset({expect_str(user['id']): user for user in users})
-            r.set('micro_version', 6)
-
-        # Deprecated since 0.24.1
-        if v < 7:
-            ids = cast(List[bytes], r.lrange('activity', 0, -1))
-            if ids:
-                r.rpush('Activity.items', *ids)
-                r.delete('activity')
-            r.set('micro_version', 7)
-
-        # Deprecated since 0.33.0
-        if v < 8:
-            for obj in self._scan_objects(r, Trashable):
-                if obj['trashed']:
-                    t = (datetime.now(timezone.utc) + Trashable.RETENTION).timestamp()
-                    r.zadd('micro_trash', {obj['id'].encode(): t})
-            r.set('micro_version', 8)
 
         # Deprecated since 0.39.0
         if v < 9:
-            activity = {}
+            user_activity: Dict[str, Tuple[datetime, datetime]] = {}
             for event in self._scan_objects(r, Event):
-                user_id = event['user']
-                t = parse_isotime(event['time'], aware=True)
-                first, last = activity.get(user_id) or (t, t)
-                activity[user_id] = (min(first, t), max(last, t))
+                user_id = cast(str, event['user'])
+                t = parse_isotime(cast(str, event['time']))
+                first, last = user_activity.get(user_id) or (t, t)
+                user_activity[user_id] = (min(first, t), max(last, t))
 
             now = self.now()
-            users = r.omget(r.lrange('users', 0, -1))
+            users = r.omget([id.decode() for id in r.r.lrange('users', 0, -1)],
+                            default=AssertionError)
             for user in users:
-                first, last = activity.get(user['id']) or (now, now)
+                first, last = user_activity.get(cast(str, user['id'])) or (now, now)
                 user['create_time'] = first.isoformat()
                 user['authenticate_time'] = last.isoformat()
-            r.omset({user['id']: user for user in users})
+            r.omset({cast(str, user['id']): user for user in users})
             r.set('micro_version', 9)
 
-        self.do_update()
+        user_updates = {}
+        device_updates = {}
+        users = r.omget([id.decode() for id in r.r.lrange('users', 0, -1)], default=AssertionError)
+        for user in users:
+            # Deprecated since 0.58.0
+            if 'auth_secret' in user:
+                device = Device(
+                    id=f'Device:{randstr()}', app=self, auth_secret=user.pop('auth_secret'),
+                    notification_status=user.pop('device_notification_status'),
+                    push_subscription=user.pop('push_subscription'), user_id=user['id'])
+                r.sadd('devices', device.id)
+                authenticate_time = parse_isotime(cast(str, user['authenticate_time']))
+                r.zadd(f"{user['id']}.devices", {device.id: -authenticate_time.timestamp()})
+                r.hset('auth_secret_map', device.auth_secret, device.id)
+                user_updates[cast(str, user['id'])] = user
+                device_updates[device.id] = device.json()
+        r.omset(user_updates)
+        r.omset(device_updates)
 
-    def do_update(self) -> None:
+        updates = {'User': len(user_updates), 'Device': len(device_updates), **self.do_update()}
+        getLogger(__name__).info('Updated database\n%s',
+                                 '\n'.join(f'{name}: {n}' for name, n in updates.items()))
+
+    def do_update(self) -> Dict[str, int]:
         """Subclass API: Perform the database update.
+
+        Information about the update, more precisely the number of entity updates by type, is
+        returned.
 
         May be overridden by subclass. Called by :meth:`update`, which takes care of updating (or
         initializing) micro specific data. The default implementation does nothing.
         """
+        # pylint: disable=no-self-use; part of subclass API
+        return {}
 
     def create_user(self, data: Dict[str, object]) -> 'User':
         """Subclass API: Create a new user.
@@ -341,63 +314,19 @@ class Application:
         """
         raise NotImplementedError()
 
-    def authenticate(self, secret: str) -> 'User':
-        """Authenticate an :class:`User` (device) with *secret*.
-
-        The identified user is set as current *user* and returned. If the authentication fails, an
-        :exc:`AuthenticationError` is raised.
-        """
-        id = self.r.r.hget('auth_secret_map', secret.encode())
-        if not id:
-            raise AuthenticationError()
-        user = self.users[id.decode()]
-        self.user = user
-
-        now = self.now()
-        if now - user.authenticate_time >= timedelta(hours=1): # type: ignore
-            user.authenticate_time = now
-            self.r.oset(user.id, user)
-        return user
-
     def login(self, code: str = None) -> 'User':
         """See :http:post:`/api/login`.
 
         The logged-in user is set as current *user*.
         """
+        # Compatibility for login (deprecated since 0.58.0)
         if code:
             id = self.r.r.hget('auth_secret_map', code.encode())
             if not id:
                 raise ValueError('code_invalid')
-            id = id.decode()
-            user = self.users[id]
-
-        else:
-            id = 'User:' + randstr()
-            now = self.now()
-            user = self.create_user({
-                'id': id,
-                'app': self,
-                'authors': [id],
-                'name': 'Guest',
-                'email': None,
-                'auth_secret': randstr(),
-                'create_time': now.isoformat(),
-                'authenticate_time': now.isoformat(),
-                'device_notification_status': 'off',
-                'push_subscription': None
-            })
-            self.r.oset(user.id, user)
-            self.r.rpush('users', user.id)
-            self.r.hset('auth_secret_map', user.auth_secret, user.id)
-
-            # Promote first user to staff
-            if len(self.users) == 1:
-                settings = self.settings # type: ignore
-                # pylint: disable=protected-access; Settings is a friend
-                settings._staff = [user.id] # type: ignore
-                self.r.oset(settings.id, settings) # type: ignore
-
-        return self.authenticate(user.auth_secret)
+            device = self.r.oget(id.decode(), default=AssertionError, expect=expect_type(Device))
+            return self.devices.authenticate(device.auth_secret).user
+        return self.devices.sign_in().user
 
     def get_object(self, id, default=KeyError):
         """Get the :class:`Object` given by *id*.
@@ -416,7 +345,7 @@ class Application:
         """Check if the current :attr:`user` is a staff member."""
         # pylint: disable=protected-access; Settings is a friend
         if not (self.user and self.user.id in self.settings._staff): # type: ignore
-            raise PermissionError()
+            raise error.PermissionError()
 
     def start_garbage_collect_files(self) -> 'Task[None]':
         """Start the :attr:`files` garbage collect job."""
@@ -471,6 +400,42 @@ class Application:
         # pylint: disable=no-self-use; part of API
         return iter(())
 
+    async def send_device_notification(self, push_subscription: str, event: Event) -> None:
+        """Send an *event* notification to the device with *push_subscription*.
+
+        If there is a communication issue, a :exc:`micro.error.CommunicationError` is raised.
+        """
+        try:
+            push_subscription = json.loads(push_subscription)
+            if not isinstance(push_subscription, dict):
+                raise builtins.ValueError()
+            urlparts = urlparse(push_subscription['endpoint'])
+            pusher = WebPusher(push_subscription)
+        except (builtins.ValueError, KeyError, WebPushException) as e:
+            raise ValueError('push_subscription_invalid') from e
+
+        # Unfortunately sign() tries to validate the email address
+        email = 'bot@email.localhost' if self.email == 'bot@localhost' else self.email
+        headers = Vapid.from_raw(self.settings.push_vapid_private_key.encode()).sign({
+            'aud': '{}://{}'.format(urlparts.scheme, urlparts.netloc),
+            'sub': 'mailto:{}'.format(email)
+        })
+
+        try:
+            # Firefox does not yet support aes128gcm encoding (see
+            # https://bugzilla.mozilla.org/show_bug.cgi?id=1525872)
+            send = partial(pusher.send, json.dumps(event.json(restricted=True, include=True)),
+                           headers=headers, ttl=_PUSH_TTL, content_encoding='aesgcm')
+            response = await get_event_loop().run_in_executor(None, send)
+        except RequestException as e:
+            raise CommunicationError(f"{e} for POST {push_subscription['endpoint']}") from e
+        if response.status_code in (404, 410):
+            raise ValueError('push_subscription_invalid')
+        if response.status_code != 201:
+            raise CommunicationError(
+                'Unexpected response status {} for POST {}'.format(response.status_code,
+                                                                   push_subscription['endpoint']))
+
     @staticmethod
     def _encode(object: JSONifiable) -> Dict[str, object]:
         return object.json()
@@ -483,9 +448,6 @@ class Application:
             return json
         if hasattr(type, 'parse'):
             return cast(JSONifiableWithParse, type).parse(json, app=self)
-        # Compatibility for Settings without icon_large (deprecated since 0.13.0)
-        if issubclass(type, Settings):
-            json['v'] = 2
         del json['__type__']
         return type(app=self, **json)
 
@@ -507,33 +469,6 @@ class Application:
         vapid.generate_keys()
         return (b64urlencode(vapid.private_key.private_numbers().private_value.to_bytes(32, 'big')),
                 b64urlencode(vapid.public_key.public_numbers().encode_point()))
-
-class Object:
-    """Object in the application universe.
-
-    .. attribute:: app
-
-       Context :class:`Application`.
-    """
-
-    def __init__(self, id: str, app: Application) -> None:
-        self.id = id
-        self.app = app
-
-    def json(self, restricted: bool = False, include: bool = False, *,
-             rewrite: RewriteFunc = None) -> Dict[str, object]:
-        """See :meth:`JSONifiable.json`.
-
-        Subclass API: May be overridden by subclass. The default implementation returns the
-        attributes of :class:`Object`. *restricted* and *include* are ignored.
-        """
-        # pylint: disable=unused-argument; part of subclass API
-        # Compatibility for trashed (deprecated since 0.6.0)
-        return {'__type__': type(self).__name__, 'id': self.id,
-                **({'trashed': False} if restricted else {})}
-
-    def __repr__(self):
-        return '<{}>'.format(self.id)
 
 class Gone:
     """See :ref:`Gone`."""
@@ -561,27 +496,10 @@ class Editable:
         # pylint: disable=missing-docstring; already documented
         return self.app.r.omget(self._authors, default=AssertionError, expect=expect_type(User))
 
-    @overload
-    def edit(self, *, asynchronous: None = None, **attrs: object) -> None:
-        # pylint: disable=function-redefined,missing-docstring; overload
-        pass
-    @overload
-    def edit(self, *, asynchronous: OnType, **attrs: object) -> Awaitable[None]:
-        # pylint: disable=function-redefined,missing-docstring; overload
-        pass
-    def edit(self, *, asynchronous: OnType = None, **attrs: object) -> Optional[Awaitable[None]]:
-        # pylint: disable=function-redefined,missing-docstring; overload
-        # Compatibility for synchronous edit (deprecated since 0.27.0)
-        coro = self._edit(**attrs)
-        if asynchronous is None:
-            run_instant(coro)
-            return None
-        return coro
-
-    async def _edit(self, **attrs: object) -> None:
+    async def edit(self, **attrs: object) -> None:
         """See :http:post:`/api/(object-url)`."""
         if not self.app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         if isinstance(self, Trashable) and self.trashed:
             raise ValueError('object_trashed')
 
@@ -639,7 +557,7 @@ class Trashable:
     def trash(self) -> None:
         """See :http:post:`/api/(object-url)/trash`."""
         if not self.app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         if self.trashed:
             return
 
@@ -655,7 +573,7 @@ class Trashable:
     def restore(self) -> None:
         """See :http:post:`/api/(object-url)/restore`."""
         if not self.app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         if not self.trashed:
             return
 
@@ -719,10 +637,8 @@ class WithContent:
             'resource': self.resource.json(rewrite=rewrite) if self.resource else None
         }
 
-class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
+class Collection(Generic[O], Sequence[O]):
     """See :ref:`Collection`.
-
-    All sequence operations but iteration are supported for now.
 
     .. attribute:: ids
 
@@ -741,15 +657,6 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
 
        Context application.
 
-    .. attribute:: host
-
-       Tuple ``(object, attr)`` that specifies the attribute name *attr* on the host *object*
-       (:class:`Object` or :class:`Application`) the collection is attached to.
-
-       .. deprecated:: 0.24.0
-
-          Extend :class:`Collection` to implement hosting manually.
-
     .. describe:: c[key]
 
        *key* may also be a string, in which case the object with the given ID is retrieved.
@@ -761,49 +668,15 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
 
        *item* may also be a string, in which case the membership of the object with the given ID is
        tested.
-
-    .. deprecated: 0.24.0
-
-       :class:`JSONRedisMapping` interface. Use :attr:`ids`, ``c[key]`` and ``item in c`` instead.
     """
 
-    @overload
     def __init__(
-            self, ids: RedisSequence, *,
-            check: Callable[[Union[int, slice, str]], None] = None,
+            self, ids: RedisSequence, *, check: Callable[[Union[int, slice, str]], None] = None,
             expect: ExpectFunc[O] = cast(ExpectFunc[O], expect_type(Object)),
             app: Application) -> None:
-        # pylint: disable=function-redefined, super-init-not-called; overload
-        pass
-    @overload
-    def __init__(self, host: Tuple[Union[Object, Application], str]) -> None:
-        # pylint: disable=function-redefined, super-init-not-called; overload
-        pass
-    def __init__(
-            self, *args: object,
-            check: Callable[[Union[int, slice, str]], None] = None,
-            expect: ExpectFunc[O] = cast(ExpectFunc[O], expect_type(Object)),
-            **kwargs: object) -> None:
-        # pylint: disable=function-redefined, super-init-not-called; overload
-        # Compatibility for host (deprecated since 0.24.0)
-        ids = kwargs.get('ids') or kwargs.get('host') or args[0] if args else None
-        if isinstance(ids, tuple):
-            host = cast(Tuple[Union[Object, Application], str], ids)
-            app = host[0] if isinstance(host[0], Application) else host[0].app
-            ids = RedisList(
-                ('' if isinstance(host[0], Application) else host[0].id + '.') + host[1], app.r.r)
-        elif isinstance(ids, RedisSequence):
-            arg = kwargs.get('app')
-            assert isinstance(arg, Application)
-            app = arg
-            host = (app, '')
-        else:
-            raise TypeError()
-        JSONRedisMapping.__init__(self, app.r, ids.key, expect)
-        self.host = host
-
         self.ids = ids
         self.check = check
+        self.expect = expect
         self.app = app
 
     def index(self, x: Union[O, str], start: int = 0, stop: int = sys.maxsize) -> int:
@@ -829,9 +702,6 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
         pass
     def __getitem__(self, key: Union[int, slice, str]) -> Union[O, List[O]]:
         # pylint: disable=function-redefined; overload
-        # Compatibility with JSONRedisMapping (deprecated since 0.24.0)
-        assert self.expect
-
         if self.check:
             self.check(key)
         if isinstance(key, str):
@@ -844,9 +714,9 @@ class Collection(Generic[O], JSONRedisMapping[O, JSONifiable]):
         return self.app.r.oget(self.ids[key].decode(), default=ReferenceError,
                                expect=self.expect)
 
-    def __iter__(self) -> Iterator[str]:
-        # Compatibility with JSONRedisMapping (deprecated since 0.24.0)
-        return (id.decode() for id in self.ids)
+    def __iter__(self) -> Iterator[O]:
+        # Optimized and used by count()
+        return iter(self[:])
 
     def __contains__(self, item: object) -> bool:
         if isinstance(item, Object):
@@ -906,11 +776,29 @@ class User(Object, Editable):
         Editable.__init__(self, authors=cast(List[str], data['authors']))
         self.name = cast(str, data['name'])
         self.email = cast(Optional[str], data['email'])
-        self.auth_secret = cast(str, data['auth_secret'])
-        self.create_time = parse_isotime(cast(str, data['create_time']), aware=True)
-        self.authenticate_time = parse_isotime(cast(str, data['authenticate_time']), aware=True)
-        self.device_notification_status = cast(str, data['device_notification_status'])
-        self.push_subscription = cast(Optional[str], data['push_subscription'])
+        self.create_time = parse_isotime(cast(str, data['create_time']))
+        self.authenticate_time = parse_isotime(cast(str, data['authenticate_time']))
+        self.devices = Collection(
+            RedisSortedSet(f'{self.id}.devices', app.r.r), check=self._check_user,
+            expect=expect_type(Device), app=app)
+
+    @property
+    def auth_secret(self) -> str:
+        # pylint: disable=missing-function-docstring; already documented
+        # Compatibility with device attributes (deprecated since 0.58.0)
+        return self.devices[0].auth_secret
+
+    @property
+    def device_notification_status(self) -> str:
+        # pylint: disable=missing-function-docstring; already documented
+        # Compatibility with device attributes (deprecated since 0.58.0)
+        return self.devices[0].notification_status
+
+    @property
+    def push_subscription(self) -> Optional[str]:
+        # pylint: disable=missing-function-docstring; already documented
+        # Compatibility with device attributes (deprecated since 0.58.0)
+        return self.devices[0].push_subscription
 
     def store_email(self, email: str) -> None:
         """Update the user's *email* address.
@@ -929,13 +817,13 @@ class User(Object, Editable):
         self.app.r.oset(self.id, self)
         self.app.r.hset('user_email_map', self.email, self.id)
 
-    def set_email(self, email):
+    def set_email(self, email: str) -> 'AuthRequest':
         """See :http:post:`/api/users/(id)/set-email`."""
         if self.app.user != self:
-            raise PermissionError()
+            raise error.PermissionError()
         check_email(email)
 
-        code = randstr()
+        code = randstr(length=5, charset=string.ascii_uppercase)
         auth_request = AuthRequest(id='AuthRequest:' + randstr(), app=self.app, email=email,
                                    code=code)
         self.app.r.oset(auth_request.id, auth_request)
@@ -948,7 +836,7 @@ class User(Object, Editable):
         """See :http:post:`/api/users/(id)/finish-set-email`."""
         # pylint: disable=protected-access; auth_request is a friend
         if self.app.user != self:
-            raise PermissionError()
+            raise error.PermissionError()
         auth_request.verify(auth)
         self.app.r.delete(auth_request.id)
         self.store_email(auth_request._email)
@@ -956,7 +844,7 @@ class User(Object, Editable):
     def remove_email(self):
         """See :http:post:`/api/users/(id)/remove-email`."""
         if self.app.user != self:
-            raise PermissionError()
+            raise error.PermissionError()
         if not self.email:
             raise ValueError('user_no_email')
 
@@ -977,62 +865,32 @@ class User(Object, Editable):
             raise ValueError('user_no_email')
         self._send_email(self.email, msg)
 
-    def notify(self, event: 'Event') -> None:
-        """Notify the user about the :class:`Event` *event*.
+    def notify(self, event: Event) -> None:
+        """Notify the user about *event*.
 
-        If :attr:`push_subscription` has expired, device notifications are disabled.
+        The notification is delivered to all enabled devices. If a device's *push_subscription* has
+        expired, notifications are disabled for that device.
         """
-        if self.device_notification_status != 'on':
-            return
-        IOLoop.current().add_callback(self._notify, event) # type: ignore
+        devices = self.app.r.omget([id.decode() for id in self.devices.ids], default=AssertionError,
+                                   expect=expect_type(Device))
+        for device in devices:
+            if device.notification_status == 'on':
+                create_task(self._notify(device, event))
 
-    async def enable_device_notifications(self, push_subscription):
+    async def enable_device_notifications(self, push_subscription: str) -> None:
         """See :http:patch:`/api/users/(id)` (``enable_device_notifications``)."""
-        if self.app.user != self:
-            raise PermissionError()
-        await self._send_device_notification(
-            push_subscription, Event.create('user-enable-device-notifications', self, app=self.app))
-        self.device_notification_status = 'on'
-        self.push_subscription = push_subscription
-        self.app.r.oset(self.id, self)
+        # Compatibility with device actions (deprecated since 0.58.0)
+        await self.devices[0].enable_notifications(push_subscription,
+                                                   _event_type='user-enable-device-notifications')
 
-    @overload
-    def disable_device_notifications(self, user: 'User' = None) -> None:
-        # pylint: disable=function-redefined,missing-docstring; overload
-        pass
-    @overload
-    def disable_device_notifications(self, reason: str = None) -> None:
-        # pylint: disable=function-redefined,missing-docstring; overload
-        pass
-    def disable_device_notifications(self, *args: object, **kwargs: object) -> None:
-        """See :http:patch:`/api/users/(id)` (``disable_device_notifications``).
-
-        .. deprecated:: 0.17.0
-
-           Argument *reason*.
-
-        .. deprecated:: 0.17.0
-
-           Default value for *user*. Provide it explicitly instead.
-        """
-        # pylint: disable=function-redefined,missing-docstring; overload
-        # Compatibility for reason (deprecated since 0.17.0)
-        user = kwargs.get('user', kwargs.get('reason', args[0] if args else None))
-        if user is None or isinstance(user, str):
-            reason = user
-            if reason not in [None, 'expired']:
-                raise ValueError('reason_unknown')
-            self._disable_device_notifications(reason)
-            return
-        assert isinstance(user, User)
-
-        if user != self:
-            raise PermissionError()
-        self._disable_device_notifications()
+    def disable_device_notifications(self) -> None:
+        """See :http:patch:`/api/users/(id)` (``disable_device_notifications``)."""
+        # Compatibility with device actions (deprecated since 0.58.0)
+        self.devices[0].disable_notifications()
 
     def do_edit(self, **attrs):
         if self.app.user != self:
-            raise PermissionError()
+            raise error.PermissionError()
 
         e = InputError()
         if 'name' in attrs and not str_or_none(attrs['name']):
@@ -1045,22 +903,27 @@ class User(Object, Editable):
     def json(self, restricted: bool = False, include: bool = False, *,
              rewrite: RewriteFunc = None) -> Dict[str, object]:
         """See :meth:`Object.json`."""
+        # Compatibility with device attributes (deprecated since 0.58.0)
+        device = context.device.get()
         return {
             **super().json(restricted=restricted, include=include, rewrite=rewrite),
             **Editable.json(self, restricted=restricted, include=include, rewrite=rewrite),
             'name': self.name,
             **(
-                {} if restricted and self.app.user != self else {
+                {} if restricted and context.user.get() != self else {
                     'email': self.email,
-                    'auth_secret': self.auth_secret,
                     'create_time': self.create_time.isoformat(),
-                    'authenticate_time': self.authenticate_time.isoformat(),
-                    'device_notification_status': self.device_notification_status,
-                    'push_subscription': self.push_subscription
-                })
+                    'authenticate_time': self.authenticate_time.isoformat()
+                }),
+            **(
+                {
+                    'auth_secret': device.auth_secret,
+                    'device_notification_status': device.notification_status,
+                    'push_subscription': device.push_subscription
+                } if restricted and context.user.get() == self and device else {})
         }
 
-    def _send_email(self, to, msg):
+    def _send_email(self, to: str, msg: str) -> None:
         match = re.fullmatch(r'Subject: ([^\n]+)\n\n(.+)', msg, re.DOTALL)
         if not match:
             raise ValueError('msg_invalid')
@@ -1080,52 +943,40 @@ class User(Object, Editable):
         except OSError as e:
             raise EmailError() from e
 
-    async def _notify(self, event):
+    async def _notify(self, device: Device, event: Event) -> None:
         try:
-            await self._send_device_notification(self.push_subscription, event)
+            assert device.push_subscription
+            await self.app.send_device_notification(device.push_subscription, event)
         except (ValueError, CommunicationError) as e:
             if isinstance(e, ValueError):
-                if e.code != 'push_subscription_invalid':
+                if str(e) != 'push_subscription_invalid':
                     raise e
-                self._disable_device_notifications(reason='expired')
+                device.abort_notifications()
             getLogger(__name__).error('Failed to deliver notification: %s', str(e))
 
-    async def _send_device_notification(self, push_subscription, event):
-        try:
-            push_subscription = json.loads(push_subscription)
-            if not isinstance(push_subscription, dict):
-                raise builtins.ValueError()
-            urlparts = urlparse(push_subscription['endpoint'])
-            pusher = WebPusher(push_subscription)
-        except (builtins.ValueError, KeyError, WebPushException) as e:
-            raise ValueError('push_subscription_invalid') from e
+    def _check_user(self, _: Union[int, slice, str]) -> None:
+        if context.user.get() != self:
+            raise error.PermissionError()
 
-        # Unfortunately sign() tries to validate the email address
-        email = 'bot@email.localhost' if self.app.email == 'bot@localhost' else self.app.email
-        headers = Vapid.from_raw(self.app.settings.push_vapid_private_key.encode()).sign({
-            'aud': '{}://{}'.format(urlparts.scheme, urlparts.netloc),
-            'sub': 'mailto:{}'.format(email)
-        })
+class Users:
+    """See :ref:`Users`."""
 
-        try:
-            # Firefox does not yet support aes128gcm encoding (see
-            # https://bugzilla.mozilla.org/show_bug.cgi?id=1525872)
-            send = partial(pusher.send, json.dumps(event.json(restricted=True, include=True)),
-                           headers=headers, ttl=_PUSH_TTL, content_encoding='aesgcm')
-            response = await get_event_loop().run_in_executor(None, send)
-        except RequestException as e:
-            raise CommunicationError(f"{e} for POST {push_subscription['endpoint']}") from e
-        if response.status_code in (404, 410):
-            raise ValueError('push_subscription_invalid')
-        if response.status_code != 201:
-            raise CommunicationError(
-                'Unexpected response status {} for POST {}'.format(response.status_code,
-                                                                   push_subscription['endpoint']))
+    def __init__(self, app: Application) -> None:
+        self.app = app
+        self._ids = RedisList('users', app.r.r)
 
-    def _disable_device_notifications(self, reason: str = None) -> None:
-        self.device_notification_status = 'off.{}'.format(reason) if reason else 'off'
-        self.push_subscription = None
-        self.app.r.oset(self.id, self)
+    def __len__(self) -> int:
+        return len(self._ids)
+
+    def __getitem__(self, key: str) -> User:
+        if not key.startswith('User:'):
+            raise KeyError(key)
+        return self.app.r.oget(key, default=KeyError, expect=expect_type(User))
+
+    def __iter__(self) -> Iterator[User]:
+        users = self.app.r.omget([id.decode() for id in self._ids], default=AssertionError,
+                                 expect=expect_type(User))
+        return iter(users)
 
 class Settings(Object, Editable):
     """See :ref:`Settings`.
@@ -1139,38 +990,30 @@ class Settings(Object, Editable):
             self, *, id: str, app: Application, authors: List[str], title: str, icon: Optional[str],
             icon_small: str = None, icon_large: str = None, provider_name: Optional[str],
             provider_url: Optional[str], provider_description: Optional[Dict[str, str]],
-            feedback_url: Optional[str], staff: List[str], push_vapid_private_key: str = None,
-            push_vapid_public_key: str = None, favicon: str = None, v: int = 1) -> None:
-        # pylint: disable=unused-argument; part of API
-        # Compatibility for versioned function (deprecated since 0.40.0)
+            feedback_url: Optional[str], staff: List[str], push_vapid_private_key: str,
+            push_vapid_public_key: str) -> None:
         super().__init__(id, app)
         Editable.__init__(self, authors=authors, activity=lambda: app.activity)
         self.title = title
         self.icon = icon
-        # Compatibility for favicon (deprecated since 0.13.0)
-        self.icon_small = icon_small or favicon
+        self.icon_small = icon_small
         self.icon_large = icon_large
         self.provider_name = provider_name
         self.provider_url = provider_url
         self.provider_description = provider_description
         self.feedback_url = feedback_url
         self._staff = staff
-        # Compatibility for Settings without VAPID keys (deprecated since 0.14.0)
-        self.push_vapid_private_key = push_vapid_private_key or ''
-        self.push_vapid_public_key = push_vapid_public_key or ''
+        self.push_vapid_private_key = push_vapid_private_key
+        self.push_vapid_public_key = push_vapid_public_key
 
     @property
-    def staff(self):
+    def staff(self) -> List[User]:
         # pylint: disable=missing-docstring; already documented
-        return self.app.r.omget(self._staff)
+        return self.app.r.omget(self._staff, default=AssertionError, expect=expect_type(User))
 
     def do_edit(self, **attrs):
         if not self.app.user.id in self._staff:
-            raise PermissionError()
-
-        # Compatibility for favicon (deprecated since 0.13.0)
-        if 'favicon' in attrs:
-            attrs.setdefault('icon_small', attrs['favicon'])
+            raise error.PermissionError()
 
         e = InputError()
         if 'title' in attrs and not str_or_none(attrs['title']):
@@ -1209,9 +1052,7 @@ class Settings(Object, Editable):
             'staff': [u.json(restricted=restricted, rewrite=rewrite) for u in self.staff] if include
                      else self._staff,
             'push_vapid_public_key': self.push_vapid_public_key,
-            # Compatibility for favicon (deprecated since 0.13.0)
-            **({'favicon': self.icon_small} if restricted else
-               {'push_vapid_private_key': self.push_vapid_private_key})
+            **({} if restricted else {'push_vapid_private_key': self.push_vapid_private_key})
         }
 
 class Activity(Object, JSONRedisSequence[JSONifiable]):
@@ -1299,7 +1140,7 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
     def subscribe(self):
         """See :http:patch:`/api/(activity-url)` (``subscribe``)."""
         if not self.app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         if not self.app.user.id in self._subscriber_ids:
             self._subscriber_ids.append(self.app.user.id)
         self.app.r.oset(self.host.id if self.host else self.id, self.host or self)
@@ -1307,7 +1148,7 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
     def unsubscribe(self):
         """See :http:patch:`/api/(activity-url)` (``unsubscribe``)."""
         if not self.app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         try:
             self._subscriber_ids.remove(self.app.user.id)
         except ValueError:
@@ -1334,15 +1175,7 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
         }
 
 class Event(Object):
-    """See :ref:`Event`.
-
-    .. attribute:: time
-
-       .. deprecated:: 0.39.0
-
-          Naive time. Work with aware object instead (with
-          :meth:`datetime.datetime.replace` (``tzinfo=timezone.utc``)).
-    """
+    """See :ref:`Event`."""
 
     @staticmethod
     def create(type: str, object: Optional[Object], detail: Dict[str, object] = {},
@@ -1350,7 +1183,7 @@ class Event(Object):
         """Create an event."""
         assert app
         if not app.user:
-            raise PermissionError()
+            raise error.PermissionError()
         if not str_or_none(type):
             raise ValueError('type_empty')
         if any(k.endswith('_id') for k in detail):
@@ -1416,7 +1249,7 @@ class Event(Object):
             'object': obj,
             'user': self.user.json(restricted=restricted, rewrite=rewrite) if include
                     else self._user_id,
-            'time': self.time.isoformat() + 'Z' if self.time else None,
+            'time': self.time.isoformat(),
             'detail': detail
         }
 
@@ -1498,12 +1331,6 @@ class InputError(ValueError):
         """
         if self.errors:
             raise self
-
-class AuthenticationError(Exception):
-    """See :ref:`AuthenticationError`."""
-
-class PermissionError(Exception):
-    """See :ref:`PermissionError`."""
 
 class EmailError(Exception):
     """Raised if communication with the SMTP server fails."""

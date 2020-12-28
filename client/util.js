@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2018 micro contributors
+ * Copyright (C) 2020 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -24,7 +24,7 @@ self.micro = self.micro || {};
 micro.util = {};
 
 /** Thrown if network communication failed. */
-micro.NetworkError = class NetworkError extends TypeError {};
+micro.NetworkError = class NetworkError {};
 
 /**
  * Thrown for HTTP JSON REST API errors.
@@ -53,10 +53,6 @@ micro.APIError = class APIError extends Error {
  *
  * If an error occurs, the promise rejects with an :class:`APIError`. For any IO related errors, it
  * rejects with a :class:`micro.NetworkError`.
- *
- * .. deprecated:: 0.19.0
- *
- *    :class:`TypeError` for IO related errors. Check for :class:`micro.NetworkError` instead.
  */
 micro.call = async function(method, url, args) {
     let options = {method, credentials: "same-origin"};

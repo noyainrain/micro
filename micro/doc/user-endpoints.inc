@@ -53,3 +53,7 @@
    Disable device notifications.
 
    Permission: The user oneself.
+
+   .. deprecated:: 0.58.0
+
+      Use :http:patch:`/api/devices/(id)` instead.

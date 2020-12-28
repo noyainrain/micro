@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -62,23 +62,18 @@ def randstr(length: int = 16, charset: str = string.ascii_lowercase) -> str:
     """
     return ''.join(random.choice(charset) for i in range(length))
 
-def parse_isotime(isotime: str, *, aware: bool = False) -> datetime:
+def parse_isotime(isotime: str) -> datetime:
     """Parse an ISO 8601 time string into a :class:`datetime.datetime`.
 
     Note that this rudimentary parser makes bold assumptions about the format: The first six
     components are always interpreted as year, month, day and optionally hour, minute and second.
     Everything else, i.e. microsecond and time zone information, is ignored.
-
-    .. deprecated:: 0.39.0
-
-       Naive time result. Work with aware object instead (with *aware* ``True``).
     """
     try:
         values = [int(t) for t in re.split(r'\D', isotime)[:6]]
         year, month, day = values[:3]
         hour, minute, second = (values[3:] + [0, 0, 0])[:3]
-        return datetime(year, month, day, hour, minute, second,
-                        tzinfo=timezone.utc if aware else None)
+        return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
     except (TypeError, ValueError) as e:
         raise ValueError('isotime_bad_format') from e
 

@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2018 micro contributors
+# Copyright (C) 2020 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -33,7 +33,7 @@ import re
 from signal import SIGINT
 from typing import (Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union,
                     cast)
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlsplit
 
 from mypy_extensions import TypedDict, VarArg
 from tornado.httpclient import AsyncHTTPClient, HTTPResponse # pylint: disable=unused-import; typing
@@ -45,12 +45,12 @@ from tornado.web import Application, HTTPError, RequestHandler, StaticFileHandle
 from . import micro, templates, error
 from .core import context
 from .micro import ( # pylint: disable=unused-import; typing
-    Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError, AuthenticationError,
-    CommunicationError, PermissionError, Trashable)
+    Activity, AuthRequest, Collection, JSONifiable, Object, User, InputError, Trashable)
 from .ratelimit import RateLimitError
 from .resource import NoResourceError, ForbiddenResourceError, BrokenResourceError
 from .util import (Expect, ExpectFunc, cancel, look_up_files, str_or_none, parse_slice,
                    check_polyglot)
+from .webapi import CommunicationError
 
 LIST_LIMIT = 100
 SLICE_URL = r'(?:/(\d*:\d*))?'
@@ -108,38 +108,6 @@ class Server:
 
        See ``--url`` command line option.
 
-    .. attributes:: client_path
-
-       Client location from where static files and templates are delivered.
-
-       .. deprecated:: 0.40.0
-
-          Use :attr:`client_config` instead.
-
-    .. attribute:: client_service_path
-
-       Location of client service worker script. Defaults to the included micro service worker.
-
-       .. deprecated:: 0.40.0
-
-          Use :attr:`client_config` instead.
-
-    .. attribute: client_shell
-
-       Set of files that make up the client shell. See :func:`micro.util.look_up_files`.
-
-       .. deprecated:: 0.40.0
-
-          Use :attr:`client_config` instead.
-
-    .. attribute:: client_map_service_key
-
-       See ``--client-map-service-key`` command line option.
-
-       .. deprecated:: 0.40.0
-
-          Use :attr:`client_config` instead.
-
     .. attribute:: debug
 
        See ``--debug`` command line option.
@@ -162,10 +130,6 @@ class Server:
          *data* is a *ShareData* object.
        - ``share_target_accept``: Media types and filename extensions (starting with ``.``) of
          accepted files, if any. Defaults to ``[]``.
-
-    .. deprecated:: 0.21.0
-
-       Constructor options as positional arguments. Use keyword arguments instead.
     """
 
     ClientConfig = TypedDict('ClientConfig', {
@@ -192,11 +156,8 @@ class Server:
     }, total=False)
 
     def __init__(
-            self, app: micro.Application, handlers: Sequence[Handler], port: int = 8080,
-            url: str = None, client_path: str = 'client', client_modules_path: str = '.',
-            client_service_path: str = None, debug: bool = False, *,
-            client_config: ClientConfigArg = {}, client_shell: Sequence[str] = [],
-            client_map_service_key: str = None) -> None:
+            self, app: micro.Application, handlers: Sequence[Handler], *, port: int = 8080,
+            url: str = None, debug: bool = False, client_config: ClientConfigArg = {}) -> None:
         url = url or 'http://localhost:{}'.format(port)
         try:
             urlparts = urlparse(url)
@@ -206,16 +167,6 @@ class Server:
         if not (urlparts.scheme in {'http', 'https'} and urlparts.hostname and
                 not any(cast(object, getattr(urlparts, k)) for k in not_allowed)):
             raise ValueError('url_invalid')
-
-        # Compatibility with client attributes (deprecated since 0.40.0)
-        client_config = {
-            'path': client_path,
-            'modules_path': client_modules_path,
-            **({'service_path': client_service_path} if client_service_path else {}), # type: ignore
-            'shell': client_shell,
-            'map_service_key': client_map_service_key,
-            **client_config # type: ignore
-        } # type: Server.ClientConfigArg
 
         self.app = app
         self.port = port
@@ -235,13 +186,6 @@ class Server:
             'shell': list(client_config.get('shell') or [])
         } # type: Server.ClientConfig
 
-        # Compatibility with client attributes (deprecated since 0.40.0)
-        self.client_path = self.client_config['path']
-        self.client_modules_path = self.client_config['modules_path']
-        self.client_service_path = self.client_config['service_path']
-        self.client_shell = self.client_config['shell']
-        self.client_map_service_key = self.client_config['map_service_key']
-
         self.app.email = 'bot@' + urlparts.hostname
         self.app.render_email_auth_message = self._render_email_auth_message
 
@@ -255,12 +199,14 @@ class Server:
             (r'/api/users/([^/]+)/set-email$', _UserSetEmailEndpoint),
             (r'/api/users/([^/]+)/finish-set-email$', _UserFinishSetEmailEndpoint),
             (r'/api/users/([^/]+)/remove-email$', _UserRemoveEmailEndpoint),
+            (r'/api/users/([^/]+)/devices$', CollectionEndpoint,
+             {'get_collection': lambda id: self.app.users[id].devices}), # type: ignore[misc]
+            (r'/api/devices$', _DevicesEndpoint),
+            (r'/api/devices/([^/]+)$', _DeviceEndpoint),
             (r'/api/settings$', _SettingsEndpoint),
-            # Compatibility with non-object Activity (deprecated since 0.14.0)
+            *make_activity_endpoints(r'/api/activity', get_activity),
+            # Compatibility with old global activity URL (deprecated since 0.57.0)
             *make_activity_endpoints(r'/api/activity/v2', get_activity),
-            *make_list_endpoints(r'/api/activity(?:/v1)?', get_activity),
-            (r'/api/activity/stream', ActivityStreamEndpoint,
-             {'get_activity': cast(object, get_activity)}),
             # Provide alias because /api/analytics triggers popular ad blocking filters
             (r'/api/(?:analytics|stats)/statistics/([^/]+)$', _StatisticEndpoint),
             (r'/api/(?:analytics|stats)/referrals$', _ReferralsEndpoint),
@@ -274,24 +220,26 @@ class Server:
             (r'/index.html$', _Index),
             (r'/manifest.webmanifest$', _WebManifest), # type: ignore
             (r'/manifest.js$', _BuildManifest), # type: ignore
-            (r'/static/{}$'.format(self.client_service_path), _Service), # type: ignore
-            (r'/static/(.*)$', _Static, {'path': self.client_path}), # type: ignore
+            (fr"/static/{self.client_config['service_path']}$", _Service), # type: ignore
+            (r'/static/(.*)$', _Static, {'path': self.client_config['path']}), # type: ignore
             (r'/.*$', UI), # type: ignore
         ] # type: List[Handler]
 
         application = Application(
             self.handlers, compress_response=True, # type: ignore[arg-type]
-            template_path=self.client_path, debug=self.debug, server=self)
+            template_path=self.client_config['path'], debug=self.debug, server=self)
         # Install static file handler manually to allow pre-processing
-        cast(_ApplicationSettings, application.settings).update({'static_path': self.client_path})
+        cast(_ApplicationSettings, application.settings).update(
+            {'static_path': self.client_config['path']})
         self._server = HTTPServer(application, xheaders=True)
 
         self._garbage_collect_files_task = None # type: Optional[Task[None]]
         self._empty_trash_task = None # type: Optional[Task[None]]
         self._collect_statistics_task = None # type: Optional[Task[None]]
         self._message_templates = DictLoader(templates.MESSAGE_TEMPLATES, autoescape=None)
-        self._micro_templates = Loader(os.path.join(self.client_path, self.client_modules_path,
-                                                    '@noyainrain/micro'))
+        self._micro_templates = Loader(
+            os.path.join(self.client_config['path'], self.client_config['modules_path'],
+                         '@noyainrain/micro'))
 
     def start(self) -> None:
         """Start the server."""
@@ -376,8 +324,10 @@ class Endpoint(RequestHandler):
         self.app.user = None
         auth_secret = self.get_cookie('auth_secret')
         if auth_secret:
-            self.current_user = self.app.authenticate(auth_secret)
+            device = self.app.devices.authenticate(auth_secret)
+            self.current_user = device.user
             context.user.set(self.current_user)
+            context.device.set(device)
 
         if self.request.body:
             try:
@@ -405,29 +355,24 @@ class Endpoint(RequestHandler):
         if isinstance(e, KeyError):
             self.set_status(http.client.NOT_FOUND)
             self.write({'__type__': 'NotFoundError'}) # type: ignore
-        elif isinstance(e, AuthenticationError):
-            self.set_status(http.client.BAD_REQUEST)
-            self.write({'__type__': type(e).__name__}) # type: ignore
-        elif isinstance(e, PermissionError):
-            self.set_status(http.client.FORBIDDEN)
-            self.write({'__type__': type(e).__name__}) # type: ignore
         elif isinstance(e, RateLimitError):
             self.set_status(http.client.TOO_MANY_REQUESTS)
             data = {'__type__': type(e).__name__, 'message': str(e)}
             self.write(data)
         elif isinstance(e, InputError):
             self.set_status(http.client.BAD_REQUEST)
-            self.write({ # type: ignore
-                '__type__': type(e).__name__,
-                'code': e.code,
-                'errors': e.errors
-            })
+            self.write({**e.json(), 'errors': e.errors}) # type: ignore
         elif isinstance(e, CommunicationError):
             self.set_status(http.client.BAD_GATEWAY)
             self.write({'__type__': type(e).__name__, 'message': str(e)}) # type: ignore
+        elif isinstance(e, error.AuthenticationError):
+            self.set_status(http.client.BAD_REQUEST)
+            self.clear_cookie('auth_secret')
+            self.write(e.json())
         elif isinstance(e, error.Error):
             status = {
                 error.ValueError: http.client.BAD_REQUEST,
+                error.PermissionError: http.client.FORBIDDEN,
                 NoResourceError: http.client.NOT_FOUND,
                 ForbiddenResourceError: http.client.FORBIDDEN,
                 BrokenResourceError: http.client.BAD_REQUEST
@@ -439,10 +384,7 @@ class Endpoint(RequestHandler):
 
     def log_exception(self, typ, value, tb):
         # These errors are handled specially and there is no need to log them as exceptions
-        if issubclass(
-                typ,
-                (KeyError, AuthenticationError, PermissionError, RateLimitError, CommunicationError,
-                 error.Error)):
+        if issubclass(typ, (KeyError, RateLimitError, CommunicationError, error.Error)):
             return
         super().log_exception(typ, value, tb)
 
@@ -520,7 +462,7 @@ class CollectionEndpoint(Endpoint):
         try:
             slc = parse_slice(cast(str, self.get_query_argument('slice', ':')), limit=LIST_LIMIT)
         except ValueError as e:
-            raise micro.ValueError('bad_slice_format') from e
+            raise error.ValueError('bad_slice_format') from e
         self.write(
             collection.json(restricted=True, include=True, rewrite=self.server.rewrite, slc=slc))
 
@@ -601,10 +543,11 @@ def make_activity_endpoints(url: str,
     ]
 
 class _Static(StaticFileHandler):
-    def set_extra_headers(self, path):
+    def set_extra_headers(self, path: str) -> None:
+        server = cast(_ApplicationSettings, self.application.settings)['server']
         if self.get_cache_time(path, self.modified, self.get_content_type()) == 0:
             self.set_header('Cache-Control', 'no-cache')
-        if path == self.application.settings['server'].client_service_path:
+        if path == server.client_config['service_path']:
             self.set_header('Service-Worker-Allowed', '/')
 
 class UI(RequestHandler):
@@ -781,13 +724,13 @@ class _BuildManifest(RequestHandler):
         if not self._manifest:
             shell = [
                 'index.html',
-                *self._server.client_shell,
-                '!{}'.format(self._server.client_service_path),
-                *(pattern.format(self._server.client_modules_path)
+                *self._server.client_config['shell'],
+                f"!{self._server.client_config['service_path']}",
+                *(pattern.format(self._server.client_config['modules_path'])
                   for pattern in self._MICRO_CLIENT_SHELL)
             ]
-            shell = [path.relative_to(self._server.client_path)
-                     for path in look_up_files(shell, top=self._server.client_path)]
+            shell = [path.relative_to(self._server.client_config['path'])
+                     for path in look_up_files(shell, top=self._server.client_config['path'])]
             shell = [path if path == Path('index.html') else Path('static') / path
                      for path in shell]
             # Instead of reading files directly, go through server to handle dynamic content (e.g.
@@ -819,7 +762,7 @@ class _Service(RequestHandler):
         self.set_header('Content-Type', 'text/javascript')
         self.set_header('Content-Security-Policy', "default-src 'self'")
         self.set_header('Service-Worker-Allowed', '/')
-        self.render(self._server.client_service_path, version=self._version)
+        self.render(self._server.client_config['service_path'], version=self._version)
 
 class _LogClientErrorEndpoint(Endpoint):
     def post(self):
@@ -895,13 +838,13 @@ class _OrderableMoveEndpoint(Endpoint):
         try:
             args['item'] = collection[args.pop('item_id')]
         except KeyError as e:
-            raise micro.ValueError('item_not_found') from e
+            raise error.ValueError('item_not_found') from e
         args['to'] = args.pop('to_id')
         if args['to'] is not None:
             try:
                 args['to'] = collection[args['to']]
             except KeyError as e:
-                raise micro.ValueError('to_not_found') from e
+                raise error.ValueError('to_not_found') from e
 
         collection.move(**args)
         self.write(json.dumps(None))
@@ -910,29 +853,32 @@ class _LoginEndpoint(Endpoint):
     def post(self):
         args = self.check_args({'code': (str, 'opt')})
         user = self.app.login(**args)
+        context.user.set(user)
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
 class _UserEndpoint(Endpoint):
     def get(self, id: str) -> None:
         self.write(self.app.users[id].json(restricted=True, rewrite=self.server.rewrite))
 
-    def post(self, id):
+    async def post(self, id):
         user = self.app.users[id]
         args = self.check_args({'name': (str, 'opt')})
-        user.edit(**args)
+        await user.edit(**args)
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
-    async def patch_enable_notifications(self, id):
+    async def patch_enable_notifications(self, id: str) -> None:
         # pylint: disable=missing-docstring; private
+        # Compatibility with device actions (deprecated since 0.58.0)
         user = self.app.users[id]
-        args = self.check_args({'push_subscription': str})
-        await user.enable_device_notifications(**args)
+        push_subscription = self.get_arg('push_subscription', Expect.str)
+        await user.enable_device_notifications(push_subscription)
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
     def patch_disable_notifications(self, id: str) -> None:
         # pylint: disable=missing-docstring; private
+        # Compatibility with device actions (deprecated since 0.58.0)
         user = self.app.users[id]
-        user.disable_device_notifications(self.current_user)
+        user.disable_device_notifications()
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
 class _UserSetEmailEndpoint(Endpoint):
@@ -948,7 +894,7 @@ class _UserFinishSetEmailEndpoint(Endpoint):
         args = self.check_args({'auth_request_id': str, 'auth': str})
         args['auth_request'] = self.app.get_object(args.pop('auth_request_id'), None)
         if not isinstance(args['auth_request'], AuthRequest):
-            raise micro.ValueError('auth_request_not_found')
+            raise error.ValueError('auth_request_not_found')
         user.finish_set_email(**args)
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
@@ -958,12 +904,45 @@ class _UserRemoveEmailEndpoint(Endpoint):
         user.remove_email()
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
+class _DevicesEndpoint(Endpoint):
+    def post(self) -> None:
+        device = self.app.devices.sign_in()
+        context.user.set(device.user)
+        self.set_status(HTTPStatus.CREATED)
+        self.set_cookie(
+            'auth_secret', device.auth_secret, expires_days=360,
+            secure=urlsplit(self.server.url).scheme == 'https', httponly=True)
+        self.write(device.json(restricted=True, include=True, rewrite=self.server.rewrite))
+
+class _DeviceEndpoint(Endpoint):
+    def get(self, id: str) -> None:
+        device = context.device.get() if id == 'self' else self.app.devices[id]
+        if device is None:
+            raise KeyError(id)
+        self.set_cookie(
+            'auth_secret', device.auth_secret, expires_days=360,
+            secure=urlsplit(self.server.url).scheme == 'https', httponly=True)
+        self.write(device.json(restricted=True, include=True, rewrite=self.server.rewrite))
+
+    async def patch_enable_notifications(self, id: str) -> None:
+        # pylint: disable=missing-docstring; private
+        device = self.app.devices[id]
+        push_subscription = self.get_arg('push_subscription', Expect.str)
+        await device.enable_notifications(push_subscription)
+        self.write(device.json(restricted=True, include=True, rewrite=self.server.rewrite))
+
+    def patch_disable_notifications(self, id: str) -> None:
+        # pylint: disable=missing-docstring; private
+        device = self.app.devices[id]
+        device.disable_notifications()
+        self.write(device.json(restricted=True, include=True, rewrite=self.server.rewrite))
+
 class _SettingsEndpoint(Endpoint):
     def get(self):
         self.write(
             self.app.settings.json(restricted=True, include=True, rewrite=self.server.rewrite))
 
-    def post(self):
+    async def post(self):
         args = self.check_args({
             'title': (str, 'opt'),
             'icon': (str, None, 'opt'),
@@ -972,18 +951,16 @@ class _SettingsEndpoint(Endpoint):
             'provider_name': (str, None, 'opt'),
             'provider_url': (str, None, 'opt'),
             'provider_description': (dict, 'opt'),
-            'feedback_url': (str, None, 'opt'),
-            # Compatibility for favicon (deprecated since 0.13.0)
-            'favicon': (str, None, 'opt')
+            'feedback_url': (str, None, 'opt')
         })
         if 'provider_description' in args:
             try:
                 check_polyglot(args['provider_description'])
             except ValueError as e:
-                raise micro.ValueError('provider_description_bad_type') from e
+                raise error.ValueError('provider_description_bad_type') from e
 
         settings = self.app.settings
-        settings.edit(**args)
+        await settings.edit(**args)
         self.write(settings.json(restricted=True, include=True, rewrite=self.server.rewrite))
 
 class _ActivityEndpoint(Endpoint):
