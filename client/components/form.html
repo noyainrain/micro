@@ -1,0 +1,66 @@
+<template id="micro-datetime-input-template">
+    <div class="micro-panel">
+        <div class="micro-datetime-input-date">
+            <input type="date" placeholder="yyyy-mm-dd" size="10" />
+        </div>
+        <div class="micro-datetime-input-time">
+            <input type="time" placeholder="hh:mm" size="5" />
+        </div>
+    </div>
+</template>
+
+<style>
+    micro-datetime-input {
+        display: block;
+    }
+
+    micro-datetime-input:focus-within {
+        box-shadow: var(--micro-focus-shadow);
+    }
+
+    .micro-datetime-input-date,
+    .micro-datetime-input-time {
+        position: relative;
+    }
+
+    .micro-datetime-input-date::before,
+    .micro-datetime-input-time::before {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        padding: var(--micro-size-s);
+        color: var(--micro-color-text-subtle);
+        pointer-events: none;
+    }
+
+    micro-datetime-input.micro-datetime-input-empty-date .micro-datetime-input-date:not(:focus-within)::before {
+        content: "Date";
+    }
+
+    micro-datetime-input.micro-datetime-input-empty-time .micro-datetime-input-time:not(:focus-within)::before {
+        content: "Time";
+    }
+
+    micro-datetime-input input[type=date] {
+        min-width: calc(10ch + 2 * var(--micro-size-s));
+    }
+
+    micro-datetime-input input[type=time] {
+        min-width: calc(5ch + 2 * var(--micro-size-s));
+    }
+
+    micro-datetime-input input:focus {
+        box-shadow: unset;
+    }
+
+    micro-datetime-input.micro-datetime-input-empty-date input[type=date]:not(:focus),
+    micro-datetime-input.micro-datetime-input-empty-time input[type=time]:not(:focus) {
+        opacity: 0;
+    }
+
+    .micro-datetime-input-date {
+        flex: auto;
+    }
+</style>

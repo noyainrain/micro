@@ -32,7 +32,7 @@ from . import error
 from .core import RewriteFunc
 from .jsonredis import RedisSortedSet
 from .micro import Collection, Object, User
-from .util import expect_type, parse_isotime, randstr
+from .util import expect_type, randstr
 
 if typing.TYPE_CHECKING:
     from .micro import Application
@@ -149,7 +149,7 @@ class Point:
         v = data.get('v')
         if not isinstance(v, (float, int)):
             raise TypeError()
-        return Point(parse_isotime(expect_type(str)(data.get('t'))), float(v))
+        return Point(datetime.fromisoformat(expect_type(str)(data.get('t'))), float(v))
 
     def json(self) -> Dict[str, object]:
         """See :meth:`micro.JSONifiable.json`."""
@@ -164,7 +164,7 @@ class Referral(Object):
     def __init__(self, *, id: str, app: 'Application', url: str, time: str) -> None:
         super().__init__(id=id, app=app)
         self.url = url
-        self.time = parse_isotime(time)
+        self.time = datetime.fromisoformat(time)
 
     def json(self, restricted: bool = False, include: bool = False, *,
              rewrite: RewriteFunc = None) -> Dict[str, object]:

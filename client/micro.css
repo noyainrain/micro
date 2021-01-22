@@ -351,8 +351,9 @@ label > small:first-of-type {
     color: inherit;
 }
 
-label input:not([type=checkbox]),
-label textarea {
+label > input:not([type=checkbox]),
+label > textarea,
+label > .micro-input {
     border: 1px solid var(--micro-color-delimiter);
 }
 

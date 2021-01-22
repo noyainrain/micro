@@ -24,7 +24,7 @@ from argparse import ArgumentParser
 from asyncio import CancelledError, Task # pylint: disable=unused-import; typing
 import builtins
 from collections import OrderedDict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import logging
 from logging import StreamHandler, getLogger
 from numbers import Real
@@ -62,20 +62,20 @@ def randstr(length: int = 16, charset: str = string.ascii_lowercase) -> str:
     """
     return ''.join(random.choice(charset) for i in range(length))
 
-def parse_isotime(isotime: str) -> datetime:
-    """Parse an ISO 8601 time string into a :class:`datetime.datetime`.
+def parse_isotime(isotime: str) -> date:
+    """Parse the ISO 8601 time string *isotime*.
 
-    Note that this rudimentary parser makes bold assumptions about the format: The first six
-    components are always interpreted as year, month, day and optionally hour, minute and second.
-    Everything else, i.e. microsecond and time zone information, is ignored.
+    Depending on the precision, a :class:`datetime.date` or :class:`datetime.datetime` is returned.
+    If there is a time component, the time zone must be UTC.
     """
     try:
-        values = [int(t) for t in re.split(r'\D', isotime)[:6]]
-        year, month, day = values[:3]
-        hour, minute, second = (values[3:] + [0, 0, 0])[:3]
-        return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
-    except (TypeError, ValueError) as e:
-        raise ValueError('isotime_bad_format') from e
+        t = (date.fromisoformat(isotime) if len(isotime) == 10
+             else datetime.fromisoformat(isotime.replace('Z', '+00:00')))
+    except ValueError as e:
+        raise ValueError(f'Bad isotime format {isotime}') from e
+    if isinstance(t, datetime) and t.tzinfo != timezone.utc:
+        raise ValueError(f'Bad isotime time zone {isotime}')
+    return t
 
 def parse_slice(str: str, limit: int = None) -> slice:
     """Parse a slice string into a :class:`slice`.

@@ -15,10 +15,20 @@
 # type: ignore
 # pylint: disable=missing-docstring; test module
 
+from datetime import date, datetime, timezone
 from unittest import TestCase
 
 from micro.tests import RES_PATH
-from micro.util import look_up_files, version
+from micro.util import look_up_files, parse_isotime, version
+
+class ParseIsotimeTest(TestCase):
+    def test_parse_isotime(self) -> None:
+        t = parse_isotime('2015-08-27T00:42:00.000Z')
+        self.assertEqual(t, datetime(2015, 8, 27, 0, 42, 0, 0, timezone.utc))
+
+    def test_parse_isotime_date(self) -> None:
+        t = parse_isotime('2015-08-27')
+        self.assertEqual(t, date(2015, 8, 27))
 
 class LookUpFilesTest(TestCase):
     def test_call(self) -> None:

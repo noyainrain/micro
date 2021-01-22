@@ -51,8 +51,7 @@ from .ratelimit import RateLimit, RateLimiter
 from .resource import ( # pylint: disable=unused-import; typing
     Analyzer, Files, HandleResourceFunc, Image, Resource, Video, handle_image, handle_webpage,
     handle_youtube)
-from .util import (Expect, check_email, expect_opt_type, expect_type, parse_isotime, randstr,
-                   str_or_none)
+from .util import Expect, check_email, expect_opt_type, expect_type, randstr, str_or_none
 from .webapi import CommunicationError
 
 _PUSH_TTL = 24 * 60 * 60
@@ -245,7 +244,7 @@ class Application:
             user_activity: Dict[str, Tuple[datetime, datetime]] = {}
             for event in self._scan_objects(r, Event):
                 user_id = cast(str, event['user'])
-                t = parse_isotime(cast(str, event['time']))
+                t = datetime.fromisoformat(cast(str, event['time']).replace('Z', '+00:00'))
                 first, last = user_activity.get(user_id) or (t, t)
                 user_activity[user_id] = (min(first, t), max(last, t))
 
@@ -270,7 +269,7 @@ class Application:
                     notification_status=user.pop('device_notification_status'),
                     push_subscription=user.pop('push_subscription'), user_id=user['id'])
                 r.sadd('devices', device.id)
-                authenticate_time = parse_isotime(cast(str, user['authenticate_time']))
+                authenticate_time = datetime.fromisoformat(cast(str, user['authenticate_time']))
                 r.zadd(f"{user['id']}.devices", {device.id: -authenticate_time.timestamp()})
                 r.hset('auth_secret_map', device.auth_secret, device.id)
                 user_updates[cast(str, user['id'])] = user
@@ -776,8 +775,8 @@ class User(Object, Editable):
         Editable.__init__(self, authors=cast(List[str], data['authors']))
         self.name = cast(str, data['name'])
         self.email = cast(Optional[str], data['email'])
-        self.create_time = parse_isotime(cast(str, data['create_time']))
-        self.authenticate_time = parse_isotime(cast(str, data['authenticate_time']))
+        self.create_time = datetime.fromisoformat(cast(str, data['create_time']))
+        self.authenticate_time = datetime.fromisoformat(cast(str, data['authenticate_time']))
         self.devices = Collection(
             RedisSortedSet(f'{self.id}.devices', app.r.r), check=self._check_user,
             expect=expect_type(Device), app=app)
@@ -1203,7 +1202,7 @@ class Event(Object):
                  detail: Dict[str, object], app: Application) -> None:
         super().__init__(id, app)
         self.type = type
-        self.time = parse_isotime(time)
+        self.time = datetime.fromisoformat(time.replace('Z', '+00:00'))
         self._object_id = object
         self._user_id = user
         self._detail = detail

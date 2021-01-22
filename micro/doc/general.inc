@@ -26,6 +26,10 @@ action.
 Additional types
 ----------------
 
+A *datetime* is an ISO 8601 date and time string in UTC, e.g. ``2015-08-27T00:42:00.000Z``.
+
+A *date* is an ISO 8601 date string, e.g. ``2015-08-27``.
+
 A *slice* represents a range of a list, as array ``[start, stop]``, from index *start* (inclusive)
 to *stop* (exclusive). Both *start* and *stop* may be ``null``, referring to the beginning (0) and
 end (list length) of the list respectively.
@@ -110,7 +114,7 @@ Device
 
 .. describe:: authenticate_time
 
-   Time the device last authenticated.
+   *datetime* the device last authenticated.
 
 .. describe:: notification_status
 
@@ -243,7 +247,7 @@ Event about an action on an *object* by an *user*.
 
 .. describe:: time
 
-   Date and time at which the event happened.
+   *datetime* at which the event happened.
 
 .. describe:: detail
 
@@ -338,7 +342,7 @@ Statistic data point.
 
 .. describe:: t
 
-   Time the statistic was collected.
+   *datetime* the statistic was collected.
 
 .. describe:: v
 
@@ -359,7 +363,7 @@ Referral from another site.
 
 .. describe:: time
 
-   Date and time of the referral.
+   *datetime* of the referral.
 
 .. _Referrals:
 

@@ -1,12 +1,12 @@
 {
     "name": "@noyainrain/micro",
-    "version": "0.59.1",
+    "version": "0.60.0",
     "description": "Toolkit for social micro web apps.",
     "repository": "noyainrain/micro",
     "license": "LGPL-3.0",
     "scripts": {
-        "test": "karma start --single-run --browsers=${BROWSER:-FirefoxHeadless}",
-        "watch-test": "karma start --browsers=${BROWSER:-FirefoxHeadless}",
+        "test": "TZ=Europe/Berlin karma start --single-run --browsers=${BROWSER:-FirefoxHeadless}",
+        "watch-test": "TZ=Europe/Berlin karma start --browsers=${BROWSER:-FirefoxHeadless}",
         "lint": "eslint .",
         "clean": "rm -rf node_modules",
         "install": "ln -sf analytics.js components/stats.js"
