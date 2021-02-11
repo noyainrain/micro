@@ -981,82 +981,6 @@ micro.OL = class extends HTMLOListElement {
 };
 
 /**
- * Button with an associated action that runs on click.
- *
- * While an action is running, the button is suspended, i.e. it shows a progress indicator and is
- * not clickable.
- *
- * .. attribute:: run
- *
- *    Hook function of the form *run()*, which performs the associated action. If it returns a
- *    promise, the button will be suspended until the promise resolves.
- *
- * .. attribute:: suspended
- *
- *    Indicates if the button is suspended.
- *
- * .. describe: .micro-button-suspended
- *
- *    Indicates if the button is :attr:`suspended`.
- */
-micro.Button = class extends HTMLButtonElement {
-    createdCallback() {
-        this.run = null;
-        this.suspended = false;
-
-        this.addEventListener("click", event => {
-            if (this.form && this.type === "submit") {
-                if (this.suspended || this.form.checkValidity()) {
-                    // Prevent default form submission
-                    event.preventDefault();
-                } else {
-                    // Do not trigger action and let form validation kick in
-                    return;
-                }
-            }
-
-            if (!this.suspended) {
-                this.trigger().catch(micro.util.catch);
-            }
-        });
-    }
-
-    /**
-     * Trigger the button.
-     *
-     * The associated action is run and a promise is returned which resolves to the result of
-     * :attr:`run`.
-     */
-    async trigger() {
-        if (this.suspended) {
-            throw new Error("Suspended button");
-        }
-        if (!this.run) {
-            return undefined;
-        }
-
-        this.suspended = true;
-        this.classList.add("micro-button-suspended");
-        const i = this.querySelector("i");
-        let progressI = null;
-        if (i) {
-            progressI = document.createElement("i");
-            progressI.className = "fa fa-spinner fa-spin";
-            i.insertAdjacentElement("afterend", progressI);
-        }
-        try {
-            return await this.run();
-        } finally {
-            this.suspended = false;
-            this.classList.remove("micro-button-suspended");
-            if (i) {
-                progressI.remove();
-            }
-        }
-    }
-};
-
-/**
  * Options for an `input` field.
  *
  * Attaches itself to the preceding sibling `input` and presents a list of options to the user,
@@ -1772,14 +1696,16 @@ micro.ActivityPage = class extends micro.Page {
         this.appendChild(document.importNode(
             ui.querySelector(".micro-activity-page-template").content, true));
         this._showMoreButton = this.querySelector("button");
-        this._showMoreButton.run = this._showMore.bind(this);
+        this._showMoreButton.action = new micro.core.Action(
+            this._showMoreButton, () => this._showMore()
+        );
         this._showMoreButton.shortcut = new micro.keyboard.Shortcut(this._showMoreButton, "M");
         this._start = 0;
     }
 
     attachedCallback() {
         super.attachedCallback();
-        this.ready.when(this._showMoreButton.trigger().catch(micro.util.catch));
+        this.ready.when(this._showMoreButton.action.run().catch(micro.util.catch));
     }
 
     async _showMore() {
@@ -1811,20 +1737,6 @@ micro.ActivityPage = class extends micro.Page {
 };
 
 Object.assign(micro.bind.transforms, {
-    SHORT_DATE_FORMAT: {
-        year: "numeric",
-        month: "short",
-        day: "numeric"
-    },
-
-    SHORT_DATE_TIME_FORMAT: {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit"
-    },
-
     /**
      * Fetch the next *n* items for *collection*.
      *
@@ -1862,15 +1774,31 @@ Object.assign(micro.bind.transforms, {
         return elem;
     },
 
+    Action: micro.core.Action,
     ShortcutContext: micro.keyboard.ShortcutContext,
     Shortcut: micro.keyboard.Shortcut
 });
+micro.bind.transforms.SHORT_CLOCK_FORMAT = {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+};
+micro.bind.transforms.SHORT_DATE_FORMAT = {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+};
+micro.bind.transforms.SHORT_DAY_FORMAT = Object.assign(
+    {}, micro.bind.transforms.SHORT_DATE_FORMAT, {weekday: "short"}
+);
+micro.bind.transforms.SHORT_DATE_TIME_FORMAT = Object.assign(
+    {}, micro.bind.transforms.SHORT_DATE_FORMAT, micro.bind.transforms.SHORT_CLOCK_FORMAT
+);
 
 document.registerElement("micro-ui", {prototype: micro.UI.protoype, extends: "body"});
 document.registerElement("micro-simple-notification", micro.SimpleNotification);
 document.registerElement("micro-error-notification", micro.ErrorNotification);
 document.registerElement("micro-ol", {prototype: micro.OL.prototype, extends: "ol"});
-document.registerElement("micro-button", {prototype: micro.Button.prototype, extends: "button"});
 document.registerElement("micro-user", micro.UserElement);
 document.registerElement("micro-page", micro.Page);
 document.registerElement("micro-not-found-page", micro.NotFoundPage);

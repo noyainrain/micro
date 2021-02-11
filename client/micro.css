@@ -179,6 +179,10 @@ small {
     color: var(--micro-color-primary);
 }
 
+.micro-suspended i:first-of-type {
+    display: none;
+}
+
 /* ---- Focus hints ---- */
 
 [title] {
@@ -230,9 +234,9 @@ small {
 }
 
 .link:disabled,
-.link.micro-button-suspended,
+.link.micro-suspended,
 .action:disabled,
-.action.micro-button-suspended {
+.action.micro-suspended {
     cursor: default;
 }
 
@@ -587,12 +591,6 @@ main {
 
 .micro-error-notification i {
     color: red;
-}
-
-/* Button */
-
-.micro-button-suspended i:first-of-type {
-    display: none;
 }
 
 /* ---- OL ---- */

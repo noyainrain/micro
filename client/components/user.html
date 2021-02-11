@@ -2,7 +2,7 @@
     <form>
         <header class="micro-heading micro-panel">
             <h1>Edit user settings</h1>
-            <button is="micro-button" class="action" data-run="edit">
+            <button class="action" data-action="new Action edit">
                 <i class="fa fa-check-circle"></i> Save
             </button>
         </header>
@@ -16,7 +16,7 @@
             <small>Only visible to you.</small>
             <div class="micro-panel">
                 <input name="email" type="email" readonly="readonly" data-value="user.email" />
-                <button is="micro-button" type="button" class="action" data-run="setEmail">
+                <button type="button" class="action" data-action="new Action setEmail">
                     <i class="fa fa-pencil-alt"></i> Change
                 </button>
             </div>
@@ -38,7 +38,7 @@
         <header class="micro-heading micro-panel">
             <div class="micro-panel-main" data-content="titleContent"></div>
             <button
-                is="micro-button" type="button" class="link" data-run="close"
+                type="button" class="link" data-action="new Action close"
                 data-shortcut="new Shortcut 'Escape' 'Close'"
             >
                 <i class="fa fa-times-circle"></i>
@@ -52,7 +52,7 @@
                         name="email" type="email" placeholder="Email address" required="required"
                     />
                     <button
-                        is="micro-button" class="action" data-run="request"
+                        class="action" data-action="new Action request"
                         data-content="requestContent"
                     ></button>
                 </form>
@@ -63,7 +63,7 @@
                 </p>
                 <form class="micro-panel">
                     <input name="code" placeholder="Code" required="required" autocomplete="off" />
-                    <button is="micro-button" class="action" data-run="verify">
+                    <button class="action" data-action="new Action verify">
                         <i class="fa fa-check-circle"></i> Verify
                     </button>
                 </form>

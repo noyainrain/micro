@@ -41,31 +41,6 @@ afterEach(function() {
     document.querySelector("main").remove();
 });
 
-describe("Button", function() {
-    let button;
-
-    beforeEach(async function() {
-        const main = document.querySelector("main");
-        main.innerHTML = '<button is="micro-button"><i class="fa fa-cat"></i> Meow</button>';
-        // Custom elements are upgraded in the next iteration
-        await new Promise(resolve => setTimeout(resolve, 0));
-        button = main.firstElementChild;
-        button.run = () => "Meow!";
-    });
-
-    describe("trigger()", function() {
-        it("should run action", async function() {
-            const p = button.trigger();
-            expect(button.suspended).to.be.true;
-            expect(button.classList.contains("micro-button-suspended")).to.be.true;
-            const result = await p;
-            expect(result).to.equal("Meow!");
-            expect(button.suspended).to.be.false;
-            expect(button.classList.contains("micro-button-suspended")).to.be.false;
-        });
-    });
-});
-
 describe("OptionsElement", function() {
     async function setupDOM({options = ["Long", "Happy", "Grumpy"], templateHTML = ""} = {}) {
         let main = document.querySelector("main");

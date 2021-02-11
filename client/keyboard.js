@@ -124,7 +124,7 @@ micro.keyboard.ShortcutContext = class {
 };
 
 /**
- * Extension for :class:`Element` that can be activated with an associated keyboard shortcut.
+ * Keyboard shortcut that activates an element.
  *
  * .. attribute:: elem
  *

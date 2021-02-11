@@ -57,7 +57,7 @@ micro.components.analytics.AnalyticsPage = class extends micro.Page {
     attachedCallback() {
         super.attachedCallback();
         const button = this.querySelector(".micro-analytics-more-referrals");
-        this.ready.when(button.trigger().catch(micro.util.catch));
+        this.ready.when(button.action.run().catch(micro.util.catch));
     }
 };
 document.registerElement("micro-analytics-page", micro.components.analytics.AnalyticsPage);

@@ -16,6 +16,8 @@
 
 /** Core parts of micro. */
 
+/* eslint-disable no-underscore-dangle -- private static */
+
 "use strict";
 
 self.micro = self.micro || {};
@@ -23,6 +25,94 @@ micro.core = {};
 
 // Work around missing look behind by capturing whitespace
 micro.core.URL_PATTERN = "(^|[\\s!-.:-@])(https?://.+?)(?=[!-.:-@]?(\\s|$))";
+
+/**
+ * Action that is run when an element is activated.
+ *
+ * While the action is running, the element is suspended, i.e. it shows a progress indicator and is
+ * not clickable.
+ *
+ * .. attribute:: element
+ *
+ *    Related :class:`Element`.
+ *
+ * .. attribute:: f
+ *
+ *    Function which performs the action. May be async.
+ *
+ * .. attribute:: args
+ *
+ *    Arguments passed to :attr:`f`, if any.
+ *
+ * .. attribute:: running
+ *
+ *    Indicates if the action is running.
+ *
+ * .. describe: .micro-suspended
+ *
+ *    Indicates if the element is suspended.
+ */
+micro.core.Action = class {
+    constructor(element, f, ...args) {
+        const action = micro.core.Action._actions.get(element);
+        if (action) {
+            action.f = f;
+            action.args = args;
+            // eslint-disable-next-line no-constructor-return -- idempotent
+            return action;
+        }
+        micro.core.Action._actions.set(element, this);
+
+        this.element = element;
+        this.f = f;
+        this.args = args;
+        this.running = false;
+
+        this._onClick = event => {
+            if (this.element.type === "submit" && this.element.form) {
+                if (this.running || this.element.form.checkValidity()) {
+                    // Prevent default form submission
+                    event.preventDefault();
+                } else {
+                    // Do not trigger action and let form validation kick in
+                    return;
+                }
+            }
+
+            if (!this.running) {
+                this.run().catch(micro.util.catch);
+            }
+        };
+        this.element.addEventListener("click", this._onClick);
+    }
+
+    /** Run the action. */
+    async run() {
+        if (this.running) {
+            throw new Error("Running action");
+        }
+
+        this.running = true;
+        this.element.classList.add("micro-suspended");
+        const i = this.element.querySelector("i");
+        let progressI = null;
+        if (i) {
+            progressI = document.createElement("i");
+            progressI.className = "fa fa-spinner fa-spin";
+            i.insertAdjacentElement("afterend", progressI);
+        }
+        try {
+            return await this.f(...this.args);
+        } finally {
+            this.running = false;
+            this.element.classList.remove("micro-suspended");
+            if (i) {
+                progressI.remove();
+            }
+        }
+    }
+};
+micro.core.Action._actions = new WeakMap();
 
 /**
  * Modal dialog to query additional information for an action.

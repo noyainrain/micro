@@ -5,7 +5,12 @@
  */
 
 /**
- * Simple data binding.
+ * Minimal data binding.
+ *
+ * The core principle is to keep it simple: Set DOM properties via markup and keep them up-to-date.
+ * Do one thing and do it well:
+ * the core idea is to do one thing well, setting dom properties and keeping them up
+ * to-date, while other concepts (e.g. for, if) are derived from this.
  */
 
 "use strict";
@@ -108,6 +113,8 @@ micro.bind.Watchable = function(target = {}) {
  * For details on the bind expression see :func:`micro.bind.parse`. Transforms can be applied to
  * data values: If the expression contains multiple arguments, the first one must be a function of
  * the form ``transform(ctx, ...args)`` and transform the remaining *args* to a final value.
+ * A transform may have side-effects only if it is idempotent, i.e. can safely be called multiple
+ * times.
  *
  * Consider this example illustrating various features. Binding the following DOM::
  *
@@ -434,6 +441,21 @@ micro.bind.transforms = {
             date = new Date(date);
         }
         return date.toLocaleString("en", format);
+    },
+
+    /**
+     * Format the ISO 8601 time string *time*.
+     *
+     * *dateFormat* and *clockFormat* are :meth:`Date.toLocaleString` *options* and applied
+     * depending on the precision of *time*.
+     */
+    formatTime(ctx, time, dateFormat, clockFormat) {
+        if (!time) {
+            return "";
+        }
+        return micro.bind.transforms.formatDate(
+            ctx, time, time.length === 10 ? dateFormat : Object.assign({}, dateFormat, clockFormat)
+        );
     },
 
     /**

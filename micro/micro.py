@@ -210,8 +210,8 @@ class Application:
 
     @staticmethod
     def now() -> datetime:
-        """Return the current UTC date and time, as aware object with second accuracy."""
-        return datetime.now(timezone.utc).replace(microsecond=0)
+        """Return the current UTC date and time, as aware object."""
+        return datetime.now(timezone.utc)
 
     def update(self) -> None:
         """Update the database.
