@@ -208,4 +208,4 @@ class Referrals(Collection[Referral]):
         for referral in referrals:
             result[referral.url] += 1
 
-        return sorted(result.items(), key=lambda x: (-x[1], x[0]))
+        return sorted(result.items(), key=lambda x: (-x[1], x[0])) # type: ignore[misc]
