@@ -19,13 +19,15 @@
    Function of the form ``f(t)`` that computes a single statistic value. *t* is the current time.
 """
 
+from __future__ import annotations
+
 from asyncio import Task, ensure_future, sleep # pylint: disable=unused-import; typing
 import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 from logging import getLogger
 import typing
-from typing import Callable, DefaultDict, Dict, Iterator, List, Mapping, Optional, Tuple, cast
+from typing import Callable, DefaultDict, Dict, Iterator, List, Mapping, Optional, cast
 from urllib.parse import urlsplit
 
 from . import error
@@ -191,7 +193,7 @@ class Referrals(Collection[Referral]):
         self.app.r.r.zadd(self.ids.key, {referral.id.encode(): -referral.time.timestamp()})
         return referral
 
-    def summarize(self, period: Tuple[datetime, datetime] = None) -> List[Tuple[str, int]]:
+    def summarize(self, period: tuple[datetime, datetime] = None) -> list[tuple[str, int]]:
         """See :http:get:`/api/analytics/referrals/summary?period`."""
         self.app.check_user_is_staff()
 
@@ -208,4 +210,4 @@ class Referrals(Collection[Referral]):
         for referral in referrals:
             result[referral.url] += 1
 
-        return sorted(result.items(), key=lambda x: (-x[1], x[0]))
+        return sorted(result.items(), key=lambda x: (-x[1], x[0])) # type: ignore[misc]
