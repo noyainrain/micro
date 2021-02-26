@@ -12,12 +12,16 @@ Also includes :class:`JSONRedisMapping`, an utility map interface for JSON objec
    *_T* and raises a :exc:`TypeError` if not.
 """
 
+from __future__ import annotations
+
+from collections.abc import Iterator
 import json
 from math import isinf
 import sys
 from time import time
-from typing import (Callable, Dict, Generic, Iterator, List, Mapping, Optional, Sequence, Set,
-                    Tuple, Type, TypeVar, Union, cast, overload)
+from typing import (Callable, Dict, Generic, List, Mapping, Optional, Sequence, Set, Tuple, Type,
+                    TypeVar, Union, cast, overload)
+import unicodedata
 from weakref import WeakKeyDictionary, WeakValueDictionary, WeakSet
 
 from redis import Redis
@@ -240,12 +244,13 @@ class RedisSortedSet(RedisSequence, Set[bytes]):
 
     Redis operations:
 
-    * index(): 1
-    * count(): 1 full query
-    * len(s): 1
-    * s[k]: 1
-    * iter(s): 1 full query
-    * k in s: 1
+    * ``index()``: 1
+    * ``count()``: 1
+    * ``len(s)``: 1
+    * ``s[k]``: 1
+    * ``iter(s)``: 1 full query
+    * ``reverse(s)``: 1 full query
+    * ``k in s``: 1
     """
 
     def index(self, x: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
@@ -258,19 +263,21 @@ class RedisSortedSet(RedisSequence, Set[bytes]):
             raise ValueError()
         return rank
 
+    def count(self, x: bytes) -> int:
+        # pylint: disable=missing-docstring; inherited
+        # Optimized
+        return int(x in self)
+
     def __len__(self) -> int:
         return self.r.zcard(self.key)
 
     @overload
     def __getitem__(self, key: int) -> bytes:
-        # pylint: disable=function-redefined,missing-docstring; overload
         pass
     @overload
-    def __getitem__(self, key: slice) -> List[bytes]:
-        # pylint: disable=function-redefined,missing-docstring; overload
+    def __getitem__(self, key: slice) -> list[bytes]:
         pass
-    def __getitem__(self, key: Union[int, slice]) -> Union[bytes, List[bytes]]:
-        # pylint: disable=function-redefined,missing-docstring; overload
+    def __getitem__(self, key: int | slice) -> bytes | list[bytes]:
         if isinstance(key, slice): # type: ignore[misc]
             if cast(object, key.step):
                 raise NotImplementedError()
@@ -279,12 +286,60 @@ class RedisSortedSet(RedisSequence, Set[bytes]):
         return self.r.zrange(self.key, key, key)[0]
 
     def __iter__(self) -> Iterator[bytes]:
-        # Optimized and used by count()
+        # Optimized
         return iter(self[:])
+
+    def __reversed__(self) -> Iterator[bytes]:
+        # Optimizied
+        return reversed(self[:])
 
     def __contains__(self, item: object) -> bool:
         # Optimized
-        return isinstance(item, bytes) and self.r.zscore(self.key, item) is not None
+        if isinstance(item, bytes):
+            try:
+                self.index(item)
+                return True
+            except ValueError:
+                pass
+        return False
+
+class LexicalRedisSortedSet(RedisSortedSet):
+    """Lexicographical Redis sorted set interface.
+
+    Members are ordered by an associated lexical key, in addition to a numerical score. The set
+    itself stores lexical values, i.e. a value that is prefixed with a lexical key, separated by
+    null byte. An additional Redis hash maps values to lexical values. See
+    https://redis.io/topics/indexes#updating-lexicographical-indexes .
+
+    Redis operations diverging from :cls:`RedisSortedSet`:
+
+    * ``index()``: 2
+    * ``count()``: 2
+    * ``k in s``: 2
+
+    .. attribute:: lexical_values_key
+
+       Key of the related lexical values Redis hash.
+    """
+
+    def __init__(self, key: str, lexical_values_key: str, r: Redis) -> None:
+        super().__init__(key, r)
+        self.lexical_values_key = lexical_values_key
+
+    def index(self, x: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
+        return super().index(self.r.hget(self.lexical_values_key, x) or b'', start, stop)
+
+    @overload
+    def __getitem__(self, key: int) -> bytes:
+        pass
+    @overload
+    def __getitem__(self, key: slice) -> list[bytes]:
+        pass
+    def __getitem__(self, key: int | slice) -> bytes | list[bytes]:
+        result = super().__getitem__(key)
+        if isinstance(result, list):
+            return [item.rsplit(b'\0', 1)[1] for item in result]
+        return result.rsplit(b'\0', 1)[1]
 
 class JSONRedisSequence(Sequence[T]):
     """Read-Only list interface for JSON objects stored in Redis.
@@ -454,6 +509,16 @@ def redis_range(slc: slice) -> Tuple[int, int]:
     if stop == 0:
         return (1, 0)
     return (0 if start is None else start, -1 if stop is None else stop - 1)
+
+def lexical_value(value: str | bytes, key: str) -> bytes:
+    """Create a lexical value from the given *value* and lexical *key*.
+
+    *key* is prepared for case-insensitive comparison handling diacritics.
+    """
+    if isinstance(value, str):
+        value = value.encode()
+    key = unicodedata.normalize('NFD', key.casefold()).encode()
+    return key + b'\0' + value
 
 def expect_type(cls: Type[T]) -> ExpectFunc[T]:
     """Return a function which asserts that a given *obj* is an instance of *cls*."""

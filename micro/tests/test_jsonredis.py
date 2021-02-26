@@ -2,26 +2,30 @@
 # Released into the public domain
 # https://github.com/noyainrain/micro/blob/master/micro/jsonredis.py
 
-# type: ignore
 # pylint: disable=missing-docstring; test module
+
+from __future__ import annotations
 
 from collections import OrderedDict
 from itertools import count
 import json
 from threading import Thread
 from time import sleep, time
-from typing import Dict, List, Tuple
+from typing import cast
 from unittest import TestCase
 from unittest.mock import Mock
 
-from redis import StrictRedis
+from redis import Redis
 from redis.exceptions import ResponseError
-from micro.jsonredis import (JSONRedis, RedisList, RedisSortedSet, JSONRedisSequence,
-                             JSONRedisMapping, expect_type, bzpoptimed, script, zpoptimed)
+from typing_extensions import Protocol
+
+from micro.jsonredis import (
+    JSONRedis, LexicalRedisSortedSet, RedisList, RedisSequence, RedisSortedSet, JSONRedisSequence,
+    JSONRedisMapping, expect_type, bzpoptimed, lexical_value, script, zpoptimed)
 
 class JSONRedisTestCase(TestCase):
     def setUp(self) -> None:
-        self.r = JSONRedis(StrictRedis(db=15), encode=Cat.encode, decode=Cat.decode)
+        self.r = JSONRedis(Redis(db=15), encode=Cat.encode, decode=Cat.decode)
         self.r.flushdb()
 
 class JSONRedisTest(JSONRedisTestCase):
@@ -99,91 +103,99 @@ class JSONRedisTest(JSONRedisTestCase):
         got_cats = self.r.omget(cats.keys())
         self.assertEqual(got_cats, list(cats.values()))
 
-class RedisSequenceTest:
-    def make_seq(self):
-        items = [b'a', b'b', b'c', b'd']
-        seq = self.do_make_seq(items)
-        return seq, items
+class TestCaseProtocol(Protocol):
+    # pylint: disable=invalid-name; stub
+    def setUp(self) -> None: ...
+    def assertEqual(self, first: object, second: object) -> None: ...
+    def assertTrue(self, expr: object) -> None: ...
+    def assertFalse(self, expr: object) -> None: ...
 
-    def do_make_seq(self, items):
-        raise NotImplementedError()
+class RedisSequenceTest(TestCaseProtocol):
+    seq: RedisSequence
 
-    def test_index(self):
-        seq, items = self.make_seq()
-        self.assertEqual(seq.index(b'c'), items.index(b'c'))
+    def setUp(self) -> None:
+        self.items = [b'd', b'c', b'b', b'a']
 
-    def test_index_missing_x(self):
-        seq, _ = self.make_seq()
-        with self.assertRaises(ValueError):
-            seq.index(b'foo')
+    def test_index(self) -> None:
+        self.assertEqual(self.seq.index(b'c'), self.items.index(b'c'))
 
-    def test_len(self):
-        seq, items = self.make_seq()
-        self.assertEqual(len(seq), len(items))
+    def test_index_missing_x(self) -> None:
+        with self.assertRaises(ValueError): # type: ignore[misc,attr-defined]
+            self.seq.index(b'foo')
 
-    def test_getitem(self):
-        seq, items = self.make_seq()
-        self.assertEqual(seq[1], items[1])
+    def test_count(self) -> None:
+        self.assertEqual(self.seq.count(b'c'), self.items.count(b'c'))
 
-    def test_getitem_key_negative(self):
-        seq, items = self.make_seq()
-        self.assertEqual(seq[-2], items[-2])
+    def test_len(self) -> None:
+        self.assertEqual(len(self.seq), len(self.items))
 
-    def test_getitem_key_out_of_range(self):
-        seq, _ = self.make_seq()
-        with self.assertRaises(IndexError):
+    def test_getitem(self) -> None:
+        self.assertEqual(self.seq[1], self.items[1])
+
+    def test_getitem_key_negative(self) -> None:
+        self.assertEqual(self.seq[-2], self.items[-2])
+
+    def test_getitem_key_out_of_range(self) -> None:
+        with self.assertRaises(IndexError): # type: ignore[misc,attr-defined]
             # pylint: disable=pointless-statement; error is triggered on access
-            seq[42]
+            self.seq[42]
 
-    def test_getitem_key_slice(self):
-        seq, items = self.make_seq()
-        self.assertEqual(seq[1:3], items[1:3])
+    def test_getitem_key_slice(self) -> None:
+        self.assertEqual(self.seq[1:3], self.items[1:3])
 
-    def test_getitem_key_no_start(self):
-        seq, items = self.make_seq()
-        self.assertEqual(seq[:3], items[:3])
+    def test_getitem_key_no_start(self) -> None:
+        self.assertEqual(self.seq[:3], self.items[:3])
 
-    def test_getitem_key_no_stop(self):
-        seq, items = self.make_seq()
-        self.assertEqual(seq[1:], items[1:])
+    def test_getitem_key_no_stop(self) -> None:
+        self.assertEqual(self.seq[1:], self.items[1:])
 
-    def test_getitem_key_stop_zero(self):
-        seq, _ = self.make_seq()
-        self.assertFalse(seq[0:0])
+    def test_getitem_key_stop_zero(self) -> None:
+        self.assertFalse(self.seq[0:0])
 
-    def test_getitem_key_stop_lt_start(self):
-        seq, _ = self.make_seq()
-        self.assertFalse(seq[3:1])
+    def test_getitem_key_stop_lt_start(self) -> None:
+        self.assertFalse(self.seq[3:1])
 
-    def test_getitem_key_stop_negative(self):
-        seq, items = self.make_seq()
-        self.assertEqual(seq[1:-1], items[1:-1])
+    def test_getitem_key_stop_negative(self) -> None:
+        self.assertEqual(self.seq[1:-1], self.items[1:-1])
 
-    def test_getitem_key_stop_out_of_range(self):
-        seq, items = self.make_seq()
-        self.assertEqual(seq[0:42], items)
+    def test_getitem_key_stop_out_of_range(self) -> None:
+        self.assertEqual(self.seq[0:42], self.items)
 
-    def test_iter(self):
-        seq, items = self.make_seq()
-        self.assertEqual(list(iter(seq)), items)
+    def test_iter(self) -> None:
+        self.assertEqual(list(iter(self.seq)), self.items)
 
-    def test_contains(self):
-        seq, _ = self.make_seq()
-        self.assertTrue(b'b' in seq)
+    def test_reversed(self) -> None:
+        self.assertEqual(list(reversed(self.seq)), list(reversed(self.items)))
 
-    def test_contains_missing_item(self):
-        seq, _ = self.make_seq()
-        self.assertFalse(b'foo' in seq)
+    def test_contains(self) -> None:
+        self.assertTrue(b'b' in self.seq)
+
+    def test_contains_missing_item(self) -> None:
+        self.assertFalse(b'foo' in self.seq)
 
 class RedisListTest(JSONRedisTestCase, RedisSequenceTest):
-    def do_make_seq(self, items):
-        self.r.rpush('seq', *items)
-        return RedisList('seq', self.r.r)
+    def setUp(self) -> None:
+        super().setUp()
+        RedisSequenceTest.setUp(self)
+        self.r.r.rpush('seq', *self.items)
+        self.seq = RedisList('seq', self.r.r)
 
 class RedisSortedSetTest(JSONRedisTestCase, RedisSequenceTest):
-    def do_make_seq(self, items):
-        self.r.zadd('seq', {item: i for i, item in enumerate(items)})
-        return RedisSortedSet('seq', self.r.r)
+    def setUp(self) -> None:
+        super().setUp()
+        RedisSequenceTest.setUp(self)
+        self.r.r.zadd('seq', {item: i for i, item in enumerate(self.items)})
+        self.seq = RedisSortedSet('seq', self.r.r)
+
+class LexicalRedisSortedSetTest(JSONRedisTestCase, RedisSequenceTest):
+    def setUp(self) -> None:
+        super().setUp()
+        RedisSequenceTest.setUp(self)
+        for i, item in enumerate(self.items):
+            item_by_i = lexical_value(item, str(i))
+            self.r.r.zadd('seq', {item_by_i: 0})
+            self.r.r.hset('seq.lexical', item, item_by_i)
+        self.seq = LexicalRedisSortedSet('seq', 'seq.lexical', self.r.r)
 
 class JSONRedisSequenceTest(JSONRedisTestCase):
     def setUp(self):
@@ -240,7 +252,7 @@ class JSONRedisMappingTest(JSONRedisTestCase):
 class ScriptTest(JSONRedisTestCase):
     def test_script(self) -> None:
         f = script(self.r.r, 'return "Meow!"')
-        result = expect_type(bytes)(f()).decode()
+        result = cast(bytes, f()).decode()
         self.assertEqual(result, 'Meow!')
 
     def test_script_cached(self) -> None:
@@ -249,7 +261,7 @@ class ScriptTest(JSONRedisTestCase):
         self.assertIs(f, f_cached)
 
 class ZPopTimedTest(JSONRedisTestCase):
-    def make_queue(self, t: float) -> List[Tuple[bytes, float]]:
+    def make_queue(self, t: float) -> list[tuple[bytes, float]]:
         members = [(value, t + 0.25 * i) for i, value in enumerate([b'a', b'b', b'c'])]
         self.r.r.zadd('queue', dict(members))
         return members
@@ -299,6 +311,12 @@ class ZPopTimedTest(JSONRedisTestCase):
         thread.join()
         self.assertEqual(member, new)
 
+class LexicalValueTest(TestCase):
+    def test_lexical_value(self) -> None:
+        value = lexical_value('x', 'aÄ')
+        self.assertGreater(value, b'aa\0y')
+        self.assertLess(value, b'ab\0z')
+
 class Cat:
     # We use an instance id generator instead of id() because "two objects with non-overlapping
     # lifetimes may have the same id() value"
@@ -313,10 +331,10 @@ class Cat:
         return self.id == other.id and self.name == other.name
 
     @staticmethod
-    def encode(object: 'Cat') -> Dict[str, object]:
+    def encode(object: Cat) -> dict[str, object]:
         return {'id': object.id, 'name': object.name}
 
     @staticmethod
-    def decode(json: Dict[str, object]) -> 'Cat':
+    def decode(json: dict[str, object]) -> Cat:
         # pylint: disable=redefined-outer-name; good name
         return Cat(id=expect_type(str)(json['id']), name=expect_type(str)(json['name']))
