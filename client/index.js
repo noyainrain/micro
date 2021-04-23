@@ -108,7 +108,7 @@ micro.UI = class extends HTMLBodyElement {
             if (event.message.startsWith("EventSource")) {
                 return;
             }
-            this.notify(document.createElement("micro-error-notification"));
+            this.page = document.createElement("micro-error-page");
         });
         window.addEventListener("popstate", () => this._navigate().catch(micro.util.catch));
         this.addEventListener("click", event => {
@@ -157,7 +157,11 @@ micro.UI = class extends HTMLBodyElement {
             user: null,
             settings: null,
             offline: false,
-            dialog: null
+            dialog: null,
+            notification: null,
+            closeNotification: () => {
+                this._data.notification = null;
+            }
         });
         micro.bind.bind(this.children, this._data);
 
@@ -316,7 +320,7 @@ micro.UI = class extends HTMLBodyElement {
         history.replaceState(null, null, this._url);
     }
 
-    /** Active :class:`micro.Page`. Set to open the given page. May be ``null``. */
+    /** Active :class:`micro.core.Page`. Set to open the given page. May be ``null``. */
     get page() {
         return this._page;
     }
@@ -466,23 +470,12 @@ micro.UI = class extends HTMLBodyElement {
     }
 
     /**
-     * Show a *notification* to the user.
+     * Show a notification to the user.
      *
-     * *notification* is a :class:`HTMLElement`, like for example :class:`SimpleNotification`.
-     * Alternatively, *notification* can be a simple message string to display.
+     * *message* is either a simple string or a :class:`Node` with phrasing content.
      */
-    notify(notification) {
-        if (typeof notification === "string") {
-            let elem = document.createElement("micro-simple-notification");
-            let p = document.createElement("p");
-            p.textContent = notification;
-            elem.content.appendChild(p);
-            notification = elem;
-        }
-
-        let space = this.querySelector(".micro-ui-notification-space");
-        space.textContent = "";
-        space.appendChild(notification);
+    notify(message) {
+        this._data.notification = message;
     }
 
     /**
@@ -643,6 +636,19 @@ micro.UI = class extends HTMLBodyElement {
         }
     }
 };
+
+/** Page shown if a fatal error occurs. */
+micro.ErrorPage = class extends micro.core.Page {
+    createdCallback() {
+        super.createdCallback();
+        this.caption = "Error";
+        this.appendChild(
+            document.importNode(document.querySelector("#micro-error-page-template").content, true)
+        );
+        micro.bind.bind(this.children, {reload: () => location.reload()});
+    }
+};
+document.registerElement("micro-error-page", micro.ErrorPage);
 
 /**
  * :ref:`Collection` receivable in chunks.
@@ -807,45 +813,6 @@ micro.Activity = class {
             this._eventSource = new EventSource(this.url, {heartbeatTimeout: 60 * 60 * 1000});
             this._setupEventSource();
         }, this._RESET_TIMEOUT);
-    }
-};
-
-/**
- * Simple notification.
- */
-micro.SimpleNotification = class extends HTMLElement {
-    createdCallback() {
-        this.appendChild(document.importNode(
-            ui.querySelector(".micro-simple-notification-template").content, true));
-        this.classList.add("micro-notification", "micro-simple-notification");
-        this.querySelector(".micro-simple-notification-dismiss").addEventListener("click", this);
-        this.content = this.querySelector(".micro-simple-notification-content");
-    }
-
-    handleEvent(event) {
-        if (event.currentTarget === this.querySelector(".micro-simple-notification-dismiss") &&
-                event.type === "click") {
-            this.parentNode.removeChild(this);
-        }
-    }
-};
-
-/**
- * Notification that informs the user about app errors.
- */
-micro.ErrorNotification = class extends HTMLElement {
-    createdCallback() {
-        this.appendChild(document.importNode(
-            ui.querySelector(".micro-error-notification-template").content, true));
-        this.classList.add("micro-notification", "micro-error-notification");
-        this.querySelector(".micro-error-notification-reload").addEventListener("click", this);
-    }
-
-    handleEvent(event) {
-        if (event.currentTarget === this.querySelector(".micro-error-notification-reload") &&
-                event.type === "click") {
-            location.reload();
-        }
     }
 };
 
@@ -1568,57 +1535,8 @@ micro.UserElement = class extends HTMLElement {
     }
 };
 
-/**
- * Page.
- *
- * .. attribute:: ready
- *
- *    Promise that resolves once the page is ready.
- *
- *    Subclass API: :meth:`micro.util.PromiseWhen.when` may be used to signal when the page will be
- *    ready. By default, the page is considered all set after it has been attached to the DOM.
- */
-micro.Page = class extends HTMLElement {
-    createdCallback() {
-        this.ready = new micro.util.PromiseWhen();
-        this._caption = null;
-    }
-
-    attachedCallback() {
-        setTimeout(
-            () => {
-                try {
-                    this.ready.when(Promise.resolve());
-                } catch (e) {
-                    // The subclass may call when
-                    if (e.message === "already-called-when") {
-                        return;
-                    }
-                    throw e;
-                }
-            },
-            0
-        );
-    }
-
-    /**
-     * Page title. May be ``null``.
-     */
-    get caption() {
-        return this._caption;
-    }
-
-    set caption(value) {
-        this._caption = value;
-        if (this === ui.page) {
-            // eslint-disable-next-line no-underscore-dangle
-            ui._updateTitle();
-        }
-    }
-};
-
 /** Offline page. */
-micro.OfflinePage = class extends micro.Page {
+micro.OfflinePage = class extends micro.core.Page {
     createdCallback() {
         super.createdCallback();
         this.caption = "Offline";
@@ -1631,7 +1549,7 @@ document.registerElement("micro-offline-page", micro.OfflinePage);
 /**
  * Not found page.
  */
-micro.NotFoundPage = class extends micro.Page {
+micro.NotFoundPage = class extends micro.core.Page {
     createdCallback() {
         super.createdCallback();
         this.caption = "Not found";
@@ -1643,7 +1561,7 @@ micro.NotFoundPage = class extends micro.Page {
 /**
  * Forbidden page.
  */
-micro.ForbiddenPage = class extends micro.Page {
+micro.ForbiddenPage = class extends micro.core.Page {
     createdCallback() {
         super.createdCallback();
         this.caption = "Forbidden";
@@ -1655,7 +1573,7 @@ micro.ForbiddenPage = class extends micro.Page {
 /**
  * About page.
  */
-micro.AboutPage = class extends micro.Page {
+micro.AboutPage = class extends micro.core.Page {
     createdCallback() {
         super.createdCallback();
         this.caption = `About ${ui.settings.title}`;
@@ -1705,7 +1623,7 @@ micro.AboutPage = class extends micro.Page {
 /**
  * Edit settings page.
  */
-micro.EditSettingsPage = class extends micro.Page {
+micro.EditSettingsPage = class extends micro.core.Page {
     static make() {
         if (!ui.staff) {
             return document.createElement("micro-forbidden-page");
@@ -1758,7 +1676,7 @@ micro.EditSettingsPage = class extends micro.Page {
     }
 };
 
-micro.ActivityPage = class extends micro.Page {
+micro.ActivityPage = class extends micro.core.Page {
     static make() {
         if (!ui.staff) {
             return document.createElement("micro-forbidden-page");
@@ -1867,12 +1785,10 @@ Object.assign(micro.bind.transforms, {
 });
 
 document.registerElement("micro-ui", {prototype: micro.UI.protoype, extends: "body"});
-document.registerElement("micro-simple-notification", micro.SimpleNotification);
 document.registerElement("micro-error-notification", micro.ErrorNotification);
 document.registerElement("micro-ol", {prototype: micro.OL.prototype, extends: "ol"});
 document.registerElement("micro-button", {prototype: micro.Button.prototype, extends: "button"});
 document.registerElement("micro-user", micro.UserElement);
-document.registerElement("micro-page", micro.Page);
 document.registerElement("micro-not-found-page", micro.NotFoundPage);
 document.registerElement("micro-forbidden-page", micro.ForbiddenPage);
 document.registerElement("micro-about-page", micro.AboutPage);

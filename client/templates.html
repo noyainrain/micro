@@ -91,14 +91,26 @@
                 </micro-contextual>
             </div>
         </nav>
-
-        <div class="micro-ui-notification-space"></div>
     </header>
 
     <div
         class="micro-ui-dialog-layer" tabindex="-1"
         data-shortcut-context="new ShortcutContext" data-content="dialog"
     ></div>
+
+    <div class="micro-ui-notification micro-ui-inside" data-content="switch notification">
+        <template>
+            <div class="micro-overlay micro-panel">
+                <p class="micro-panel-main" data-content="notification"></p>
+                <button
+                    is="micro-button" type="button" class="link" data-run="closeNotification"
+                    data-shortcut="new Shortcut 'Escape' 'Close'"
+                >
+                    <i class="fa fa-times-circle"></i>
+                </button>
+            </div>
+        </template>
+    </div>
 </template>
 <style>
     body[noninteractive] .micro-interactive {
@@ -134,16 +146,6 @@
         display: block;
     }
 
-    .micro-ui-notification-space:not(:empty) {
-        border-top: 1px solid var(--micro-color-delimiter);
-    }
-
-    .micro-ui-notification-space h1 {
-        border: none;
-        font-size: 1em;
-        font-weight: bold;
-    }
-
     .micro-ui-dialog-layer {
         position: fixed;
         z-index: 2;
@@ -165,6 +167,21 @@
         display: none;
     }
 
+    .micro-ui-notification {
+        position: fixed;
+        top: calc(var(--micro-size-m) + 4 * var(--micro-size-s));
+        left: 0;
+        right: 0;
+        z-index: 3;
+        padding: 0 calc(2 * var(--micro-size-s));
+        pointer-events: none;
+    }
+
+    .micro-ui-notification > div {
+        border-radius: var(--micro-size-xs);
+        pointer-events: all;
+    }
+
     body > [slot],
     body:not(.micro-ui-settings-have-icon-small) .micro-ui-logo img,
     body:not(.micro-ui-offline) .micro-ui-header-offline,
@@ -174,26 +191,30 @@
     }
 </style>
 
-<template class="micro-simple-notification-template">
-    <div class="micro-ui-inside compact">
-        <div class="micro-simple-notification-content"></div>
-        <button type="button" class="micro-simple-notification-dismiss link">Dismiss</button>
-    </div>
-</template>
-
-<template class="micro-error-notification-template">
-    <div class="micro-ui-inside compact">
+<template id="micro-error-page-template">
+    <div class="micro-cover-page">
+        <h1><i class="fa fa-heartbeat"></i></h1>
+        <p>Oops, something went very wrong!</p>
         <p>
-            <i class="fa fa-exclamation-triangle"></i> Oops, something went very wrong! We have been
-            notified and will do our best to fix the problem as soon as possible. We are sorry for
-            the inconvenience!
+            <small>
+                We have been notified and will do our best to fix the problem as soon as possible. We
+                are sorry for the inconvenience!
+            </small>
         </p>
-        <p>In the meantime, you may reload the page and give it another try.</p>
-        <button type="button" class="micro-error-notification-reload action micro-highlight">
-            Reload the page
+        <button is="micro-button" type="button" class="action micro-highlight" data-run="reload">
+            <i class="fa fa-redo-alt"></i> Reload
         </button>
     </div>
 </template>
+<style>
+    micro-error-page h1 i {
+        color: red;
+    }
+
+    micro-error-page .action.micro-highlight {
+        margin: 1px auto;
+    }
+</style>
 
 <template id="micro-options-template">
     <div class="micro-entity-list">
@@ -369,26 +390,27 @@
 </template>
 
 <template id="micro-offline-page-template">
-    <h1 class="micro-icon-title"><i class="fa fa-wifi"></i></h1>
-    <p>Oops, you seem to be offline!</p>
-    <p><small>Please check your connection and try again.</small></p>
+    <div class="micro-cover-page">
+        <h1><i class="fa fa-wifi"></i></h1>
+        <p>Oops, you seem to be offline!</p>
+        <p><small>Please check your connection and try again.</small></p>
+    </div>
 </template>
-<style>
-    micro-offline-page {
-        text-align: center;
-    }
-</style>
 
 <template class="micro-not-found-page-template">
-    <h1 class="micro-icon-title"><i class="fa fa-map-signs"></i></h1>
-    <p>Oops, we have not found the page you are looking for!</p>
-    <p><small>If you've been here before, someone has deleted it.</small></p>
+    <div class="micro-cover-page">
+        <h1><i class="fa fa-map-signs"></i></h1>
+        <p>Oops, we have not found the page you are looking for!</p>
+        <p><small>If you've been here before, someone has deleted it.</small></p>
+    </div>
 </template>
 
 <template class="micro-forbidden-page-template">
-    <h1 class="micro-icon-title"><i class="fa fa-lock"></i></h1>
-    <p>Oops, you are not allowed to view this page!</p>
-    <p><small>If you've been here before, someone has revoked your permissions.</small></p>
+    <div class="micro-cover-page">
+        <h1><i class="fa fa-lock"></i></h1>
+        <p>Oops, you are not allowed to view this page!</p>
+        <p><small>If you've been here before, someone has revoked your permissions.</small></p>
+    </div>
 </template>
 
 <template class="micro-about-page-template">

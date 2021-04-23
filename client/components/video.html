@@ -12,7 +12,7 @@
                 </p>
             </template>
         </div>
-        <div class="micro-video-controls micro-panel">
+        <div class="micro-video-controls micro-overlay micro-panel">
             <button
                 is="micro-button" type="button" class="action" data-run="playPause"
                 data-shortcut="new Shortcut 'P' 'Play / Pause'"
@@ -92,24 +92,11 @@ micro-video p > span {
     left: 0;
     right: 0;
     z-index: 1;
-    background: rgba(0, 0, 0, 0.66);
 }
 
 micro-video > div:not(.micro-video-controls-visible) .micro-video-controls {
     height: 0;
     overflow: hidden;
-}
-
-.micro-video-controls .link:focus,
-.micro-video-controls .link:hover,
-.micro-video-controls .action:focus,
-.micro-video-controls .action:hover {
-    background: black;
-}
-
-.micro-video-controls .link i,
-.micro-video-controls .action i {
-    color: white;
 }
 
 .micro-video-controls .link {

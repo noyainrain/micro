@@ -25,6 +25,55 @@ micro.core = {};
 micro.core.URL_PATTERN = "(^|[\\s!-.:-@])(https?://.+?)(?=[!-.:-@]?(\\s|$))";
 
 /**
+ * Page.
+ *
+ * .. attribute:: ready
+ *
+ *    Promise that resolves once the page is ready.
+ *
+ *    Subclass API: :meth:`micro.util.PromiseWhen.when` may be used to signal when the page will be
+ *    ready. By default, the page is considered all set after it has been attached to the DOM.
+ */
+micro.core.Page = class extends HTMLElement {
+    createdCallback() {
+        this.ready = new micro.util.PromiseWhen();
+        this._caption = null;
+    }
+
+    attachedCallback() {
+        setTimeout(
+            () => {
+                try {
+                    this.ready.when(Promise.resolve());
+                } catch (e) {
+                    // The subclass may call when
+                    if (e.message === "already-called-when") {
+                        return;
+                    }
+                    throw e;
+                }
+            },
+            0
+        );
+    }
+
+    /**
+     * Page title. May be ``null``.
+     */
+    get caption() {
+        return this._caption;
+    }
+
+    set caption(value) {
+        this._caption = value;
+        if (this === ui.page) {
+            // eslint-disable-next-line no-underscore-dangle
+            ui._updateTitle();
+        }
+    }
+};
+
+/**
  * Modal dialog to query additional information for an action.
  *
  * .. attribute:: result

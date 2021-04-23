@@ -29,7 +29,7 @@ micro.components.analytics = {};
  *
  *    Subclass API: Space for further content.
  */
-micro.components.analytics.AnalyticsPage = class extends micro.Page {
+micro.components.analytics.AnalyticsPage = class extends micro.core.Page {
     static make() {
         if (!ui.staff) {
             return document.createElement("micro-forbidden-page");

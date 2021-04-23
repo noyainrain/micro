@@ -678,15 +678,15 @@ class Collection(Generic[O], Sequence[O]):
         self.expect = expect
         self.app = app
 
-    def index(self, x: Union[O, str], start: int = 0, stop: int = sys.maxsize) -> int:
+    def index(self, value: Union[O, str], start: int = 0, stop: int = sys.maxsize) -> int:
         """See :meth:`Sequence.index`.
 
         *x* may also be a string, in which case the index of the object with the given ID is
         returned.
         """
-        if isinstance(x, Object):
-            return self.index(x.id, start, stop)
-        return self.ids.index(cast(str, x).encode(), start, stop)
+        if isinstance(value, Object):
+            return self.index(value.id, start, stop)
+        return self.ids.index(cast(str, value).encode(), start, stop)
 
     def __len__(self) -> int:
         return len(self.ids)

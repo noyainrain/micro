@@ -170,11 +170,6 @@ small {
     list-style: none;
 }
 
-.micro-icon-title {
-    border-bottom: none;
-    font-size: 3rem;
-}
-
 .micro-progress i {
     color: var(--micro-color-primary);
 }
@@ -196,7 +191,7 @@ small {
     border-radius: var(--micro-size-xs);
     transform: translateY(-50%);
     color: white;
-    background: rgba(0, 0, 0, 0.66);
+    background: rgba(0, 0, 0, 0.8);
     line-height: 1;
     white-space: nowrap;
 }
@@ -258,8 +253,7 @@ small {
     padding: 0;
 }
 
-.action,
-.action i {
+.action {
     color: var(--micro-color-primary);
 }
 
@@ -268,18 +262,18 @@ small {
     padding: calc(var(--micro-size-s) - 1px);
     border-radius: var(--micro-size-xs);
     margin: 1px;
-    background: var(--micro-color-primary);
-}
-
-.action.micro-highlight,
-.action.micro-highlight i {
     color: white;
+    background: var(--micro-color-primary);
 }
 
 .action.micro-highlight:focus,
 .action.micro-highlight:not(:disabled):hover {
     background: var(--micro-color-primary);
     box-shadow: inset 0 0 0 1px var(--micro-color-primary), inset 0 0 0 2px white;
+}
+
+.action i {
+    color: unset;
 }
 
 p .link,
@@ -377,6 +371,33 @@ fieldset label {
 
 .micro-disabled {
     color: var(--micro-color-text-subtle);
+}
+
+/** Overlay */
+
+.micro-overlay {
+    color: white;
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.micro-overlay i {
+    color: unset;
+}
+
+.micro-overlay .link:focus,
+.micro-overlay .link:not(:disabled):hover,
+.micro-overlay .action:focus,
+.micro-overlay .action:not(:disabled):hover {
+    background: black;
+}
+
+.micro-overlay .action {
+    color: unset;
+}
+
+.micro-overlay p .link:focus,
+.micro-overlay p .link:not(:disabled):hover {
+    background: unset;
 }
 
 /**
@@ -534,8 +555,7 @@ section section .micro-heading > input {
 }
 
 .micro-ui-inside {
-    box-sizing: content-box;
-    max-width: 70ch;
+    max-width: calc(70ch + 2 * var(--micro-size-s));
     padding: 0 var(--micro-size-s);
     margin: 0 auto;
 }
@@ -583,12 +603,6 @@ main {
     color: var(--micro-color-primary);
 }
 
-/* ---- ErrorNotification ---- */
-
-.micro-error-notification i {
-    color: red;
-}
-
 /* Button */
 
 .micro-button-suspended i:first-of-type {
@@ -603,10 +617,6 @@ main {
 
 /* ---- BootPage ---- */
 
-.micro-boot-page {
-    text-align: center;
-}
-
 .micro-boot-page i {
     color: red;
 }
@@ -614,18 +624,6 @@ main {
 .micro-boot-page-detail {
     margin-top: calc(3 * 1.5rem);
     text-align: left;
-}
-
-/* ---- NotFoundPage ---- */
-
-micro-not-found-page {
-    text-align: center;
-}
-
-/* ---- ForbiddenPage ---- */
-
-micro-forbidden-page {
-    text-align: center;
 }
 
 /* ---- EditUserPage ---- */
@@ -659,4 +657,15 @@ micro-activity-page > ul {
 
 .micro-activity-all .micro-activity-show-more {
     display: none;
+}
+
+/** Cover page */
+
+.micro-cover-page {
+    text-align: center;
+}
+
+.micro-cover-page h1 {
+    border-bottom: unset;
+    font-size: 3rem;
 }

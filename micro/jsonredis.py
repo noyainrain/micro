@@ -14,6 +14,7 @@ Also includes :class:`JSONRedisMapping`, an utility map interface for JSON objec
 
 from __future__ import annotations
 
+from abc import ABC
 from collections.abc import Iterator
 import json
 from math import isinf
@@ -179,7 +180,7 @@ class JSONRedis(Generic[T]):
         # proxy
         return getattr(self.r, name)
 
-class RedisSequence(Sequence[bytes]):
+class RedisSequence(Sequence[bytes], ABC):
     """Read-Only sequence interface for Redis collections.
 
     .. attribute:: key
@@ -208,10 +209,10 @@ class RedisList(RedisSequence):
     * k in l: 1 full query
     """
 
-    def index(self, x: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
+    def index(self, value: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
         # pylint: disable=missing-docstring; inherited
         # Optimized
-        return self[:].index(x, start, stop)
+        return self[:].index(value, start, stop)
 
     def __len__(self) -> int:
         return self.r.llen(self.key)
@@ -253,20 +254,20 @@ class RedisSortedSet(RedisSequence, Set[bytes]):
     * ``k in s``: 1
     """
 
-    def index(self, x: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
+    def index(self, value: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
         # pylint: disable=missing-docstring; inherited
         # Optimized
         if start < 0 or stop < 0:
             raise NotImplementedError()
-        rank = self.r.zrank(self.key, x)
+        rank = self.r.zrank(self.key, value)
         if rank is None or not start <= rank < stop:
             raise ValueError()
         return rank
 
-    def count(self, x: bytes) -> int:
+    def count(self, value: bytes) -> int:
         # pylint: disable=missing-docstring; inherited
         # Optimized
-        return int(x in self)
+        return int(value in self)
 
     def __len__(self) -> int:
         return self.r.zcard(self.key)
@@ -326,8 +327,8 @@ class LexicalRedisSortedSet(RedisSortedSet):
         super().__init__(key, r)
         self.lexical_values_key = lexical_values_key
 
-    def index(self, x: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
-        return super().index(self.r.hget(self.lexical_values_key, x) or b'', start, stop)
+    def index(self, value: bytes, start: int = 0, stop: int = sys.maxsize) -> int:
+        return super().index(self.r.hget(self.lexical_values_key, value) or b'', start, stop)
 
     @overload
     def __getitem__(self, key: int) -> bytes:

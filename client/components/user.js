@@ -22,7 +22,7 @@ micro.components = micro.components || {};
 micro.components.user = {};
 
 /** Page to edit the user. */
-micro.components.user.EditUserPage = class extends micro.Page {
+micro.components.user.EditUserPage = class extends micro.core.Page {
     static async make(url, id) {
         id = id || ui.user.id;
         const user = await ui.call("GET", `/api/users/${id}`);

@@ -42,7 +42,7 @@ hello.UI = class extends micro.UI {
 /**
  * Start page.
  */
-hello.StartPage = class extends micro.Page {
+hello.StartPage = class extends micro.core.Page {
     createdCallback() {
         super.createdCallback();
         this._activity = null;
