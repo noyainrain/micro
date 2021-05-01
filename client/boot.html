@@ -28,15 +28,6 @@
                 <pre id="micro-compatibility-boot-page-detail"></pre>
             </div>
         </div>
-        <div
-            class="micro-storage-boot-page micro-boot-page micro-cover-page" style="display: none;"
-        >
-            <h1><i class="fa fa-cogs"></i></h1>
-            <p>
-                Unfortunately, we couldn't get started because cookies are disabled. Please
-                enable cookies for this web app.
-            </p>
-        </div>
     </div>
 </main>
 
@@ -87,10 +78,21 @@
     } catch (e) {
         features.es8AsyncFunction = false;
     }
+    try {
+        eval("null ?? 42");
+        features.es11NullishCoalescing = true;
+    } catch (e) {
+        features.es11NullishCoalescing = false;
+    }
+    try {
+        eval("null?.foo");
+        features.es11OptionalChaining = true;
+    } catch (e) {
+        features.es11OptionalChaining = false;
+    }
     features.html5Constraints = "validity" in document.createElement("input");
     features.html5ErrorEvent = "error" in new ErrorEvent("error");
     features.html5History = "pushState" in history;
-    features.html5Storage = "localStorage" in window;
     features.html5Template = "content" in document.createElement("template");
     features.fetch = "fetch" in window;
 
@@ -101,11 +103,5 @@
         document.getElementById("micro-compatibility-boot-page-detail").textContent =
             JSON.stringify({device: navigator.userAgent, features: features}, null, 4);
         document.getElementById("micro-compatibility-boot-page").style.display = "block";
-    }
-
-    // From here on we make use of the checked features
-    if (compatible && !navigator.cookieEnabled) {
-        micro.launch = false;
-        document.querySelector(".micro-storage-boot-page").style.display = "block";
     }
 </script>

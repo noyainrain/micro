@@ -1,5 +1,5 @@
 parserOptions:
-    ecmaVersion: 2017
+    ecmaVersion: 2020
 env:
     browser: true
     es6: true

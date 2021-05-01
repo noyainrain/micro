@@ -100,6 +100,48 @@ micro.core.Dialog = class extends HTMLElement {
     }
 };
 
+/**
+ * Decorator for a user request.
+ *
+ * If the request cannot be fulfilled because of a common web API error (:ref:`NotFoundError`,
+ * :ref:`PermissionError`, :ref:`RateLimitError`, :class:`micro.NetworkError`), the user is notified
+ * and :attr:`micro.core.request.ABORTED` is returned. A user request function is async.
+ *
+ * The decorated function may be async.
+ */
+micro.core.request = function(f) {
+    return async (...args) => {
+        try {
+            return await f(...args);
+        } catch (e) {
+            ui.handleCallError(e);
+            return micro.core.request.ABORTED;
+        }
+    };
+};
+
+/** Returned if a user request was aborted. */
+micro.core.request.ABORTED = Symbol("aborted");
+
+/**
+ * Decorator for a user action.
+ *
+ * If the action cannot be performed because the current user is anonymous, they are notified and
+ * :data:`micro.core.request.ABORTED` is returned. A user action function is a
+ * :func:`micro.core.request`.
+ */
+micro.core.action = function(f) {
+    return micro.core.request((...args) => {
+        if (!ui.features.storage) {
+            ui.notify(
+                `Oops, cookies are disabled! Please enable cookies for ${ui.settings.title} and try again.`
+            );
+            return micro.core.request.ABORTED;
+        }
+        return f(...args);
+    });
+};
+
 Object.assign(micro.bind.transforms, {
     /**
      * Render *markup text* into a :class:`DocumentFragment`.

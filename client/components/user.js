@@ -24,10 +24,13 @@ micro.components.user = {};
 /** Page to edit the user. */
 micro.components.user.EditUserPage = class extends micro.core.Page {
     static async make(url, id) {
-        id = id || ui.user.id;
-        const user = await ui.call("GET", `/api/users/${id}`);
-        if (user.id !== ui.user.id) {
-            return document.createElement("micro-forbidden-page");
+        id = id ?? ui.user?.id ?? null;
+        let user = null;
+        if (id) {
+            user = await ui.call("GET", `/api/users/${id}`);
+            if (user.id !== (ui.user?.id ?? null)) {
+                return document.createElement("micro-forbidden-page");
+            }
         }
         const page = document.createElement("micro-edit-user-page");
         page.user = user;
@@ -48,19 +51,15 @@ micro.components.user.EditUserPage = class extends micro.core.Page {
         this._data = new micro.bind.Watchable({
             user: null,
 
-            edit: async() => {
-                try {
-                    const user = await ui.call(
-                        "POST", `/api/users/${this._data.user.id}`,
-                        {name: this._form.elements.name.value}
-                    );
-                    ui.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
-                } catch (e) {
-                    ui.handleCallError(e);
-                }
-            },
+            edit: micro.core.action(async() => {
+                const user = await ui.call(
+                    "POST", `/api/users/${this._data.user.id}`,
+                    {name: this._form.elements.name.value}
+                );
+                ui.dispatchEvent(new CustomEvent("user-edit", {detail: {user}}));
+            }),
 
-            setEmail: () => {
+            setEmail: micro.core.action(() => {
                 ui.dialog = document.createElement("micro-set-email-dialog");
                 (async () => {
                     const user = await ui.dialog.result;
@@ -68,14 +67,14 @@ micro.components.user.EditUserPage = class extends micro.core.Page {
                         this._data.user = user;
                     }
                 })().catch(micro.util.catch);
-            }
+            })
         });
         micro.bind.bind(this.children, this._data);
     }
 
     attachedCallback() {
         super.attachedCallback();
-        this._form.elements.name.value = this._data.user.name;
+        this._form.elements.name.value = this._data.user?.name ?? "Guest";
         this._form.elements.name.focus();
     }
 

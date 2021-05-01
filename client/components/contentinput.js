@@ -132,30 +132,35 @@ micro.components.contentinput.ContentInputElement = class extends HTMLElement {
      * Alternatively, *url* may be a :class:`File` to upload and attach.
      */
     async attach(url) {
-        this._data.attaching = true;
-        try {
-            if (url instanceof File) {
-                const response = await fetch("/files", {method: "POST", body: url});
-                url = response.headers.get("Location");
+        await micro.core.request(async () => {
+            this._data.attaching = true;
+            try {
+                if (url instanceof File) {
+                    const response = await fetch("/files", {method: "POST", body: url});
+                    url = response.headers.get("Location");
+                }
+                this._data.resource = await ui.call(
+                    "GET", `/api/previews/${encodeURIComponent(url)}`
+                );
+            } catch (e) {
+                if (e instanceof TypeError) {
+                    throw new micro.NetworkError();
+                }
+                if (
+                    e instanceof micro.APIError && [
+                        "CommunicationError", "NoResourceError", "ForbiddenResourceError",
+                        "BrokenResourceError"
+                    ].includes(e.error.__type__)
+                ) {
+                    // Ignore
+                    return;
+                }
+                throw e;
+            } finally {
+                this._data.attaching = false;
             }
-            this._data.resource = await micro.call(
-                "GET", `/api/previews/${encodeURIComponent(url)}`
-            );
             this._data.validate();
-        } catch (e) {
-            if (
-                e instanceof micro.APIError && [
-                    "CommunicationError", "NoResourceError", "ForbiddenResourceError",
-                    "BrokenResourceError"
-                ].includes(e.error.__type__)
-            ) {
-                // Ignore
-            } else {
-                ui.handleCallError(e);
-            }
-        } finally {
-            this._data.attaching = false;
-        }
+        })();
     }
 };
 document.registerElement("micro-content-input", micro.components.contentinput.ContentInputElement);

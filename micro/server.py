@@ -626,7 +626,7 @@ class UI(RequestHandler):
             "default-src 'self'",
             "style-src 'self' 'unsafe-inline'",
             # Allow third party APIs and boot script
-            "script-src * 'sha256-P4JqQi52XRk4d4LReDaKYGMuOGGbkQf0J2K7+Dk6vzU=' 'unsafe-eval'",
+            "script-src * 'sha256-vZ/Wml6L4/OdH1pQrymN8l6Fk3MSl9RVBqakorEABG4=' 'unsafe-eval'",
             "connect-src *",
             # Allow third party image APIs
             "img-src * data:",

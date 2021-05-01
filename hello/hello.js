@@ -53,7 +53,7 @@ hello.StartPage = class extends micro.core.Page {
             settings: ui.settings,
             greetings: new micro.Collection("/api/greetings"),
 
-            createGreeting: async() => {
+            createGreeting: micro.core.action(async() => {
                 const input = this.querySelector("micro-content-input");
                 try {
                     const {text, resource} = input.valueAsObject;
@@ -75,10 +75,10 @@ hello.StartPage = class extends micro.core.Page {
                         // Delete the resource if it is no longer retrievable
                         input.valueAsObject = {text: input.valueAsObject.text, resource: null};
                     } else {
-                        ui.handleCallError(e);
+                        throw e;
                     }
                 }
-            },
+            }),
 
             makeGreetingHash(ctx, greeting) {
                 return `greetings-${greeting.id.split(":")[1]}`;
@@ -89,22 +89,18 @@ hello.StartPage = class extends micro.core.Page {
 
     attachedCallback() {
         super.attachedCallback();
-        this.ready.when((async() => {
-            try {
-                await this._data.greetings.fetch();
-                this._activity = await micro.Activity.open("/api/activity/stream");
-                this._activity.events.addEventListener("greetings-create", event => {
-                    if (
-                        !this._data.greetings.items.find(
-                            greeting => greeting.id === event.detail.event.detail.greeting.id
-                        )
-                    ) {
-                        this._data.greetings.items.unshift(event.detail.event.detail.greeting);
-                    }
-                });
-            } catch (e) {
-                ui.handleCallError(e);
-            }
+        this.ready.when(micro.core.request(async() => {
+            await this._data.greetings.fetch();
+            this._activity = await micro.Activity.open("/api/activity/stream");
+            this._activity.events.addEventListener("greetings-create", event => {
+                if (
+                    !this._data.greetings.items.find(
+                        greeting => greeting.id === event.detail.event.detail.greeting.id
+                    )
+                ) {
+                    this._data.greetings.items.unshift(event.detail.event.detail.greeting);
+                }
+            });
         })().catch(micro.util.catch));
     }
 

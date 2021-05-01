@@ -63,7 +63,7 @@ micro.LIST_LIMIT = 100;
  *
  * .. attribute:: device
  *
- *    Current user :ref:`Device`.
+ *    Current user :ref:`Device`. ``null`` means anonymous.
  *
  * .. describe:: navigate
  *
@@ -126,11 +126,15 @@ micro.UI = class extends HTMLBodyElement {
             }
         });
         this.addEventListener("user-edit", event => {
-            localStorage.microUser = JSON.stringify(event.detail.user);
+            if (this.features.storage) {
+                localStorage.microUser = JSON.stringify(event.detail.user);
+            }
             this._data.user = event.detail.user;
         });
         this.addEventListener("device-enable-notifications", event => {
-            localStorage.microDevice = JSON.stringify(event.detail.device);
+            if (this.features.storage) {
+                localStorage.microDevice = JSON.stringify(event.detail.device);
+            }
             this.device = event.detail.device;
         });
         this.addEventListener("settings-edit", this);
@@ -184,9 +188,19 @@ micro.UI = class extends HTMLBodyElement {
 
         this.features = {
             es6TypedArray: "ArrayBuffer" in window,
-            serviceWorkers: "serviceWorker" in navigator,
             push: "PushManager" in window
         };
+        try {
+            this.features.storage = Boolean(self.localStorage);
+        } catch (e) {
+            if (e instanceof DOMException && e.name === "SecurityError") {
+                this.features.storage = false;
+            } else {
+                throw e;
+            }
+        }
+        // Service workers require storage access
+        this.features.serviceWorkers = "serviceWorker" in navigator && this.features.storage;
         this.classList.add(
             ...Object.entries(this.features)
                 .filter(([, supported]) => supported)
@@ -218,24 +232,18 @@ micro.UI = class extends HTMLBodyElement {
             try {
                 this._progressElem.style.display = "block";
 
-                const version = parseInt(localStorage.microVersion) || null;
-                if (!version) {
-                    localStorage.microDevice = JSON.stringify(null);
-                    localStorage.microUser = JSON.stringify(null);
-                    localStorage.microSettings = JSON.stringify(null);
-                    localStorage.microVersion = 2;
-                }
-                // Deprecated since 0.58.0
-                if (!("microDevice" in localStorage)) {
-                    localStorage.microDevice = JSON.stringify(null);
-                }
-                await this.update();
+                if (this.features.storage) {
+                    // Deprecated since 0.63.0
+                    delete localStorage.microVersion;
 
-                this._data.user = JSON.parse(localStorage.microUser);
-                this.device = JSON.parse(localStorage.microDevice);
-                this._data.settings = JSON.parse(localStorage.microSettings);
+                    await this.update();
 
-                if (!this.device) {
+                    this._data.user = JSON.parse(localStorage.microUser ?? null);
+                    this.device = JSON.parse(localStorage.microDevice ?? null);
+                    this._data.settings = JSON.parse(localStorage.microSettings ?? null);
+                }
+
+                if (!this.device && this.features.storage) {
                     let device;
                     try {
                         // For some browsers, storage is ephemeral while only cookies are persistent
@@ -248,31 +256,37 @@ micro.UI = class extends HTMLBodyElement {
                             throw e;
                         }
                     }
-                    localStorage.microDevice = JSON.stringify(device);
-                    localStorage.microUser = JSON.stringify(device.user);
                     this.device = device;
                     this._data.user = device.user;
+                    localStorage.microDevice = JSON.stringify(device);
+                    localStorage.microUser = JSON.stringify(device.user);
                 }
 
                 // Cookies may be cleared independent of storage
-                const secure = location.protocol === "https:" ? " Secure;" : "";
-                document.cookie = `auth_secret=${this.device.auth_secret}; Path=/; Max-Age=${360 * 24 * 60 * 60};${secure}`;
+                if (this.device) {
+                    const secure = location.protocol === "https:" ? " Secure;" : "";
+                    document.cookie = `auth_secret=${this.device.auth_secret}; Path=/; Max-Age=${360 * 24 * 60 * 60};${secure}`;
+                }
 
                 if (!this.settings) {
                     this._data.settings = await ui.call("GET", "/api/settings");
-                    localStorage.microSettings = JSON.stringify(this._data.settings);
+                    if (this.features.storage) {
+                        localStorage.microSettings = JSON.stringify(this._data.settings);
+                    }
                 }
 
                 // Update user details and settings
                 (async() => {
                     try {
-                        const device = await ui.call("GET", "/api/devices/self");
-                        this.dispatchEvent(
-                            new CustomEvent("device-enable-notifications", {detail: {device}})
-                        );
-                        this.dispatchEvent(
-                            new CustomEvent("user-edit", {detail: {user: device.user}})
-                        );
+                        if (this.device) {
+                            const device = await ui.call("GET", "/api/devices/self");
+                            this.dispatchEvent(
+                                new CustomEvent("device-enable-notifications", {detail: {device}})
+                            );
+                            this.dispatchEvent(
+                                new CustomEvent("user-edit", {detail: {user: device.user}})
+                            );
+                        }
                         const settings = await ui.call("GET", "/api/settings");
                         this.dispatchEvent(new CustomEvent("settings-edit", {detail: {settings}}));
                         if (
@@ -356,7 +370,7 @@ micro.UI = class extends HTMLBodyElement {
         }
     }
 
-    /** Current :ref:`User`. */
+    /** Current :ref:`User`. ``null`` means anonymous. */
     get user() {
         return this._data.user;
     }
@@ -370,7 +384,7 @@ micro.UI = class extends HTMLBodyElement {
      * Is the current :attr:`user` a staff member?
      */
     get staff() {
-        return this._data.settings.staff.map(s => s.id).indexOf(this.user.id) !== -1;
+        return this._data.settings.staff.map(s => s.id).includes(this.user?.id);
     }
 
     /**
@@ -426,8 +440,10 @@ micro.UI = class extends HTMLBodyElement {
             // their account on another device or b) the database has been reset (during
             // development)
             if (e instanceof micro.APIError && e.error.__type__ === "AuthenticationError") {
-                localStorage.microDevice = JSON.stringify(null);
-                localStorage.microUser = JSON.stringify(null);
+                if (this.features.storage) {
+                    delete localStorage.microDevice;
+                    delete localStorage.microUser;
+                }
                 location.reload();
                 // Never return
                 await new Promise(() => {});
@@ -632,7 +648,9 @@ micro.UI = class extends HTMLBodyElement {
     handleEvent(event) {
         if (event.target === this && event.type === "settings-edit") {
             this._data.settings = event.detail.settings;
-            localStorage.microSettings = JSON.stringify(event.detail.settings);
+            if (this.features.storage) {
+                localStorage.microSettings = JSON.stringify(event.detail.settings);
+            }
         }
     }
 };
@@ -1506,14 +1524,7 @@ micro.LocationInputElement = class extends HTMLElement {
 };
 document.registerElement("micro-location-input", micro.LocationInputElement);
 
-/**
- * User element.
- *
- * .. attribute:: user
- *
- *    Represented :ref:`User`. Initialized from the JSON value of the corresponding HTML attribute,
- *    if present.
- */
+/** User element. */
 micro.UserElement = class extends HTMLElement {
     createdCallback() {
         this._user = null;
@@ -1522,16 +1533,16 @@ micro.UserElement = class extends HTMLElement {
         this.classList.add("micro-user");
     }
 
+    /** Represented :ref:`User`. ``null`` means anonymous. */
     get user() {
         return this._user;
     }
 
     set user(value) {
         this._user = value;
-        if (this._user) {
-            this.querySelector("span").textContent = this._user.name;
-            this.setAttribute("title", this._user.name);
-        }
+        const name = this._user?.name ?? "Guest";
+        this.querySelector("span").textContent = name;
+        this.setAttribute("title", name);
     }
 };
 
@@ -1743,18 +1754,8 @@ Object.assign(micro.bind.transforms, {
         minute: "2-digit"
     },
 
-    /**
-     * Fetch the next *n* items for *collection*.
-     *
-     * Wrapper around :meth:`Collection.fetch` that handles common call errors.
-     */
-    async fetchCollection(collection, n = micro.LIST_LIMIT) {
-        try {
-            await collection.fetch(n);
-        } catch (e) {
-            ui.handleCallError(e);
-        }
-    },
+    /** :func:`micro.core.request` to fetch the next *n* items for *collection*. */
+    fetchCollection: micro.core.request((collection, n = micro.LIST_LIMIT) => collection.fetch(n)),
 
     /** Render the given web :ref:`Resource` *resource*. */
     renderResource(ctx, resource) {
