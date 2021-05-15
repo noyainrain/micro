@@ -188,6 +188,15 @@ describe("bind()", function() {
         expect(span.textContent).to.equal("Purr");
     });
 
+    it("should update DOM with this", function() {
+        const main = document.querySelector("main");
+        main.innerHTML = '<span data-this="value"></span>';
+        const span = document.firstElementChild;
+        const a = document.createElement("a");
+        micro.bind.bind(span, {value: a});
+        expect(Array.from(main.children)).to.deep.equal([a]);
+    });
+
     it("should update DOM with class", function() {
         let main = document.querySelector("main");
         main.innerHTML = '<span data-class-cat-paw="value"></span>';
@@ -340,6 +349,33 @@ describe("parse()", function() {
 });
 
 describe("transforms", function() {
+    describe("if()", function() {
+        it("should render template", function() {
+            const main = document.querySelector("main");
+            main.innerHTML =
+                '<template data-this="if detail"><span data-content="author"></span></template>';
+            const template = main.firstElementChild;
+            micro.bind.bind(template, {detail: true, author: "Happy Cat"});
+            expect(main.textContent).to.equal("Happy Cat");
+        });
+
+        it("should not render template for false condition", function() {
+            const main = document.querySelector("main");
+            main.innerHTML = '<template data-this="if detail">Happy Cat</template>';
+            const template = main.firstElementChild;
+            micro.bind.bind(template, {detail: false});
+            expect(main.textContent).to.be.empty;
+        });
+
+        it("should render template for function condition", function() {
+            const main = document.querySelector("main");
+            main.innerHTML = "<template data-this=\"if eq detail true\">Happy Cat</template>";
+            const template = main.firstElementChild;
+            micro.bind.bind(template, {detail: true});
+            expect(main.textContent).to.equal("Happy Cat");
+        });
+    });
+
     describe("includes()", function() {
         it("should return true for searchElement in arr", function() {
             let includes = micro.bind.transforms.includes(null, ["a", "b"], "b");
@@ -352,5 +388,33 @@ describe("dash()", function() {
     it("should convert to dashed style", function() {
         let dashed = micro.bind.dash("OneTwoAThree");
         expect(dashed).to.equal("one-two-a-three");
+    });
+});
+
+describe("stamp()", function() {
+    let main;
+    let node;
+
+    beforeEach(function() {
+        main = document.querySelector("main");
+        main.innerHTML = "<header></header><div></div><footer></footer>";
+        node = main.children[1];
+    });
+
+    it("should replace node", function() {
+        micro.bind.stamp(node, document.createElement("h1"), "Meow!");
+        const nodes = Array.from(main.childNodes).filter(n => !(n instanceof Comment))
+            .map(n => [n.nodeName, n.textContent]);
+        expect(nodes).to.deep.equal(
+            [["HEADER", ""], ["H1", ""], ["#text", "Meow!"], ["FOOTER", ""]]
+        );
+    });
+
+    it("should replace replaced node", function() {
+        micro.bind.stamp(node, document.createElement("h1"), "Meow!");
+        micro.bind.stamp(node, document.createElement("p"));
+        const nodes = Array.from(main.childNodes).filter(n => !(n instanceof Comment))
+            .map(n => n.nodeName);
+        expect(nodes).to.deep.equal(["HEADER", "P", "FOOTER"]);
     });
 });

@@ -101,9 +101,11 @@ micro.bind.Watchable = function(target = {}) {
  *
  * Besides setting properties, there are also the following special data attributes:
  *
- * - ``data-content``: Set the content of the element, or *textContent* if the value is not a
- *   :class:`Node`.
- * - ``data-class-{class}``: Apply a *class* to the element if the value is truthy.
+ * - ``data-content``: Set the content of the element with :meth:`Node.appendChild`, or
+ *   :attr:`Node.textContent` if value is not a :class:`Node`.
+ * - ``data-this``: Replace the element using :meth:`ChildNode.replaceWith`.
+ * - ``data-class-{class}``: Apply a *class* to the element if value is truthy with
+ *   :meth:`DOMTokenList.toggle`.
  *
  * For details on the bind expression see :func:`micro.bind.parse`. Transforms can be applied to
  * data values: If the expression contains multiple arguments, the first one must be a function of
@@ -216,6 +218,8 @@ micro.bind.bind = function(elem, data) {
                     } else {
                         elem.textContent = value;
                     }
+                } else if (prop === "this") {
+                    micro.bind.stamp(elem, value);
                 } else if (prop.startsWith("class") && prop !== "className") {
                     elem.classList.toggle(micro.bind.dash(prop.slice(5)), value);
                 } else {
@@ -437,6 +441,23 @@ micro.bind.transforms = {
     },
 
     /**
+     * Render the :class:`HTMLTemplateElement` if *condition* is truthy.
+     *
+     * If *condition* is a function, it is first resolved by calling it with *args*.
+     */
+    if(ctx, condition, ...args) {
+        if (condition instanceof Function) {
+            condition = condition(ctx, ...args);
+        }
+        if (condition) {
+            const node = document.importNode(ctx.elem.content, true);
+            micro.bind.bind(node, ctx.data);
+            return node;
+        }
+        return document.createDocumentFragment();
+    },
+
+    /**
      * Project *arr* into the DOM.
      *
      * If *arr* is :class:`Watchable`, the DOM will be live, i.e. updating *arr* will update the DOM
@@ -596,3 +617,32 @@ micro.bind.chunk = function(arr, size) {
     }
     return chunked;
 };
+
+/**
+ * Replace *node* with a set of *nodes*.
+ *
+ * If called multiple times on *node*, the replacement is updated. Otherwise behaves like
+ * :meth:`ChildNode.replaceWith`.
+ */
+micro.bind.stamp = function(node, ...nodes) {
+    /* eslint-disable-next-line no-underscore-dangle -- private static */
+    const stamps = micro.bind.stamp._stamps;
+    let [start, end] = stamps.get(node) ?? [];
+    if (!start) {
+        start = document.createComment("stamp");
+        end = document.createComment("/stamp");
+        node.before(start);
+        node.after(end);
+        stamps.set(node, [start, end]);
+    }
+
+    let current = start.nextSibling;
+    while (current !== end) {
+        let next = current.nextSibling;
+        current.remove();
+        current = next;
+    }
+    start.after(...nodes);
+};
+/* eslint-disable-next-line no-underscore-dangle -- private static */
+micro.bind.stamp._stamps = new WeakMap();

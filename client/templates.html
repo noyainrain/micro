@@ -98,8 +98,8 @@
         data-shortcut-context="new ShortcutContext" data-content="dialog"
     ></div>
 
-    <div class="micro-ui-notification micro-ui-inside" data-content="switch notification">
-        <template>
+    <template data-this="if notification">
+        <div class="micro-ui-notification micro-ui-inside">
             <div class="micro-overlay micro-panel">
                 <p class="micro-panel-main" data-content="notification"></p>
                 <button
@@ -109,8 +109,8 @@
                     <i class="fa fa-times-circle"></i>
                 </button>
             </div>
-        </template>
-    </div>
+        </div>
+    </template>
 </template>
 <style>
     body[noninteractive] .micro-interactive {
