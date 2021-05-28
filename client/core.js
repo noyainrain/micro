@@ -132,6 +132,14 @@ micro.core.request.ABORTED = Symbol("aborted");
  */
 micro.core.action = function(f) {
     return micro.core.request((...args) => {
+        if (ui.embedded) {
+            const notification = document.importNode(
+                document.querySelector("#micro-embedded-notification").content, true
+            );
+            micro.bind.bind(notification, {settings: ui.settings});
+            ui.notify(notification);
+            return micro.core.request.ABORTED;
+        }
         if (!ui.features.storage) {
             ui.notify(
                 `Oops, cookies are disabled! Please enable cookies for ${ui.settings.title} and try again.`

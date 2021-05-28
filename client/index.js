@@ -55,6 +55,10 @@ micro.LIST_LIMIT = 100;
  *
  *    Service worker of the app, more precisely a :class:`ServiceWorkerRegistration`.
  *
+ * .. attribute:: embedded
+ *
+ *    Indicates if the UI is embedded into an external page.
+ *
  * .. attribute:: renderEvent
  *
  *    Subclass API: Table of event rendering hooks by event type. Used by the activity page to
@@ -102,6 +106,7 @@ micro.UI = class extends HTMLBodyElement {
 
         this.device = null;
         this.service = null;
+        this.embedded = self !== top;
 
         window.addEventListener("error", event => {
             // Work around bogus EventSource polyfill errors
@@ -115,7 +120,10 @@ micro.UI = class extends HTMLBodyElement {
             let a = micro.keyboard.findAncestor(
                 event.target, e => e instanceof HTMLAnchorElement, this
             );
-            if (a && a.origin === location.origin && !a.pathname.startsWith("/files/")) {
+            if (
+                a && a.origin === location.origin && ["", "_self"].includes(a.target) &&
+                !a.pathname.startsWith("/files/")
+            ) {
                 event.preventDefault();
                 this.navigate(a.pathname + a.hash).catch(micro.util.catch);
             }
@@ -155,12 +163,12 @@ micro.UI = class extends HTMLBodyElement {
         this.insertBefore(
             document.importNode(this.querySelector(".micro-ui-template").content, true),
             this.querySelector("main"));
-        this.querySelector(".micro-ui-edit-user").after(...this.querySelectorAll("[slot=menu]"));
-
         this._data = new micro.bind.Watchable({
             user: null,
             settings: null,
             offline: false,
+            embedded: this.embedded,
+            getLogoTarget: (ctx, embedded) => embedded ? "_blank" : "",
             dialog: null,
             notification: null,
             closeNotification: () => {
@@ -168,6 +176,11 @@ micro.UI = class extends HTMLBodyElement {
             }
         });
         micro.bind.bind(this.children, this._data);
+
+        if (!this.embedded) {
+            this.querySelector(".micro-ui-edit-user")
+                .after(...this.querySelectorAll("[slot=menu]"));
+        }
 
         let update = () => {
             document.querySelector('link[rel=icon][sizes="16x16"]').href =
