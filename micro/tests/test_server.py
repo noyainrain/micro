@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2020 micro contributors
+# Copyright (C) 2021 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -61,7 +61,6 @@ class ServerTest(ServerTestCase):
             body='{"type": "Error", "stack": "micro.UI.prototype.createdCallback", "url": "/"}')
 
         # API
-        await self.request('/api/login', method='POST', body='')
         await self.request('/api/users/' + self.user.id)
         await self.request('/api/users/' + self.user.id, method='POST', body='{"name": "Happy"}')
         await self.request(f'/api/users/{self.user.id}/devices')
@@ -91,9 +90,9 @@ class ServerTest(ServerTestCase):
         await self.request(
             '/api/settings', method='POST',
             body='{"title": "CatzApp", "icon": "http://example.org/static/icon.svg"}')
-        await self.request('/api/activity/v2')
-        await self.request('/api/activity/v2', method='PATCH', body='{"op": "subscribe"}')
-        await self.request('/api/activity/v2', method='PATCH', body='{"op": "unsubscribe"}')
+        await self.request('/api/activity')
+        await self.request('/api/activity', method='PATCH', body='{"op": "subscribe"}')
+        await self.request('/api/activity', method='PATCH', body='{"op": "unsubscribe"}')
         await self.request('/api/analytics/statistics/users')
         await self.request('/api/analytics/referrals')
         start = quote((self.app.now() - timedelta(days=10)).isoformat())

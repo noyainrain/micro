@@ -49,13 +49,14 @@ language tag.
 Usage examples
 --------------
 
-A new :ref:`User` is created and logged in with the following request::
+A new :ref:`User` is created and signed in with the following request::
 
-    $ curl -d "" https://example.org/api/login
+    $ curl -d "" https://example.org/api/devices
     {
-        "__type__": "User",
-        "id": "abcd",
-        "auth_secret": "wxyz",
+        "__type__": "Device",
+        "id": "Device:abc",
+        "auth_secret": "xyz",
+        "user_id": "User:def",
         ...
     }
 
@@ -63,22 +64,22 @@ To authenticate further API calls, the returned *auth_secret* is set as cookie.
 
 Setting a user's *email* address requires multiple steps. First::
 
-    $ curl -b "auth_secret=wxyz" -d '{"email": "happy@example.org"}' \
-           https://example.org/api/users/abcd/set-email
+    $ curl -b "auth_secret=xyz" -d '{"email": "happy@example.org"}' \
+           https://example.org/api/users/User:def/set-email
     {
         "__type__": "AuthRequest",
-        "id": "efgh"
+        "id": "AuthRequest:ghi"
     }
 
 This triggers a third party authentication via the email provider (as layed out in
-:ref:`AuthRequest`). The resulting authentication code (here ``stuv``) is then verified to finish
+:ref:`AuthRequest`). The resulting authentication code (here ``uvw``) is then verified to finish
 setting the email address::
 
-    $ curl -b "auth_secret=wxyz" -d '{"auth_request_id": "efgh", "auth": "stuv"}' \
-           https://example.org/api/users/abcd/finish-set-email
+    $ curl -b "auth_secret=xyz" -d '{"auth_request_id": "AuthRequest:ghi", "auth": "uvw"}' \
+           https://example.org/api/users/User:def/finish-set-email
     {
         "__type__": "User",
-        "id": "abcd",
+        "id": "User:def",
         "email": "happy@example.org",
         ...
     }

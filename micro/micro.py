@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2020 micro contributors
+# Copyright (C) 2021 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -239,25 +239,6 @@ class Application:
         r = JSONRedis[Dict[str, object]](self.r.r)
         r.caching = False
 
-        # Deprecated since 0.39.0
-        if v < 9:
-            user_activity: Dict[str, Tuple[datetime, datetime]] = {}
-            for event in self._scan_objects(r, Event):
-                user_id = cast(str, event['user'])
-                t = datetime.fromisoformat(cast(str, event['time']).replace('Z', '+00:00'))
-                first, last = user_activity.get(user_id) or (t, t)
-                user_activity[user_id] = (min(first, t), max(last, t))
-
-            now = self.now()
-            users = r.omget([id.decode() for id in r.r.lrange('users', 0, -1)],
-                            default=AssertionError)
-            for user in users:
-                first, last = user_activity.get(cast(str, user['id'])) or (now, now)
-                user['create_time'] = first.isoformat()
-                user['authenticate_time'] = last.isoformat()
-            r.omset({cast(str, user['id']): user for user in users})
-            r.set('micro_version', 9)
-
         user_updates = {}
         device_updates = {}
         users = r.omget([id.decode() for id in r.r.lrange('users', 0, -1)], default=AssertionError)
@@ -312,20 +293,6 @@ class Application:
         Must be overridden by subclass. Called by :meth:`update` when initializing the database.
         """
         raise NotImplementedError()
-
-    def login(self, code: str = None) -> 'User':
-        """See :http:post:`/api/login`.
-
-        The logged-in user is set as current *user*.
-        """
-        # Compatibility for login (deprecated since 0.58.0)
-        if code:
-            id = self.r.r.hget('auth_secret_map', code.encode())
-            if not id:
-                raise ValueError('code_invalid')
-            device = self.r.oget(id.decode(), default=AssertionError, expect=expect_type(Device))
-            return self.devices.authenticate(device.auth_secret).user
-        return self.devices.sign_in().user
 
     def get_object(self, id, default=KeyError):
         """Get the :class:`Object` given by *id*.
@@ -781,24 +748,6 @@ class User(Object, Editable):
             RedisSortedSet(f'{self.id}.devices', app.r.r), check=self._check_user,
             expect=expect_type(Device), app=app)
 
-    @property
-    def auth_secret(self) -> str:
-        # pylint: disable=missing-function-docstring; already documented
-        # Compatibility with device attributes (deprecated since 0.58.0)
-        return self.devices[0].auth_secret
-
-    @property
-    def device_notification_status(self) -> str:
-        # pylint: disable=missing-function-docstring; already documented
-        # Compatibility with device attributes (deprecated since 0.58.0)
-        return self.devices[0].notification_status
-
-    @property
-    def push_subscription(self) -> Optional[str]:
-        # pylint: disable=missing-function-docstring; already documented
-        # Compatibility with device attributes (deprecated since 0.58.0)
-        return self.devices[0].push_subscription
-
     def store_email(self, email: str) -> None:
         """Update the user's *email* address.
 
@@ -876,17 +825,6 @@ class User(Object, Editable):
             if device.notification_status == 'on':
                 create_task(self._notify(device, event))
 
-    async def enable_device_notifications(self, push_subscription: str) -> None:
-        """See :http:patch:`/api/users/(id)` (``enable_device_notifications``)."""
-        # Compatibility with device actions (deprecated since 0.58.0)
-        await self.devices[0].enable_notifications(push_subscription,
-                                                   _event_type='user-enable-device-notifications')
-
-    def disable_device_notifications(self) -> None:
-        """See :http:patch:`/api/users/(id)` (``disable_device_notifications``)."""
-        # Compatibility with device actions (deprecated since 0.58.0)
-        self.devices[0].disable_notifications()
-
     def do_edit(self, **attrs):
         if self.app.user != self:
             raise error.PermissionError()
@@ -902,8 +840,6 @@ class User(Object, Editable):
     def json(self, restricted: bool = False, include: bool = False, *,
              rewrite: RewriteFunc = None) -> Dict[str, object]:
         """See :meth:`Object.json`."""
-        # Compatibility with device attributes (deprecated since 0.58.0)
-        device = context.device.get()
         return {
             **super().json(restricted=restricted, include=include, rewrite=rewrite),
             **Editable.json(self, restricted=restricted, include=include, rewrite=rewrite),
@@ -913,13 +849,7 @@ class User(Object, Editable):
                     'email': self.email,
                     'create_time': self.create_time.isoformat(),
                     'authenticate_time': self.authenticate_time.isoformat()
-                }),
-            **(
-                {
-                    'auth_secret': device.auth_secret,
-                    'device_notification_status': device.notification_status,
-                    'push_subscription': device.push_subscription
-                } if restricted and context.user.get() == self and device else {})
+                })
         }
 
     def _send_email(self, to: str, msg: str) -> None:
@@ -1104,13 +1034,13 @@ class Activity(Object, JSONRedisSequence[JSONifiable]):
         async def __anext__(self) -> 'Event':
             return await self.asend(None)
 
-    def __init__(self, id: str, app: Application, subscriber_ids: List[str],
-                 pre: Callable[[], None] = None) -> None:
-        super().__init__(id, app)
+    def __init__(self, *, app: Application, pre: Callable[[], None] = None, **data: object) -> None:
+        id = cast(str, data['id'])
+        super().__init__(id=id, app=app)
         JSONRedisSequence.__init__(self, app.r, '{}.items'.format(id), pre)
         self.post = None # type: Optional[Callable[[Event], None]]
         self.host = None # type: Optional[object]
-        self._subscriber_ids = subscriber_ids
+        self._subscriber_ids = cast('list[str]', data['subscriber_ids'])
         self._streams = set() # type: Set[Queue[Optional[Event]]]
 
     @property

@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2020 micro contributors
+# Copyright (C) 2021 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -194,7 +194,6 @@ class Server:
             return self.app.activity
         self.handlers = [
             # API
-            (r'/api/login$', _LoginEndpoint),
             (r'/api/users/([^/]+)$', _UserEndpoint),
             (r'/api/users/([^/]+)/set-email$', _UserSetEmailEndpoint),
             (r'/api/users/([^/]+)/finish-set-email$', _UserFinishSetEmailEndpoint),
@@ -205,8 +204,6 @@ class Server:
             (r'/api/devices/([^/]+)$', _DeviceEndpoint),
             (r'/api/settings$', _SettingsEndpoint),
             *make_activity_endpoints(r'/api/activity', get_activity),
-            # Compatibility with old global activity URL (deprecated since 0.57.0)
-            *make_activity_endpoints(r'/api/activity/v2', get_activity),
             # Provide alias because /api/analytics triggers popular ad blocking filters
             (r'/api/(?:analytics|stats)/statistics/([^/]+)$', _StatisticEndpoint),
             (r'/api/(?:analytics|stats)/referrals$', _ReferralsEndpoint),
@@ -849,13 +846,6 @@ class _OrderableMoveEndpoint(Endpoint):
         collection.move(**args)
         self.write(json.dumps(None))
 
-class _LoginEndpoint(Endpoint):
-    def post(self):
-        args = self.check_args({'code': (str, 'opt')})
-        user = self.app.login(**args)
-        context.user.set(user)
-        self.write(user.json(restricted=True, rewrite=self.server.rewrite))
-
 class _UserEndpoint(Endpoint):
     def get(self, id: str) -> None:
         self.write(self.app.users[id].json(restricted=True, rewrite=self.server.rewrite))
@@ -864,21 +854,6 @@ class _UserEndpoint(Endpoint):
         user = self.app.users[id]
         args = self.check_args({'name': (str, 'opt')})
         await user.edit(**args)
-        self.write(user.json(restricted=True, rewrite=self.server.rewrite))
-
-    async def patch_enable_notifications(self, id: str) -> None:
-        # pylint: disable=missing-docstring; private
-        # Compatibility with device actions (deprecated since 0.58.0)
-        user = self.app.users[id]
-        push_subscription = self.get_arg('push_subscription', Expect.str)
-        await user.enable_device_notifications(push_subscription)
-        self.write(user.json(restricted=True, rewrite=self.server.rewrite))
-
-    def patch_disable_notifications(self, id: str) -> None:
-        # pylint: disable=missing-docstring; private
-        # Compatibility with device actions (deprecated since 0.58.0)
-        user = self.app.users[id]
-        user.disable_device_notifications()
         self.write(user.json(restricted=True, rewrite=self.server.rewrite))
 
 class _UserSetEmailEndpoint(Endpoint):

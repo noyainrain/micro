@@ -1,6 +1,6 @@
 /*
  * micro
- * Copyright (C) 2020 micro contributors
+ * Copyright (C) 2021 micro contributors
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Lesser General Public License as published by the Free Software Foundation, either version 3
@@ -1727,7 +1727,7 @@ micro.ActivityPage = class extends micro.core.Page {
     async _showMore() {
         let events;
         try {
-            events = await ui.call("GET", `/api/activity/v2/${this._start}:`);
+            events = await ui.call("GET", `/api/activity/${this._start}:`);
         } catch (e) {
             ui.handleCallError(e);
             return;

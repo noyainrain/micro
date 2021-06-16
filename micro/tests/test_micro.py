@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2020 micro contributors
+# Copyright (C) 2021 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -34,7 +34,6 @@ from micro.util import expect_type, randstr
 
 SETUP_DB_SCRIPT = """\
 import asyncio
-from time import sleep
 
 from micro.test import CatApp
 
@@ -42,14 +41,6 @@ async def main():
     app = CatApp(redis_url='15')
     app.r.flushdb()
     app.update()
-    app.login()
-
-    # Events at different times
-    app.settings.edit(provider_name='Meow Inc.')
-    sleep(1)
-    app.settings.edit(provider_url='https://meow.example.com/')
-
-    # User without activity
     app.login()
 
 asyncio.run(main())
@@ -70,18 +61,10 @@ class ApplicationTest(MicroTestCase):
         with self.assertRaisesRegex(error.ValueError, 'redis_url_invalid'):
             CatApp(redis_url='//localhost:foo')
 
-    def test_login_no_redis(self):
-        app = CatApp(redis_url='//localhost:16160')
+    def test_update_no_redis(self) -> None:
+        app = CatApp(redis_url='//localhost:16160', files_path=mkdtemp())
         with self.assertRaises(RedisError):
-            app.login()
-
-    def test_login_code(self) -> None:
-        user = self.app.login(code=self.user.devices[0].auth_secret)
-        self.assertEqual(user, self.user)
-
-    def test_login_code_invalid(self) -> None:
-        with self.assertRaisesRegex(error.ValueError, 'code_invalid'):
-            self.app.login(code='foo')
+            app.update()
 
 class ApplicationUpdateTest(AsyncTestCase):
     @staticmethod
@@ -101,48 +84,37 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertTrue(Path(files_path).is_dir())
 
     @gen_test # type: ignore[misc]
-    async def test_update_db_version_previous(self):
+    async def test_update_db_version_previous(self) -> None:
         self.setup_db('0.57.2')
-        await sleep(1)
         app = CatApp(redis_url='15', files_path=mkdtemp())
         app.update()
-        user = sorted(app.users, key=lambda user: user.create_time, reverse=True)[0]
-        context.user.set(user)
 
+        user = next(iter(app.users))
+        context.user.set(user)
         device = user.devices[0]
         self.assertEqual(device, app.devices.authenticate(device.auth_secret))
         self.assertEqual(device.notification_status, 'off')
         self.assertIsNone(device.push_subscription)
         self.assertEqual(device.user_id, user.id)
         self.assertEqual(device, app.devices[device.id])
-        self.assertEqual(user.devices[:], [device])
+        self.assertEqual(user.devices[:], [device]) # type: ignore[misc]
 
     @gen_test # type: ignore[misc]
-    async def test_update_db_version_first(self):
-        self.setup_db('0.38.1')
-        await sleep(1)
+    async def test_update_db_version_first(self) -> None:
+        self.setup_db('0.57.2')
         app = CatApp(redis_url='15', files_path=mkdtemp())
         app.update()
-        user = sorted(app.users, key=lambda user: user.create_time, reverse=True)[0]
-        context.user.set(user)
 
-        # Update to version 9
-        app.user = app.settings.staff[0]
-        first = app.activity[-1].time
-        last = app.activity[0].time
-        self.assertEqual(app.user.create_time, first)
-        self.assertEqual(app.user.authenticate_time, last)
-        self.assertEqual(user.create_time, user.authenticate_time)
-        self.assertAlmostEqual(user.create_time, app.now(), delta=timedelta(minutes=1))
-        self.assertGreater(user.create_time, last)
         # Device
+        user = next(iter(app.users))
+        context.user.set(user)
         device = user.devices[0]
         self.assertEqual(device, app.devices.authenticate(device.auth_secret))
         self.assertEqual(device.notification_status, 'off')
         self.assertIsNone(device.push_subscription)
         self.assertEqual(device.user_id, user.id)
         self.assertEqual(device, app.devices[device.id])
-        self.assertEqual(user.devices[:], [device])
+        self.assertEqual(user.devices[:], [device]) # type: ignore[misc]
 
 class EditableTest(MicroTestCase):
     def setUp(self) -> None:
@@ -336,7 +308,7 @@ class UserDevicesTest(MicroTestCase):
 
 class ActivityTest(MicroTestCase):
     def make_activity(self) -> Activity:
-        return Activity('Activity:more', self.app, subscriber_ids=[])
+        return Activity(id='Activity:more', subscriber_ids=[], app=self.app)
 
     @patch('micro.User.notify', autospec=True) # type: ignore
     def test_publish(self, notify):

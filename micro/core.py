@@ -1,5 +1,5 @@
 # micro
-# Copyright (C) 2020 micro contributors
+# Copyright (C) 2021 micro contributors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # Lesser General Public License as published by the Free Software Foundation, either version 3 of
@@ -97,17 +97,15 @@ class Device(Object):
         # pylint: disable=missing-function-docstring; already documented
         return self.app.users[self.user_id]
 
-    async def enable_notifications(self, push_subscription: str, *,
-                                   _event_type: str ='device-enable-notifications') -> None:
+    async def enable_notifications(self, push_subscription: str) -> None:
         """See :http:patch:`/api/devices/(id)` (``enable_notifications``)."""
-        # Compatibility with User device actions (deprecated since 0.58.0)
         user = context.user.get()
         if not (user and user.id == self.user_id):
             raise error.PermissionError()
         # pylint: disable=import-outside-toplevel; circular dependency
         from .micro import Event
-        await self.app.send_device_notification(push_subscription,
-                                                Event.create(_event_type, self, app=self.app))
+        await self.app.send_device_notification(
+            push_subscription, Event.create('device-enable-notifications', self, app=self.app))
         self.notification_status = 'on'
         self.push_subscription = push_subscription
         self.app.r.oset(self.id, self)

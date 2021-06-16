@@ -36,24 +36,3 @@
    If the user's *email* is not set, a :ref:`ValueError` (``user_no_email``) is returned.
 
    Permission: The user oneself.
-
-.. http:patch:: /api/users/(id)
-
-   ``{"op": "enable_device_notifications", "push_subscription"}``
-
-   Enable device notifications, using *push_subscription*.
-
-   A confirmation message is sent to the device. If there is a communication issue, a
-   :ref:`CommunicationError` is returned.
-
-   Permission: The user oneself.
-
-   ``{"op": "disable_device_notifications"}``
-
-   Disable device notifications.
-
-   Permission: The user oneself.
-
-   .. deprecated:: 0.58.0
-
-      Use :http:patch:`/api/devices/(id)` instead.

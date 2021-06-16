@@ -57,4 +57,4 @@ are released into the public domain:
 * Horacio Lisdero &lt;lisderoh AT gmail.com>
 * Niklas Meinzer &lt;github AT niklas-meinzer.de>
 
-Copyright (C) 2020 micro contributors
+Copyright (C) 2021 micro contributors
