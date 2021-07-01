@@ -12,9 +12,10 @@
 # You should have received a copy of the GNU Lesser General Public License along with this program.
 # If not, see <http://www.gnu.org/licenses/>.
 
-# type: ignore
 # pylint: disable=missing-docstring; test module
 
+# pylint: disable=deprecated-module; needed for smtpd (which is not yet deprecated and may be
+# replaced with aiosmtpd)
 import asyncore
 from smtpd import SMTPServer
 from threading import Thread
@@ -24,16 +25,14 @@ from micro import EmailError
 from micro.tests.test_micro import MicroTestCase
 
 class EmailTest(MicroTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.app.smtp_url = '//localhost:52525'
-        # NOTE: Omitting decode_data triggers a warning in Python 3.5, which we can safely ignore
-        # because we do not touch data
+        # Omitting decode_data triggers a warning in Python 3.5, which we can safely ignore because
+        # we do not touch data
         with catch_warnings(record=True):
-            self.smtpd = DiscardingSMTPServer(('localhost', 52525), None)
-        # NOTE: asyncore is deprecated, but needed for smtpd, which is not (yet). aiosmtpd may be
-        # added to the standard library as replacement.
-        self.thread = Thread(target=asyncore.loop, kwargs={'timeout': 0.1})
+            self.smtpd = DiscardingSMTPServer(('localhost', 52525), ('', 0))
+        self.thread = Thread(target=asyncore.loop, kwargs={'timeout': 0.1}) # type: ignore[misc]
         self.thread.start()
 
     def tearDown(self):
