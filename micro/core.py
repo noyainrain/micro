@@ -82,6 +82,12 @@ class Object:
     def __repr__(self):
         return '<{}>'.format(self.id)
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Object) and self.id == other.id
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+
 class Device(Object):
     """See :ref:`Device`."""
 

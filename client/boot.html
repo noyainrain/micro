@@ -79,6 +79,12 @@
         features.es8AsyncFunction = false;
     }
     try {
+        eval('var cat = {name: "Happy", ...{coat: "solid"}}');
+        features.es9Spread = true;
+    } catch (e) {
+        features.es9Spread = false;
+    }
+    try {
         eval("null ?? 42");
         features.es11NullishCoalescing = true;
     } catch (e) {

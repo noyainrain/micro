@@ -123,6 +123,10 @@ table {
     border-collapse: collapse;
 }
 
+table:empty {
+    display: none;
+}
+
 table td {
     padding: var(--micro-size-s);
     border: 1px solid var(--micro-color-delimiter);
@@ -433,6 +437,12 @@ fieldset label {
     flex: auto;
     min-width: 0;
     white-space: normal;
+}
+
+/** Card: Distinct unit of related content. */
+
+.micro-card {
+    margin: var(--micro-size-s) 0;
 }
 
 /* ---- Entity list ---- */

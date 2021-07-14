@@ -428,10 +428,28 @@ micro.bind.transforms = {
     },
 
     /**
+     * Return a string representation of the given *number*.
+     *
+     * *format* are the :class:`Intl.NumberFormat` *options* to apply.
+     */
+    formatNumber(ctx, number, format = {}) {
+        if (
+            !(
+                "minimumIntegerDigits" in format || "minimumFractionDigits" in format ||
+                "maximumFractionDigits" in format
+            )
+        ) {
+            // Hide artifacts from decimal to binary conversion, which have a magnitude of -16
+            format = {maximumSignificantDigits: 15, ...format};
+        }
+        return number?.toLocaleString("en", format) ?? "";
+    },
+
+    /**
      * Return a string representation of the given :class:`Date` *date*.
      *
-     * Alternatively, *date* may be a string parsable by :class:`Date`. *format* is equivalent to
-     * the *options* argument of :meth:`Date.toLocaleString`.
+     * Alternatively, *date* may be a string parsable by :class:`Date`. *format* are the
+     * :class:`Intl.DateTimeFormat` *options* to apply.
      */
     formatDate(ctx, date, format) {
         if (typeof date === "string") {
