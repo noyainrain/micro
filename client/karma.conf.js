@@ -26,7 +26,14 @@ module.exports = function(config) {
             {pattern: "components/*.html", type: "dom"}
         ],
         sauceLabs: {
-            testName: `[micro]${tag} Unit tests`
+            testName: `[micro]${tag} Unit tests`,
+            // Travis CI JWT access keys are accepted only by the global server
+            options: {
+                protocol: "https",
+                hostname: "ondemand.saucelabs.com",
+                port: 443,
+                path: "/wd/hub"
+            }
         },
         customLaunchers: {
             "sauce-chrome": {
@@ -50,7 +57,7 @@ module.exports = function(config) {
             "sauce-safari": {
                 base: "SauceLabs",
                 browserName: "safari",
-                platform: "macOS 11.00",
+                platform: "macOS 11",
                 timeZone
             }
         },
