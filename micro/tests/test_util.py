@@ -33,8 +33,7 @@ class ParseIsotimeTest(TestCase):
 class LookUpFilesTest(TestCase):
     def test_call(self) -> None:
         files = look_up_files(['*.html', 'in', '!in/b.txt', '!in/out'], top=RES_PATH)
-        result = [RES_PATH / 'loop.html', RES_PATH / 'webpage.html', RES_PATH / 'in/a.txt']
-        self.assertEqual(files, result)
+        self.assertEqual(files, [RES_PATH / 'webpage.html', RES_PATH / 'in/a.txt'])
 
     def test_call_no_file(self) -> None:
         with self.assertRaisesRegex(ValueError, 'paths'):

@@ -15,6 +15,7 @@
 # type: ignore
 # pylint: disable=missing-docstring; test module
 
+from asyncio import get_event_loop
 from datetime import timedelta
 import http.client
 import json
@@ -42,7 +43,7 @@ class ServerTest(ServerTestCase):
         self.server = Server(
             self.app, handlers, client_config={'path': 'hello', 'modules_path': 'node_modules'},
             port=16160)
-        self.server.start()
+        get_event_loop().run_until_complete(self.server.start())
         self.staff_member_device = self.app.devices.sign_in()
         self.client_device = self.app.devices.sign_in()
         self.user = self.client_device.user

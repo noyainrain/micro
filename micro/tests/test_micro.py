@@ -14,7 +14,9 @@
 
 # pylint: disable=missing-docstring; test module
 
-from asyncio import sleep
+from __future__ import annotations
+
+from asyncio import get_event_loop, sleep
 from datetime import timedelta
 from pathlib import Path
 import subprocess
@@ -35,13 +37,38 @@ from micro.util import expect_type, randstr
 SETUP_DB_SCRIPT = """\
 import asyncio
 
+from micro.core import context
 from micro.test import CatApp
+
+HTML = '''\
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Happy Blog</title>
+        <meta property="og:image" content="{image_url}">
+    </head>
+</html>
+'''
 
 async def main():
     app = CatApp(redis_url='15')
     app.r.flushdb()
     app.update()
-    app.login()
+    # Compatibility for Devices
+    try:
+        context.user.set(app.devices.sign_in().user)
+    except AttributeError:
+        app.login()
+
+    image_url = await app.files.write(b'<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>',
+                                      'image/svg+xml')
+    await app.cats.create().edit(resource=image_url)
+    webpage_url = await app.files.write(HTML.format(image_url=image_url).encode(), 'text/html')
+    await app.cats.create().edit(resource=webpage_url)
+    corrupt_url = await app.files.write(b'foo', 'image/jpeg')
+    await app.cats.create().edit(resource=corrupt_url)
+    text_url = await app.files.write(b'Meow!', 'text/plain')
+    await app.cats.create().edit(resource=text_url)
 
 asyncio.run(main())
 """
@@ -51,7 +78,7 @@ class MicroTestCase(AsyncTestCase):
         super().setUp()
         self.app = CatApp(redis_url='15', files_path=mkdtemp())
         self.app.r.flushdb()
-        self.app.update()
+        get_event_loop().run_until_complete(self.app.update())
         self.staff_member = self.app.devices.sign_in().user
         self.user = self.app.devices.sign_in().user
         context.user.set(self.user)
@@ -61,49 +88,57 @@ class ApplicationTest(MicroTestCase):
         with self.assertRaisesRegex(error.ValueError, 'redis_url_invalid'):
             CatApp(redis_url='//localhost:foo')
 
-    def test_update_no_redis(self) -> None:
+    @gen_test # type: ignore[misc]
+    async def test_update_no_redis(self) -> None:
         app = CatApp(redis_url='//localhost:16160', files_path=mkdtemp())
         with self.assertRaises(RedisError):
-            app.update()
+            await app.update()
 
 class ApplicationUpdateTest(AsyncTestCase):
     @staticmethod
-    def setup_db(tag: str) -> None:
+    def setup_db(tag: str) -> tuple[str, str]:
         d = mkdtemp()
         clone = ['git', '-c', 'advice.detachedHead=false', 'clone', '-q', '--single-branch',
                  '--branch', tag, '.', d]
         subprocess.run(clone, check=True)
         subprocess.run(cast(List[str], ['python3', '-c', SETUP_DB_SCRIPT]), cwd=d, check=True)
+        return '15', str(Path(d) / 'data')
 
-    def test_update_db_fresh(self) -> None:
+    @gen_test # type: ignore[misc]
+    async def test_update_db_fresh(self) -> None:
         files_path = str(Path(gettempdir(), randstr()))
         app = CatApp(redis_url='15', files_path=files_path)
         app.r.flushdb()
-        app.update() # type: ignore[no-untyped-call]
+        await app.update()
         self.assertEqual(app.settings.title, 'CatApp')
         self.assertTrue(Path(files_path).is_dir())
 
     @gen_test # type: ignore[misc]
     async def test_update_db_version_previous(self) -> None:
-        self.setup_db('0.57.2')
-        app = CatApp(redis_url='15', files_path=mkdtemp())
-        app.update()
+        redis_url, files_path = self.setup_db('0.66.0')
+        app = CatApp(redis_url=redis_url, files_path=files_path)
+        await app.update()
 
-        user = next(iter(app.users))
-        context.user.set(user)
-        device = user.devices[0]
-        self.assertEqual(device, app.devices.authenticate(device.auth_secret))
-        self.assertEqual(device.notification_status, 'off')
-        self.assertIsNone(device.push_subscription)
-        self.assertEqual(device.user_id, user.id)
-        self.assertEqual(device, app.devices[device.id])
-        self.assertEqual(user.devices[:], [device]) # type: ignore[misc]
+        # Resource.thumbnail
+        cats = app.cats[:]
+        assert cats[0].resource and cats[0].resource.thumbnail
+        data, _ = await app.files.read(cats[0].resource.thumbnail.url)
+        self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>')
+        assert cats[1].resource and cats[1].resource.thumbnail
+        data, _ = await app.files.read(cats[1].resource.thumbnail.url)
+        self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>')
+        assert cats[2].resource and cats[2].resource.thumbnail
+        data, content_type = await app.files.read(cats[2].resource.thumbnail.url)
+        self.assertEqual(content_type, 'image/svg+xml')
+        self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg" />')
+        assert cats[3].resource
+        self.assertIsNone(cats[3].resource.thumbnail)
 
     @gen_test # type: ignore[misc]
     async def test_update_db_version_first(self) -> None:
-        self.setup_db('0.57.2')
-        app = CatApp(redis_url='15', files_path=mkdtemp())
-        app.update()
+        redis_url, files_path = self.setup_db('0.57.2')
+        app = CatApp(redis_url=redis_url, files_path=files_path)
+        await app.update()
 
         # Device
         user = next(iter(app.users))
@@ -115,6 +150,20 @@ class ApplicationUpdateTest(AsyncTestCase):
         self.assertEqual(device.user_id, user.id)
         self.assertEqual(device, app.devices[device.id])
         self.assertEqual(user.devices[:], [device]) # type: ignore[misc]
+        # Resource.thumbnail
+        cats = app.cats[:]
+        assert cats[0].resource and cats[0].resource.thumbnail
+        data, _ = await app.files.read(cats[0].resource.thumbnail.url)
+        self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>')
+        assert cats[1].resource and cats[1].resource.thumbnail
+        data, _ = await app.files.read(cats[1].resource.thumbnail.url)
+        self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>')
+        assert cats[2].resource and cats[2].resource.thumbnail
+        data, content_type = await app.files.read(cats[2].resource.thumbnail.url)
+        self.assertEqual(content_type, 'image/svg+xml')
+        self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg" />')
+        assert cats[3].resource
+        self.assertIsNone(cats[3].resource.thumbnail)
 
 class EditableTest(MicroTestCase):
     def setUp(self) -> None:

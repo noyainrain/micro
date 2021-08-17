@@ -1,4 +1,5 @@
 mypy ~= 0.800.0
+types-Pillow ~= 8.3
 pylint ~= 2.2
 wheel ~= 0.36.0
 twine ~= 3.1

@@ -19,6 +19,8 @@
    Indicates that something is enabled. Useful for feature flags in connection with overloading.
 """
 
+from __future__ import annotations
+
 import argparse
 from argparse import ArgumentParser
 from asyncio import CancelledError, Task # pylint: disable=unused-import; typing
@@ -34,7 +36,7 @@ import random
 import re
 import string
 import sys
-from typing import Coroutine, List, Optional, Sequence, Type, TypeVar, Union, cast
+from typing import Coroutine, List, Optional, Sequence, Type, TypeVar, Union, cast, overload
 
 from tornado.log import LogFormatter
 
@@ -47,6 +49,8 @@ ON = OnType()
 
 _T = TypeVar('_T')
 _U = TypeVar('_U')
+_K = TypeVar('_K')
+_V = TypeVar('_V')
 
 def str_or_none(str: str) -> Optional[str]:
     """Return *str* unmodified if it has content, otherwise return ``None``.
@@ -273,6 +277,44 @@ class Expect:
                 expect_item(item)
             return obj
         return _f
+
+    @overload
+    @staticmethod
+    def dict(key: ExpectFunc[_K], value: ExpectFunc[_V]) -> ExpectFunc[dict[_K, _V]]:
+        pass
+    @overload
+    @staticmethod
+    def dict(key: ExpectFunc[_K], value: None = None) -> ExpectFunc[dict[_K, object]]:
+        pass
+    @overload
+    @staticmethod
+    def dict(key: None = None, *, value: ExpectFunc[_V]) -> ExpectFunc[dict[object, _V]]:
+        pass
+    @overload
+    @staticmethod
+    def dict(key: None = None, value: None = None) -> ExpectFunc[dict[object, object]]:
+        pass
+    @staticmethod
+    def dict(
+        key: ExpectFunc[_K] = None, value: ExpectFunc[_V] = None
+    ) -> ExpectFunc[dict[_K, _V] | dict[_K, object] | dict[object, _V] | dict[object, object]]:
+        """Return a function that asserts *obj* is a :class:`dict`.
+
+        The type of each key and value is asserted with *key* and *value* respectively.
+        """
+        def f(
+            obj: object
+        ) -> dict[_K, _V] | dict[_K, object] | dict[object, _V] | dict[object, object]:
+            if not isinstance(obj, dict):
+                raise TypeError()
+            if key:
+                for k in obj:
+                    key(k)
+            if value:
+                for v in obj.values():
+                    value(v)
+            return obj
+        return f
 
     @staticmethod
     def opt(expect: ExpectFunc[_T]) -> ExpectFunc[Optional[_T]]:

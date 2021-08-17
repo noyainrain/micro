@@ -281,14 +281,23 @@ Web resource description.
 
 .. include:: micro/resource-attributes.inc
 
+.. _ResourceThumbnail:
+
+Thumbnail
+"""""""""
+
+Thumbnail image description.
+
+.. describe:: url
+
+   URL of the thumbnail.
+
 .. _Image:
 
 Image
 ^^^^^
 
 Image :ref:`Resource` description.
-
-Note that the *image* representation is always ``null``.
 
 .. include:: micro/resource-attributes.inc
 

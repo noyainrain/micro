@@ -12,17 +12,17 @@
 # You should have received a copy of the GNU Lesser General Public License along with this program.
 # If not, see <http://www.gnu.org/licenses/>.
 
-# type: ignore
 # pylint: disable=missing-docstring; test module
 
 from configparser import ConfigParser
+from tempfile import mkdtemp
 
 from tornado.testing import AsyncTestCase, gen_test
 
-from micro.resource import Analyzer, Video, handle_image, handle_youtube
+from micro.resource import Analyzer, Files, Video, handle_youtube
 
 class AnalyzeServiceTest(AsyncTestCase):
-    @gen_test(timeout=20)
+    @gen_test(timeout=20) # type: ignore[misc]
     async def test_analyze_youtube(self) -> None:
         config = ConfigParser()
         config.read('test.cfg')
@@ -31,9 +31,10 @@ class AnalyzeServiceTest(AsyncTestCase):
         values = iter(config['resource']['video_service_keys'].split())
         video_service_keys = dict(zip(values, values))
 
-        analyzer = Analyzer(handlers=[handle_youtube(video_service_keys['youtube']), handle_image])
+        analyzer = Analyzer(handlers=[handle_youtube(video_service_keys['youtube'])],
+                            files=Files(mkdtemp()))
         video = await analyzer.analyze('https://www.youtube.com/watch?v=QH2-TGUlwu4')
         self.assertIsInstance(video, Video)
         self.assertEqual(video.content_type, 'text/html')
         self.assertTrue(video.description)
-        self.assertTrue(video.image)
+        self.assertTrue(video.thumbnail)

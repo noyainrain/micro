@@ -27,18 +27,22 @@ from __future__ import annotations
 
 from asyncio import get_event_loop
 from collections import OrderedDict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
 from hashlib import sha256
 from html.parser import HTMLParser
 from inspect import isawaitable
+from io import BytesIO
 import mimetypes
 from mimetypes import guess_extension, guess_type
 from os import listdir
 from pathlib import Path
-from typing import Awaitable, Callable, Dict, Iterable, List, Optional, Tuple, Union, cast
+from typing import Awaitable, Callable, Dict, Iterable, List, Optional, Tuple, Union, cast, overload
 from urllib.parse import parse_qsl, urljoin, urlsplit
 
+import PIL.Image
+from PIL.ImageOps import exif_transpose
 from tornado.httpclient import HTTPClientError
 
 from . import error
@@ -53,31 +57,49 @@ HandleResourceFunc = Callable[[str, str, bytes, 'Analyzer'],
 # Skip system defaults to make sure convertion from media type to extension is invertible
 mimetypes.init(files=())
 
+@dataclass
 class Resource:
     """See :ref:`Resource`."""
 
+    url: str
+    content_type: str
+    description: str | None = None
+    thumbnail: Resource.Thumbnail | None = None
+
+    @dataclass
+    class Thumbnail:
+        """See :ref:`ResourceThumbnail`."""
+
+        url: str
+
+        @staticmethod
+        def parse(data: dict[str, object]) -> Resource.Thumbnail:
+            """Parse the given JSON *data* into a :class:`Resource.Thumbnail`."""
+            return Resource.Thumbnail(Expect.str(data.get('url')))
+
+        def json(self, *, rewrite: RewriteFunc = None) -> dict[str, object]:
+            """Return a JSON representation of the thumbnail."""
+            return {'url': rewrite(self.url) if rewrite else self.url}
+
     @staticmethod
-    def parse(data: Dict[str, object], **args: object) -> 'Resource':
+    def parse(data: dict[str, object], **args: object) -> Resource:
         """See :meth:`JSONifiableWithParse.parse`."""
         # pylint: disable=unused-argument; part of API
+        thumbnail = Expect.opt(Expect.dict(Expect.str))(data.get('thumbnail'))
         return Resource(
             Expect.str(data.get('url')), Expect.str(data.get('content_type')),
             description=Expect.opt(Expect.str)(data.get('description')),
-            image=Expect.opt(expect_type(Image))(data.get('image')))
+            thumbnail=Resource.Thumbnail.parse(thumbnail) if thumbnail else None)
 
-    def __init__(self, url: str, content_type: str, *, description: str = None,
-                 image: 'Image' = None) -> None:
-        if str_or_none(url) is None:
+    def __post__init__(self) -> None:
+        if str_or_none(self.url) is None:
             raise error.ValueError('Blank url')
-        if str_or_none(content_type) is None:
+        if str_or_none(self.content_type) is None:
             raise error.ValueError('Blank content_type')
-        self.url = url
-        self.content_type = content_type
-        self.description = str_or_none(description) if description else None
-        self.image = image
+        self.description = str_or_none(self.description) if self.description else None
 
     def json(self, restricted: bool = False, include: bool = False, *,
-             rewrite: RewriteFunc = None) -> Dict[str, object]:
+             rewrite: RewriteFunc = None) -> dict[str, object]:
         """See :meth:`JSONifiable.json`."""
         # pylint: disable=unused-argument; part of API
         return {
@@ -85,28 +107,30 @@ class Resource:
             'url': rewrite(self.url) if rewrite else self.url,
             'content_type': self.content_type,
             'description': self.description,
-            'image': self.image.json(rewrite=rewrite) if self.image else None
+            'thumbnail': self.thumbnail.json(rewrite=rewrite) if self.thumbnail else None,
+            # Compatibility for Resource.image (deprecated since 0.67.0)
+            'image': None
         }
 
+@dataclass
 class Image(Resource):
     """See :ref:`Image`."""
 
     @staticmethod
-    def parse(data: Dict[str, object], **args: object) -> 'Image':
+    def parse(data: dict[str, object], **args: object) -> Image:
         resource = Resource.parse(data, **args)
-        return Image(resource.url, resource.content_type, description=resource.description)
+        return Image(resource.url, resource.content_type, description=resource.description,
+                     thumbnail=resource.thumbnail)
 
-    def __init__(self, url: str, content_type: str, *, description: str = None) -> None:
-        super().__init__(url, content_type, description=description)
-
+@dataclass
 class Video(Resource):
     """See :ref:`Video`."""
 
     @staticmethod
-    def parse(data: Dict[str, object], **args: object) -> 'Video':
+    def parse(data: dict[str, object], **args: object) -> Video:
         resource = Resource.parse(data, **args)
         return Video(resource.url, resource.content_type, description=resource.description,
-                     image=resource.image)
+                     thumbnail=resource.thumbnail)
 
 class Analyzer:
     """Web resource analyzer.
@@ -119,20 +143,22 @@ class Analyzer:
     .. attribute:: files
 
        File storage to resolve file URLs.
+
+    .. data:: THUMBNAIL_SIZE
+
+       Maximum generated thumbnail size.
     """
+
+    THUMBNAIL_SIZE = (1280, 720)
 
     _CACHE_SIZE = 128
     _CACHE_TTL = timedelta(hours=1)
 
-    def __init__(
-            self, *, handlers: List[HandleResourceFunc] = None, files: Files = None,
-            _cache: 'OrderedDict[str, Tuple[Resource, datetime]]' = None,
-            _stack: List[str] = None) -> None:
+    def __init__(self, *, handlers: list[HandleResourceFunc] = None, files: Files = None) -> None:
         self.handlers = ([handle_image, handle_webpage] if handlers is None
                          else list(handlers)) # type: List[HandleResourceFunc]
         self.files = files
-        self._cache = OrderedDict() if _cache is None else _cache
-        self._stack = [] if _stack is None else _stack
+        self._cache: OrderedDict[str, tuple[Resource, datetime]] = OrderedDict()
 
     async def analyze(self, url: str) -> Resource:
         """Analyze the web resource at *url* and return a description of it.
@@ -144,9 +170,6 @@ class Analyzer:
 
         Results are cached for about one hour.
         """
-        if len(self._stack) == 3:
-            raise _LoopError()
-
         try:
             return self._get_cache(url)
         except KeyError:
@@ -154,17 +177,10 @@ class Analyzer:
 
         data, content_type, effective_url = await self.fetch(url)
         resource = None
-        analyzer = Analyzer(handlers=self.handlers, files=self.files, _cache=self._cache,
-                            _stack=self._stack + [url])
         for handle in self.handlers:
-            try:
-                result = handle(effective_url, content_type, data, analyzer)
-                resource = (await cast(Awaitable[Optional[Resource]], result) if isawaitable(result)
-                            else cast(Optional[Resource], result))
-            except _LoopError:
-                if self._stack:
-                    raise
-                raise BrokenResourceError('Loop analyzing {}'.format(url)) from None
+            result = handle(effective_url, content_type, data, self)
+            resource = (await cast('Awaitable[Resource | None]', result) if isawaitable(result)
+                        else cast('Resource | None', result))
             if resource:
                 break
         if not resource:
@@ -198,6 +214,45 @@ class Analyzer:
             if e.code in (401, 402, 403, 405, 451):
                 raise ForbiddenResourceError(f'Forbidden resource at {url}') from e
             raise CommunicationError(f'Unexpected response status {e.code} for GET {url}') from e
+
+    # @singledispatchmethod is only available in Python >= 3.8
+    @overload
+    async def thumbnail(self, __data: bytes, __content_type: str) -> Resource.Thumbnail:
+        pass
+    @overload
+    async def thumbnail(self, __url: str) -> Resource.Thumbnail:
+        pass
+    async def thumbnail(self, data: bytes | str, content_type: str = '') -> Resource.Thumbnail:
+        """Generate a thumbnail from image *data*.
+
+        *content_type* is the media type of the image. The generated thumbnail is stored in
+        :attr:`files`. If *data* is corrupt, a :exc:`BrokenResourceError` is raised.
+
+        If alternatively an image *url* is given, the image is fetched first. If there is a problem,
+        an :exc:`AnalysisError` or :exc:`CommunicationError` is raised.
+        """
+        if isinstance(data, str):
+            data, content_type, _ = await self.fetch(data)
+            return await self.thumbnail(data, content_type)
+        if not self.files:
+            raise ValueError('No files')
+
+        if content_type in {'image/bmp', 'image/gif', 'image/jpeg', 'image/png'}:
+            try:
+                with PIL.Image.open(BytesIO(data), formats=[content_type[6:]]) as src:
+                    image = exif_transpose(src)
+                    image.thumbnail(Analyzer.THUMBNAIL_SIZE)
+                    stream = BytesIO()
+                    image.save(stream, format=cast(str, src.format))
+                    data = stream.getvalue()
+            except OSError as e:
+                raise BrokenResourceError('Bad data') from e
+        elif content_type == 'image/svg+xml':
+            pass
+        else:
+            raise BrokenResourceError(f'Unknown content_type {content_type}')
+        url = await self.files.write(data, content_type)
+        return Resource.Thumbnail(url)
 
     def _get_cache(self, url: str) -> Resource:
         resource, expires = self._cache[url]
@@ -294,16 +349,18 @@ class Files:
                 Path(path).unlink()
         return await get_event_loop().run_in_executor(None, _f)
 
-def handle_image(url: str, content_type: str, data: bytes, analyzer: Analyzer) -> Optional[Image]:
+async def handle_image(url: str, content_type: str, data: bytes,
+                       analyzer: Analyzer) -> Image | None:
     """Process an image resource."""
     # pylint: disable=unused-argument; part of API
     # https://en.wikipedia.org/wiki/Comparison_of_web_browsers#Image_format_support
     if content_type in {'image/bmp', 'image/gif', 'image/jpeg', 'image/png', 'image/svg+xml'}:
-        return Image(url, content_type)
+        thumbnail = await analyzer.thumbnail(data, content_type) if analyzer.files else None
+        return Image(url, content_type, thumbnail=thumbnail)
     return None
 
 async def handle_webpage(url: str, content_type: str, data: bytes,
-                         analyzer: Analyzer) -> Optional[Resource]:
+                         analyzer: Analyzer) -> Resource | None:
     """Process a webpage resource."""
     if content_type not in {'text/html', 'application/xhtml+xml'}:
         return None
@@ -317,23 +374,17 @@ async def handle_webpage(url: str, content_type: str, data: bytes,
     parser.close()
 
     description = str_or_none(parser.meta.get('og:title') or parser.meta.get('title') or '')
-    image = None
+    thumbnail = None
     image_url = (parser.meta.get('og:image') or parser.meta.get('og:image:url') or
                  parser.meta.get('og:image:secure_url'))
-    if image_url:
-        image_url = urljoin(url, image_url)
+    if image_url and analyzer.files:
         try:
-            resource = await analyzer.analyze(image_url)
+            thumbnail = await analyzer.thumbnail(urljoin(url, image_url))
         except error.ValueError as e:
-            broken_resource_e = BrokenResourceError(
-                f'Bad data image URL scheme {image_url!r} analyzing {url}')
-            raise broken_resource_e from e
-        if not isinstance(resource, Image):
             raise BrokenResourceError(
-                'Bad image type {!r} analyzing {}'.format(type(resource).__name__, url))
-        image = resource
+                f'Bad data image URL scheme {image_url!r} analyzing {url}') from e
 
-    return Resource(url, content_type, description=description, image=image)
+    return Resource(url, content_type, description=description, thumbnail=thumbnail)
 
 def handle_youtube(key: str) -> HandleResourceFunc:
     """Return a function which processes a YouTube video.
@@ -343,8 +394,7 @@ def handle_youtube(key: str) -> HandleResourceFunc:
     """
     youtube = WebAPI('https://www.googleapis.com/youtube/v3/', query={'key': key})
 
-    async def _f(url: str, content_type: str, data: bytes,
-                 analyzer: Analyzer) -> Optional[Resource]:
+    async def f(url: str, content_type: str, data: bytes, analyzer: Analyzer) -> Resource | None:
         # pylint: disable=unused-argument; part of API
         if not url.startswith('https://www.youtube.com/watch'):
             return None
@@ -358,11 +408,11 @@ def handle_youtube(key: str) -> HandleResourceFunc:
             description = expect_type(str)(items[0]['snippet']['title']) # type: ignore
             image_url = expect_type(str)(
                 items[0]['snippet']['thumbnails']['high']['url']) # type: ignore
-            image = expect_type(Image)(await analyzer.analyze(image_url))
-        except (TypeError, LookupError, AnalysisError) as e:
+            thumbnail = await analyzer.thumbnail(image_url) if analyzer.files else None
+        except (TypeError, LookupError, error.ValueError) as e:
             raise CommunicationError(f'Bad result for GET {youtube.url}videos?id={video_id}') from e
-        return Video(url, content_type, description=description, image=image)
-    return _f
+        return Video(url, content_type, description=description, thumbnail=thumbnail)
+    return f
 
 class AnalysisError(Error):
     """See :ref:`AnalysisError`."""
@@ -375,9 +425,6 @@ class ForbiddenResourceError(AnalysisError):
 
 class BrokenResourceError(AnalysisError):
     """See :ref:`BrokenResourceError`."""
-
-class _LoopError(Exception):
-    pass
 
 class _MetaParser(HTMLParser):
     # pylint: disable=abstract-method; https://bugs.python.org/issue31844

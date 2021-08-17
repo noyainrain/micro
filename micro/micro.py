@@ -49,8 +49,8 @@ from .jsonredis import (ExpectFunc, JSONRedis, JSONRedisSequence, RedisList, Red
                         RedisSortedSet, bzpoptimed)
 from .ratelimit import RateLimit, RateLimiter
 from .resource import ( # pylint: disable=unused-import; typing
-    Analyzer, Files, HandleResourceFunc, Image, Resource, Video, handle_image, handle_webpage,
-    handle_youtube)
+    AnalysisError, Analyzer, Files, HandleResourceFunc, Image, Resource, Video, handle_image,
+    handle_webpage, handle_youtube)
 from .util import Expect, check_email, expect_opt_type, expect_type, randstr, str_or_none
 from .webapi import CommunicationError
 
@@ -213,7 +213,7 @@ class Application:
         """Return the current UTC date and time, as aware object with second accuracy."""
         return datetime.now(timezone.utc).replace(microsecond=0)
 
-    def update(self) -> None:
+    async def update(self) -> None:
         """Update the database.
 
         If the database is fresh, it will be initialized. If the database is already up-to-date,
@@ -258,7 +258,32 @@ class Application:
         r.omset(user_updates)
         r.omset(device_updates)
 
-        updates = {'User': len(user_updates), 'Device': len(device_updates), **self.do_update()}
+        # Deprecated since 0.67.0
+        object_updates = {}
+        for obj in self._scan_objects(r, WithContent):
+            resource = cast('dict[str, object] | None', obj['resource'])
+            if resource and 'thumbnail' not in resource:
+                src = (resource if resource['__type__'] == 'Image'
+                       else cast('dict[str, object] | None', resource['image']))
+                if src:
+                    try:
+                        thumbnail = await self.analyzer.thumbnail(cast(str, src['url']))
+                    except (CommunicationError, AnalysisError):
+                        thumbnail = await self.analyzer.thumbnail(
+                            b'<svg xmlns="http://www.w3.org/2000/svg" />', 'image/svg+xml')
+                    resource['thumbnail'] = thumbnail.json()
+                else:
+                    resource['thumbnail'] = None
+                del resource['image']
+                object_updates[cast(str, obj['id'])] = obj
+        r.omset(object_updates)
+
+        updates = {
+            'User': len(user_updates),
+            'Device': len(device_updates),
+            'Object': len(object_updates),
+            **self.do_update()
+        }
         getLogger(__name__).info('Updated database\n%s',
                                  '\n'.join(f'{name}: {n}' for name, n in updates.items()))
 
@@ -417,8 +442,8 @@ class Application:
         del json['__type__']
         return type(app=self, **json)
 
-    def _scan_objects(self, r: JSONRedis[Dict[str, object]],
-                      cls: 'Type[Object]' = None) -> Iterator[Dict[str, object]]:
+    def _scan_objects(self, r: JSONRedis[dict[str, object]],
+                      cls: type[object] = None) -> Iterator[dict[str, object]]:
         for key in cast(List[bytes], r.keys('*')):
             try:
                 obj = r.oget(key.decode(), default=AssertionError)

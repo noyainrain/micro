@@ -17,8 +17,7 @@
 # pylint: disable=missing-docstring; Tornado handlers are documented globally
 
 """Server components."""
-
-from asyncio import (CancelledError, Future, Task, gather, # pylint: disable=unused-import; typing
+from asyncio import (Future, Task, create_task, gather, # pylint: disable=unused-import; typing
                      get_event_loop, ensure_future)
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -238,13 +237,14 @@ class Server:
             os.path.join(self.client_config['path'], self.client_config['modules_path'],
                          '@noyainrain/micro'))
 
-    def start(self) -> None:
+    async def start(self) -> None:
         """Start the server."""
-        self.app.update() # type: ignore
+        await self.app.update()
         self._garbage_collect_files_task = self.app.start_garbage_collect_files()
         self._empty_trash_task = self.app.start_empty_trash()
         self._collect_statistics_task = self.app.analytics.start_collect_statistics()
         self._server.listen(self.port)
+        getLogger(__name__).info('Started server at %s/', self.url)
 
     async def stop(self) -> None:
         """Stop the server."""
@@ -258,15 +258,14 @@ class Server:
 
     def run(self) -> None:
         """Start the server and run it continuously."""
-        self.start()
         loop = get_event_loop()
         def _on_sigint() -> None:
             async def _stop() -> None:
                 await self.stop()
                 loop.stop()
-            ensure_future(_stop())
+            create_task(_stop())
         loop.add_signal_handler(SIGINT, _on_sigint)
-        getLogger(__name__).info('Started server at %s/', self.url)
+        loop.create_task(self.start())
         loop.run_forever()
 
     def rewrite(self, url: str, *, reverse: bool = False) -> str:

@@ -1,12 +1,11 @@
 <template id="micro-link-template">
-    <a
-        class="link" data-class-micro-link-has-image="resource.image" data-href="resource.url"
-        target="_blank"
-    >
-        <div class="micro-link-image">
-            <img data-src="or resource.image.url ''" data-alt="or resource.image.description ''" />
-            <div class="micro-image-contrast"></div>
-        </div>
+    <a class="link" data-href="resource.url" target="_blank">
+        <template data-this="if resource.thumbnail">
+            <div class="micro-link-thumbnail">
+                <img data-src="resource.thumbnail.url" alt="" />
+                <div class="micro-image-contrast"></div>
+            </div>
+        </template>
         <p>
             <span data-content="or resource.description ''"></span>
             <small data-content="host"></small>
@@ -34,11 +33,11 @@ micro-link .link:not(:disabled):hover {
     background: transparent;
 }
 
-.micro-link-image {
+.micro-link-thumbnail {
     position: relative;
 }
 
-.micro-link-image img {
+.micro-link-thumbnail img {
     display: block;
     max-width: 100%;
     max-height: var(--micro-link-max-height);
@@ -50,9 +49,5 @@ micro-link p {
     background: var(--micro-color-delimiter);
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-micro-link .link:not(.micro-link-has-image) .micro-link-image {
-    display: none;
 }
 </style>
