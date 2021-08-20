@@ -42,6 +42,7 @@ from typing import Awaitable, Callable, Dict, Iterable, List, Optional, Tuple, U
 from urllib.parse import parse_qsl, urljoin, urlsplit
 
 import PIL.Image
+from PIL.Image import DecompressionBombError
 from PIL.ImageOps import exif_transpose
 from tornado.httpclient import HTTPClientError
 
@@ -245,6 +246,8 @@ class Analyzer:
                     stream = BytesIO()
                     image.save(stream, format=cast(str, src.format))
                     data = stream.getvalue()
+            except DecompressionBombError as e:
+                raise BrokenResourceError('Exceeding data size') from e
             except OSError as e:
                 raise BrokenResourceError('Bad data') from e
         elif content_type == 'image/svg+xml':

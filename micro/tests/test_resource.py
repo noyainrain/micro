@@ -109,6 +109,15 @@ class AnalyzerTestCase(AsyncHTTPTestCase):
         self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg" />')
 
     @gen_test # type: ignore[misc]
+    async def test_thumbnail_decompression_bomb(self) -> None:
+        # decompression_bomb.gif by Alex Clark and Pillow contributors
+        # (https://github.com/python-pillow/Pillow/blob/master/Tests/images/decompression_bomb.gif)
+        with (tests.RES_PATH / 'bomb.gif').open('rb') as f:
+            data = f.read()
+        with self.assertRaisesRegex(BrokenResourceError, 'data'):
+            await self.analyzer.thumbnail(data, 'image/gif')
+
+    @gen_test # type: ignore[misc]
     async def test_thumbnail_bad_data(self) -> None:
         with self.assertRaisesRegex(BrokenResourceError, 'data'):
             await self.analyzer.thumbnail(b'foo', 'image/jpeg')
