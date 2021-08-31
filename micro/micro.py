@@ -863,7 +863,7 @@ class User(Object, Editable):
             self.name = attrs['name']
 
     def json(self, restricted: bool = False, include: bool = False, *,
-             rewrite: RewriteFunc = None) -> Dict[str, object]:
+             rewrite: RewriteFunc = None) -> dict[str, object]:
         """See :meth:`Object.json`."""
         return {
             **super().json(restricted=restricted, include=include, rewrite=rewrite),

@@ -45,21 +45,24 @@ check: type test test-client test-ext test-ui lint
 .PHONY: deps
 deps:
 	$(PIP) install $(PIPFLAGS) -r requirements.txt
-	@# Work around npm refusing to update local path dependencies (see
-	@# https://npm.community/t/npm-update-for-local-modules-does-not-work-for-version-6-4-0/1725)
-	(cd hello; $(NPM) $(NPMFLAGS) install --only=prod)
-	@# Relative dependency paths do not take prefix into account
-	(cd hello; $(NPM) $(NPMFLAGS) update --only=prod)
-	$(NPM) $(NPMFLAGS) -C hello dedupe
-	$(NPM) $(NPMFLAGS) -C client update --only=prod
+	@# Work around npm 7 uninstalling local dependencies if outside package with a symlink (see
+	@# https://github.com/npm/cli/issues/2339)
+	@# npm 6 unhoists production dependencies already present for client
+	$(NPM) $(NPMFLAGS) -C hello install --only=prod
+	@# Work around npm 7 update modifying package.json (see https://github.com/npm/cli/issues/3044)
+	$(NPM) $(NPMFLAGS) -C client install --only=prod
 	@# Remove conflicting selenium-webdriver copy for Hello
-	$(NPM) $(NPMFLAGS) -C client uninstall selenium-webdriver
+	$(NPM) $(NPMFLAGS) -C client uninstall --only=prod selenium-webdriver
 
 .PHONY: deps-dev
 deps-dev:
 	$(PIP) install $(PIPFLAGS) -r requirements-dev.txt
-	$(NPM) $(NPMFLAGS) -C client update --only=dev
-	$(NPM) $(NPMFLAGS) -C hello update --only=dev
+	@# Work around npm 7 update modifying package.json (see https://github.com/npm/cli/issues/3044)
+	$(NPM) $(NPMFLAGS) -C client install
+	@# Remove conflicting selenium-webdriver copy for Hello
+	$(NPM) $(NPMFLAGS) -C client uninstall selenium-webdriver
+	@# npm 6 unhoists production dependencies already present for client
+	$(NPM) $(NPMFLAGS) -C hello install --only=dev
 
 .PHONY: show-deprecated
 show-deprecated:
@@ -75,7 +78,7 @@ release:
 
 .PHONY: clean
 clean:
-	rm -rf $(find . -name __pycache__) .mypy_cache build dist
+	rm -rf $$(find . -name __pycache__) .mypy_cache build dist
 	$(NPM) $(NPMFLAGS) -C client run clean
 	$(NPM) $(NPMFLAGS) -C hello run clean
 
