@@ -242,6 +242,16 @@ micro.util.formatFragment = function(str, args) {
     return fragment;
 };
 
+/** Parse a CSS hex *color* string into an RGB tuple. */
+micro.util.parseColor = function(color) {
+    if (color.length === 4) {
+        const value = Array.from(color.slice(1), component => component + component).join("");
+        color = `#${value}`;
+    }
+    return [color.slice(1, 3), color.slice(3, 5), color.slice(5, 7)]
+        .map(component => parseInt(component, 16));
+};
+
 /**
  * Parse an ISO 6709 representation of geographic coordinates *str* into a latitude-longitude pair.
  *
@@ -269,16 +279,31 @@ micro.util.parseCoords = function(str) {
 
 /** Return the given CSS *color* with transparency *alpha*. */
 micro.util.withAlpha = function(color, alpha) {
-    function normalize(c) {
-        if (c.length === 4) {
-            const value = Array.from(c.slice(1), component => component + component).join("");
-            return `#${value}`;
-        }
-        return c;
-    }
-    const [r, g, b] = micro.bind.chunk(normalize(color).slice(1), 2)
-        .map(component => parseInt(component, 16));
+    const [r, g, b] = micro.util.parseColor(color);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+/** Convert the tuple *rgb* from RGB to HSL. */
+micro.util.rgbToHSL = function(rgb) {
+    // See https://en.wikipedia.org/wiki/HSL_and_HSV
+    const [r, g, b] = rgb.map(component => component / 255);
+    const min = Math.min(r, g, b);
+    const max = Math.max(r, g, b);
+    const chroma = max - min;
+
+    let h;
+    if (chroma === 0) {
+        h = 0;
+    } else if (max === r) {
+        h = ((g - b) / chroma / 6 + 1) % 1;
+    } else if (max === g) {
+        h = ((b - r) / chroma + 2) / 6;
+    } else if (max === b) {
+        h = ((r - g) / chroma + 4) / 6;
+    }
+    const l = (min + max) / 2;
+    const s = l === 0 || l === 1 ? 0 : (max - l) / Math.min(l, 1 - l);
+    return [h, s, l];
 };
 
 /**

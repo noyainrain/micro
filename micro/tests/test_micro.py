@@ -38,6 +38,7 @@ SETUP_DB_SCRIPT = """\
 import asyncio
 
 from micro.core import context
+from micro.resource import BrokenResourceError
 from micro.test import CatApp
 
 HTML = '''\
@@ -53,7 +54,11 @@ HTML = '''\
 async def main():
     app = CatApp(redis_url='15')
     app.r.flushdb()
-    app.update()
+    # Compatibility for async update
+    try:
+        await app.update()
+    except TypeError:
+        pass
     # Compatibility for Devices
     try:
         context.user.set(app.devices.sign_in().user)
@@ -66,7 +71,11 @@ async def main():
     webpage_url = await app.files.write(HTML.format(image_url=image_url).encode(), 'text/html')
     await app.cats.create().edit(resource=webpage_url)
     corrupt_url = await app.files.write(b'foo', 'image/jpeg')
-    await app.cats.create().edit(resource=corrupt_url)
+    # Compatibility with Resource.thumbnail
+    try:
+        await app.cats.create().edit(resource=corrupt_url)
+    except BrokenResourceError:
+        pass
     text_url = await app.files.write(b'Meow!', 'text/plain')
     await app.cats.create().edit(resource=text_url)
 
@@ -115,24 +124,14 @@ class ApplicationUpdateTest(AsyncTestCase):
 
     @gen_test # type: ignore[misc]
     async def test_update_db_version_previous(self) -> None:
-        redis_url, files_path = self.setup_db('0.66.0')
+        redis_url, files_path = self.setup_db('0.68.0')
         app = CatApp(redis_url=redis_url, files_path=files_path)
         await app.update()
 
-        # Resource.thumbnail
-        cats = app.cats[:]
-        assert cats[0].resource and cats[0].resource.thumbnail
-        data, _ = await app.files.read(cats[0].resource.thumbnail.url)
-        self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>')
-        assert cats[1].resource and cats[1].resource.thumbnail
-        data, _ = await app.files.read(cats[1].resource.thumbnail.url)
-        self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>')
-        assert cats[2].resource and cats[2].resource.thumbnail
-        data, content_type = await app.files.read(cats[2].resource.thumbnail.url)
-        self.assertEqual(content_type, 'image/svg+xml')
-        self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg" />')
-        assert cats[3].resource
-        self.assertIsNone(cats[3].resource.thumbnail)
+        # Thumbnail.color
+        cat = app.cats[0]
+        assert cat.resource and cat.resource.thumbnail
+        self.assertEqual(cat.resource.thumbnail.color, '#ffffff')
 
     @gen_test # type: ignore[misc]
     async def test_update_db_version_first(self) -> None:
@@ -155,6 +154,7 @@ class ApplicationUpdateTest(AsyncTestCase):
         assert cats[0].resource and cats[0].resource.thumbnail
         data, _ = await app.files.read(cats[0].resource.thumbnail.url)
         self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>')
+        self.assertEqual(cats[0].resource.thumbnail.color, '#ffffff')
         assert cats[1].resource and cats[1].resource.thumbnail
         data, _ = await app.files.read(cats[1].resource.thumbnail.url)
         self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>')

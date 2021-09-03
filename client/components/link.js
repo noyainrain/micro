@@ -48,6 +48,17 @@ micro.components.LinkElement = class extends HTMLElement {
     set resource(value) {
         this._data.resource = value;
         this._data.host = new URL(value.url).host;
+        if (this._data.resource.thumbnail) {
+            const [h, s, l] = micro.util.rgbToHSL(
+                micro.util.parseColor(this._data.resource.thumbnail.color)
+            );
+            this.style.setProperty(
+                "--micro-link-thumbnail-color",
+                `hsl(${h * 360}, ${s * 100}%, ${Math.max(l * 100, 86.7)}%)`
+            );
+        } else {
+            this.style.setProperty("--micro-link-thumbnail-color", "");
+        }
     }
 };
 document.registerElement("micro-link", micro.components.LinkElement);

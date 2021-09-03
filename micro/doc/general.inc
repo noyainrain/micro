@@ -30,6 +30,8 @@ A *datetime* is an ISO 8601 date and time string in UTC, e.g. ``2015-08-27T00:42
 
 A *date* is an ISO 8601 date string, e.g. ``2015-08-27``.
 
+A *color* is a CSS hex color string, e.g. ``#0088ff``.
+
 A *slice* represents a range of a list, as array ``[start, stop]``, from index *start* (inclusive)
 to *stop* (exclusive). Both *start* and *stop* may be ``null``, referring to the beginning (0) and
 end (list length) of the list respectively.
@@ -291,6 +293,10 @@ Thumbnail image description.
 .. describe:: url
 
    URL of the thumbnail.
+
+.. describe:: color
+
+   Average thumbnail *color*.
 
 .. _Image:
 

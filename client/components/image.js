@@ -50,6 +50,13 @@ micro.components.ImageElement = class extends HTMLElement {
 
     set image(value) {
         this._data.image = value;
+        const [h, s, l] = micro.util.rgbToHSL(
+            micro.util.parseColor(this._data.image.thumbnail.color)
+        );
+        this.style.setProperty(
+            "--micro-image-thumbnail-color",
+            `hsl(${h * 360}, ${s * 100}%, ${Math.max(l * 100, 86.7)}%)`
+        );
     }
 };
 document.registerElement("micro-image", micro.components.ImageElement);

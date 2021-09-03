@@ -70,3 +70,21 @@ describe("parseCoords()", function() {
         expect(() => micro.util.parseCoords("92 -182")).to.throw(RangeError);
     });
 });
+
+describe("rgbToHSL()", function() {
+    const DELTA = 0.001;
+
+    it("should convert to HSL", function() {
+        const [h, s, l] = micro.util.rgbToHSL([128, 0, 64]);
+        expect(h).to.be.closeTo(0.917, DELTA);
+        expect(s).to.be.closeTo(1, DELTA);
+        expect(l).to.be.closeTo(0.25, DELTA);
+    });
+
+    it("should convert white to HSL", function() {
+        const [h, s, l] = micro.util.rgbToHSL([255, 255, 255]);
+        expect(h).to.be.closeTo(0, DELTA);
+        expect(s).to.be.closeTo(0, DELTA);
+        expect(l).to.be.closeTo(1, DELTA);
+    });
+});

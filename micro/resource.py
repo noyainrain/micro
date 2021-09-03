@@ -44,6 +44,7 @@ from urllib.parse import parse_qsl, urljoin, urlsplit
 import PIL.Image
 from PIL.Image import DecompressionBombError
 from PIL.ImageOps import exif_transpose
+from PIL.ImageStat import Stat
 from tornado.httpclient import HTTPClientError
 
 from . import error
@@ -72,15 +73,16 @@ class Resource:
         """See :ref:`ResourceThumbnail`."""
 
         url: str
+        color: str
 
         @staticmethod
         def parse(data: dict[str, object]) -> Resource.Thumbnail:
             """Parse the given JSON *data* into a :class:`Resource.Thumbnail`."""
-            return Resource.Thumbnail(Expect.str(data.get('url')))
+            return Resource.Thumbnail(Expect.str(data.get('url')), Expect.str(data.get('color')))
 
         def json(self, *, rewrite: RewriteFunc = None) -> dict[str, object]:
             """Return a JSON representation of the thumbnail."""
-            return {'url': rewrite(self.url) if rewrite else self.url}
+            return {'url': rewrite(self.url) if rewrite else self.url, 'color': self.color}
 
     @staticmethod
     def parse(data: dict[str, object], **args: object) -> Resource:
@@ -243,6 +245,13 @@ class Analyzer:
                 with PIL.Image.open(BytesIO(data), formats=[content_type[6:]]) as src:
                     image = exif_transpose(src)
                     image.thumbnail(Analyzer.THUMBNAIL_SIZE)
+                    if image.mode == 'RGB':
+                        r, g, b = cast(tuple[float, float, float], Stat(image).mean)
+                        color = f'#{int(r):02x}{int(g):02x}{int(b):02x}'
+                    else:
+                        # At the moment, transparent (RGBA, LA), grayscale (L, I, 1), CMYK and color
+                        # palette (P) images are not handled
+                        color = '#ffffff'
                     stream = BytesIO()
                     image.save(stream, format=cast(str, src.format))
                     data = stream.getvalue()
@@ -251,11 +260,12 @@ class Analyzer:
             except OSError as e:
                 raise BrokenResourceError('Bad data') from e
         elif content_type == 'image/svg+xml':
-            pass
+            color = '#ffffff'
         else:
             raise BrokenResourceError(f'Unknown content_type {content_type}')
+
         url = await self.files.write(data, content_type)
-        return Resource.Thumbnail(url)
+        return Resource.Thumbnail(url, color)
 
     def _get_cache(self, url: str) -> Resource:
         resource, expires = self._cache[url]

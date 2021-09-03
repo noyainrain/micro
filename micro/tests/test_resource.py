@@ -99,6 +99,7 @@ class AnalyzerTestCase(AsyncHTTPTestCase):
         with PIL.Image.open(BytesIO(data)) as image:
             self.assertEqual(image.size, (1177, 720))
         self.assertEqual(content_type, 'image/jpeg')
+        self.assertEqual(thumbnail.color, '#c4c2c0')
 
     @gen_test # type: ignore[misc]
     async def test_thumbnail_svg(self) -> None:
@@ -107,6 +108,7 @@ class AnalyzerTestCase(AsyncHTTPTestCase):
         assert self.analyzer.files
         data, _ = await self.analyzer.files.read(thumbnail.url)
         self.assertEqual(data, b'<svg xmlns="http://www.w3.org/2000/svg" />')
+        self.assertEqual(thumbnail.color, '#ffffff')
 
     @gen_test # type: ignore[misc]
     async def test_thumbnail_decompression_bomb(self) -> None:

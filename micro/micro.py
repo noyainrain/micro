@@ -258,24 +258,34 @@ class Application:
         r.omset(user_updates)
         r.omset(device_updates)
 
-        # Deprecated since 0.67.0
         object_updates = {}
         for obj in self._scan_objects(r, WithContent):
+            id = cast(str, obj['id'])
             resource = cast('dict[str, object] | None', obj['resource'])
-            if resource and 'thumbnail' not in resource:
-                src = (resource if resource['__type__'] == 'Image'
-                       else cast('dict[str, object] | None', resource['image']))
-                if src:
-                    try:
-                        thumbnail = await self.analyzer.thumbnail(cast(str, src['url']))
-                    except (CommunicationError, AnalysisError):
-                        thumbnail = await self.analyzer.thumbnail(
-                            b'<svg xmlns="http://www.w3.org/2000/svg" />', 'image/svg+xml')
-                    resource['thumbnail'] = thumbnail.json()
+            if resource:
+                # Deprecated since 0.67.0
+                if 'thumbnail' not in resource:
+                    src = (resource if resource['__type__'] == 'Image'
+                           else cast('dict[str, object] | None', resource['image']))
+                    if src:
+                        try:
+                            thumbnail = await self.analyzer.thumbnail(cast(str, src['url']))
+                        except (CommunicationError, AnalysisError):
+                            thumbnail = await self.analyzer.thumbnail(
+                                b'<svg xmlns="http://www.w3.org/2000/svg" />', 'image/svg+xml')
+                        resource['thumbnail'] = thumbnail.json()
+                    else:
+                        resource['thumbnail'] = None
+                    del resource['image']
+                    object_updates[id] = obj
+
+                # Deprecated since 0.69.0
                 else:
-                    resource['thumbnail'] = None
-                del resource['image']
-                object_updates[cast(str, obj['id'])] = obj
+                    thumbnail_data = cast('dict[str, object] | None', resource['thumbnail'])
+                    if thumbnail_data and 'color' not in thumbnail_data:
+                        thumbnail = await self.analyzer.thumbnail(cast(str, thumbnail_data['url']))
+                        thumbnail_data['color'] = thumbnail.color
+                        object_updates[id] = obj
         r.omset(object_updates)
 
         updates = {
